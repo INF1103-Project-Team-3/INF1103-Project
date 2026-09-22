@@ -1,0 +1,24 @@
+name: CI Pipeline
+
+# CRITICAL: Both triggers are required for Merge Queues
+on:
+  pull_request:
+    branches: [ main ]
+  merge_group:
+    branches: [ main ]
+
+jobs:
+  # The job name 'test' must match what you lock down in your ruleset later
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Run validation tests
+        run: |
+          echo "Running integration checks for the merge queue..."
+          # Replace the line below with your actual project test command 
+          # (e.g., npm test, pytest, dotnet test, go test ./)
+          echo "Tests passed successfully!" 
