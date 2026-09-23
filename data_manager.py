@@ -1,9 +1,9 @@
 import csv
 import json
-import haslib
+import hashlib
 import logging
 from pathlib import Path
-from typng import List, Dict, Any, Union
+from typing import List, Dict, Any, Union
 
 #set up logging so outputs can be captured by Docker logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s -%(message)s')
@@ -28,7 +28,7 @@ class DataManager:
         #Automatically load existing records if the file exists
         self.load_records()
 
-    def load_records(self) -> List[Dict[str, Any]];
+    def load_records(self) -> List[Dict[str, Any]]:
         #load all records from disk. Handles missing or corrupted files gracefully without crashing the container.
 
         if not self.records_path.exists():
@@ -93,3 +93,14 @@ class DataManager:
             "field_names": all_keys,
             "sha256_hash": dataset_hash
         }
+
+    def filter_records(self, **query: Any) -> List[Dict[str, Any]]:
+        #Filters records matching key-value search criteria.
+
+        results = []
+        for record in self.records:
+            match = all(record.get(k) == v for k, v in query.items())
+            if match:
+                results.append(record)
+        return results
+    
