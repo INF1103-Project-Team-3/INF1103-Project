@@ -1,0 +1,8 @@
+version: '3.8'
+
+services:
+  data_processor:
+    build: .
+    volumes:
+      # Mount local host './data' folder to container '/app/data'
+      - ./data:/app/data
