@@ -27,3 +27,31 @@ class DataManager:
 
         #Automatically load existing records if the file exists
         self.load_records()
+
+    def load_records(self) -> List[Dict[str, Any]];
+        #load all records from disk. Handles missing or corrupted files gracefully without crashing the container.
+
+        if not self.records_path.exists():
+            logging.warning(f" File {self.records_path} not found. Initializing empty records array.")
+            self.records = []
+            return self.records
+
+        try:
+            if self.storage_format == "json":
+                with open(self.records_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self.records = data if isinstance(data, list) else []
+            elif self.storage_format == "csv":
+                with open(self.records_path, "r", encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+                    self.records = [dict(row) for row in reader]
+
+            logging.info(f"Loaded {len(self.records)} records from '{self.records_path}'.")
+        except (json.JSONDecodeError, csv.Error, UnicodeDecodeError) as e:
+            logging.error(f"Corrupted file at'{self.records_path}': {e}. Recovering with empty state.")
+            self.records = []
+        except Exception as e:
+            logging.error(f"Unexpected error loading '{self.records_path}': {e}. Recovering with empty state.")
+            self.records = []
+            
+        return self.records
