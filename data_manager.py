@@ -1,106 +1,186 @@
-import csv
 import json
 import hashlib
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Union
+from typing import Any, Dict, List, Optional
 
-#set up logging so outputs can be captured by Docker logs
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s -%(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
 
 class DataManager:
-    #persistent data manager designed for Docker containers. Manages records, reports, filtering, statistical hashing, and file recovery.
-    def __init__(
-            self,
-            records_path: str ="/app/data/records.json",
-            reports_path: str ="/app/data/reports.json",
-            storage_format: str ="json"
-    ) -> None:
-        self.records_path = Path(records_path)
-        self.reports_path = Path(reports_path)
-        self.storage_format = storage_format.lower().strip()
+    """
+    Manages persistent feedback records and aggregate report summaries across Docker runs.
+    """
+
+    def __init__(self, storage_path: str = "/app/data/feedback_store.json") -> None:
+        """
+        Initialize the DataManager and automatically load existing state on startup.
+        """
+        self.storage_path = Path(storage_path)
         self.records: List[Dict[str, Any]] = []
+        self.report: Dict[str, Any] = {}
 
-        #Ensure parent directories exits inside the container volue
-        self.records_path.parent.mkdir(parents=True, exist_ok=True)
-        self.reports_path.parent.mkdir(parents=True, exist_ok=True)
+        # Ensure directory exists in Docker volume
+        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
 
-        #Automatically load existing records if the file exists
+        # Automatically load existing memory on startup
         self.load_records()
+        self.load_report()
 
-    def load_records(self) -> List[Dict[str, Any]]:
-        #load all records from disk. Handles missing or corrupted files gracefully without crashing the container.
-
-        if not self.records_path.exists():
-            logging.warning(f" File {self.records_path} not found. Initializing empty records array.")
-            self.records = []
-            return self.records
+    def _read_file_safely(self) -> Dict[str, Any]:
+        """
+        Private helper to read and parse the persistent JSON storage safely.
+        Handles missing or corrupt files without crashing.
+        """
+        if not self.storage_path.exists():
+            logging.warning(f"Storage file '{self.storage_path}' not found. Initializing empty dataset.")
+            return {"records": [], "report": {}}
 
         try:
-            if self.storage_format == "json":
-                with open(self.records_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    self.records = data if isinstance(data, list) else []
-            elif self.storage_format == "csv":
-                with open(self.records_path, "r", encoding="utf-8") as f:
-                    reader = csv.DictReader(f)
-                    self.records = [dict(row) for row in reader]
+            with open(self.storage_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return {
+                        "records": data.get("records", []),
+                        "report": data.get("report", {})
+                    }
+                else:
+                    logging.error(f"File '{self.storage_path}' is invalid root JSON. Resetting.")
+                    return {"records": [], "report": {}}
 
-            logging.info(f"Loaded {len(self.records)} records from '{self.records_path}'.")
-        except (json.JSONDecodeError, csv.Error, UnicodeDecodeError) as e:
-            logging.error(f"Corrupted file at'{self.records_path}': {e}. Recovering with empty state.")
-            self.records = []
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            logging.error(f"Corrupted storage file at '{self.storage_path}': {e}. Recovering with empty state.")
+            return {"records": [], "report": {}}
         except Exception as e:
-            logging.error(f"Unexpected error loading '{self.records_path}': {e}. Recovering with empty state.")
-            self.records = []
+            logging.error(f"Unexpected error loading '{self.storage_path}': {e}. Recovering with empty state.")
+            return {"records": [], "report": {}}
 
-        return self.records
-
-    def save_records(self, record: Dict[str, Any]) -> bool:
-        # Append a single record and saves the dataset to the persistent volume.
-
+    def _persist_to_file(self) -> bool:
+        """Private helper to save both records and report state back to disk."""
         try:
-            self.records.append(record)
-
-            if self.storage_format == "json":
-                with open(self.records_path, "w", encoding="utf-8") as f:
-                    json.dump(self.records, f, indent=4)
-            elif self.storage_format == "csv":
-                if self.records:
-                    fieldnames = list(self.records[0].keys())
-                    with open(self.records_path, "w", encoding="utf-8", newline="") as f:
-                        writer = csv.DictWriter(f, fieldnames=fieldnames)
-                        writer.writeheader()
-                        writer.writerows(self.records)
-            logging.info(f"Saved record to '{self.records_path}'.")
+            payload = {
+                "records": self.records,
+                "report": self.report
+            }
+            with open(self.storage_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2)
+            logging.info(f"Successfully saved state to '{self.storage_path}'.")
             return True
         except Exception as e:
-            logging.error(f"Failed to save record to '{self.records_path}': {e}")
+            logging.error(f"Failed to write state to '{self.storage_path}': {e}")
             return False
 
-    def hash_stats(self) -> Dict[str,Any]:
-        #calculates summary statistics and a sha256 integrity hash of the current records.
+    def load_records(self) -> List[Dict[str, Any]]:
+        """
+        Loads all feedback records from disk on startup or invocation.
+        """
+        data = self._read_file_safely()
+        self.records = data["records"]
+        logging.info(f"Loaded {len(self.records)} feedback records from storage.")
+        return self.records
 
+    def save_record(self, record: Dict[str, Any]) -> bool:
+        """
+        Appends a new feedback record (e.g., fb_001) and saves to persistent storage.
+        """
+        self.records.append(record)
+        return self._persist_to_file()
+
+    def load_report(self) -> Dict[str, Any]:
+        """
+        Loads the report dictionary from disk.
+        """
+        data = self._read_file_safely()
+        self.report = data["report"]
+        logging.info("Successfully loaded report summary.")
+        return self.report
+
+    def save_report(self, report_data: Dict[str, Any]) -> bool:
+        """
+        Updates and persists the overall summary report and theme metrics.
+        """
+        self.report = report_data
+        return self._persist_to_file()
+
+    def hash_stats(self) -> Dict[str, Any]:
+        """
+        Generates statistical metrics and a SHA-256 fingerprint signature across records.
+        """
         total_records = len(self.records)
-        all_keys = list({k for record in self.records for k in record.keys()})
+        
+        # Serialize records deterministically to compute SHA-256 hash
+        serialized_records = json.dumps(self.records, sort_keys=True).encode("utf-8")
+        dataset_hash = hashlib.sha256(serialized_records).hexdigest()
 
-        serialized_data = json.dumps(self.records, sort_keys=True).encode("utf-8")
-        dataset_hash = hashlib.sha256(serialized_data).hexdigest()
+        # Compute theme distribution counts
+        theme_counts: Dict[str, int] = {}
+        for r in self.records:
+            theme = r.get("theme", "Uncategorized")
+            theme_counts[theme] = theme_counts.get(theme, 0) + 1
 
-        return {
-            "total_records":total_records,
-            "unique_keys": len(all_keys),
-            "field_names": all_keys,
+        stats = {
+            "total_records": total_records,
+            "theme_distribution": theme_counts,
             "sha256_hash": dataset_hash
         }
+        return stats
 
     def filter_records(self, **query: Any) -> List[Dict[str, Any]]:
-        #Filters records matching key-value search criteria.
-
+        """
+        Queries stored records matching key-value criteria.
+        Example: manager.filter_records(theme="Pacing", severity="medium")
+        """
         results = []
         for record in self.records:
-            match = all(record.get(k) == v for k, v in query.items())
+            match = all(record.get(key) == value for key, value in query.items())
             if match:
                 results.append(record)
         return results
-    
+
+
+# -------------------------------------------------------------------
+# Direct Execution Demo
+# -------------------------------------------------------------------
+if __name__ == "__main__":
+    dm = DataManager(storage_path="data/feedback_store.json")
+
+    # 1. Add sample feedback record matching your JSON schema
+    sample_record = {
+        "feedback_id": "fb_001",
+        "text": "The lecture slides moved way too fast today.",
+        "timestamp": "2026-09-15T10:32:00",
+        "theme": "Pacing",
+        "sentiment": "negative",
+        "severity": "medium",
+        "summary": "Student struggles to keep up with fast-paced slides.",
+        "confidence": 0.92,
+        "needs_review": False,
+        "review_reasons": [],
+        "counted": True
+    }
+    dm.save_record(sample_record)
+
+    # 2. Compute hash stats
+    stats = dm.hash_stats()
+
+    # 3. Save matching report section
+    sample_report = {
+        "stats_key": stats["sha256_hash"],
+        "overall_summary": "Most concerns relate to lecture pacing and assessment clarity.",
+        "theme_actions": [{"theme": "Pacing", "suggested_action": "Slow down slide progression."}],
+        "themes": [
+            {
+                "theme": "Pacing",
+                "count": 1,
+                "avg_sentiment": -0.75,
+                "severity_counts": {"low": 0, "medium": 1, "high": 0, "critical": 0},
+                "priority": True
+            }
+        ]
+    }
+    dm.save_report(sample_report)
+
+    # 4. Filter records test
+    pacing_issues = dm.filter_records(theme="Pacing", severity="medium")
+    print(f"\nFiltered Pacing Records Found: {len(pacing_issues)}")
+    print(f"Dataset SHA-256 Hash: {stats['sha256_hash']}")
