@@ -77,4 +77,19 @@ class DataManager:
         except Exception as e:
             logging.error(f"Failed to save record to '{self.records_path}': {e}")
             return False
-        
+
+    def hash_stats(self) -> Dict[str,Any]:
+        #calculates summary statistics and a sha256 integrity hash of the current records.
+
+        total_records = len(self.records)
+        all_keys = list({k for record in self.records for k in record.keys()})
+
+        serialized_data = json.dumps(self.records, sort_keys=True).encode("utf-8")
+        dataset_hash = hashlib.sha256(serialized_data).hexdigest()
+
+        return {
+            "total_records":total_records,
+            "unique_keys": len(all_keys),
+            "field_names": all_keys,
+            "sha256_hash": dataset_hash
+        }
