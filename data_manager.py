@@ -53,5 +53,28 @@ class DataManager:
         except Exception as e:
             logging.error(f"Unexpected error loading '{self.records_path}': {e}. Recovering with empty state.")
             self.records = []
-            
+
         return self.records
+
+    def save_records(self, record: Dict[str, Any]) -> bool:
+        # Append a single record and saves the dataset to the persistent volume.
+
+        try:
+            self.records.append(record)
+
+            if self.storage_format == "json":
+                with open(self.records_path, "w", encoding="utf-8") as f:
+                    json.dump(self.records, f, indent=4)
+            elif self.storage_format == "csv":
+                if self.records:
+                    fieldnames = list(self.records[0].keys())
+                    with open(self.records_path, "w", encoding="utf-8", newline="") as f:
+                        writer = csv.DictWriter(f, fieldnames=fieldnames)
+                        writer.writeheader()
+                        writer.writerows(self.records)
+            logging.info(f"Saved record to '{self.records_path}'.")
+            return True
+        except Exception as e:
+            logging.error(f"Failed to save record to '{self.records_path}': {e}")
+            return False
+        
