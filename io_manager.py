@@ -30,3 +30,8 @@ def _prompt(message):
     if answer.lower() in QUIT_COMMANDS:
         return None
     return answer
+
+def letter_validation(text):
+    """If text contains at least one letter, return True (rejects '123' or '!!!')."""
+    return any(c.isalpha() for c in text)
+
