@@ -2,7 +2,7 @@
 from datetime import datetime
 import json
 import logging
-from typing import Final
+
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 REQUIRED_FIELDS = ("feedback_id", "text", "timestamp")
 SUPPORTED_EXTENSIONS = (".csv", ".json")
 TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S"
-MAX_REPROMPTS: Final = 3
 QUIT_COMMANDS = ("q", "quit")
 MAX_TEXT_LENGTH = 2000
 
@@ -43,7 +42,7 @@ def _now():
     return datetime.now().strftime(TIMESTAMP_FORMAT)
 
 
-def _generate_id():
+def generate_id():
     """ID for typed entries, e.g. 'fb_3f9a1c2e'."""
     return f"fb_{uuid.uuid4().hex[:8]}"
 
@@ -88,3 +87,17 @@ def read_json(path):
         logger.warning("JSON %s must contain a list of entries", path)
         return []
     return data
+
+def prompt_until_valid(message, validator):
+    """Prompt until validator(answer) -> (value, error) succeeds.
+    Returns value or None on quit.
+    """
+    while True:
+        answer = _prompt(message)
+        if answer is None:
+            return None
+        value, error = validator(answer)
+        if not error:
+            return value
+        print_out(f"  Invalid: {error}")
+
