@@ -1,6 +1,8 @@
 
+from datetime import datetime
 import logging
 from typing import Final
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -35,3 +37,11 @@ def letter_validation(text):
     """If text contains at least one letter, return True (rejects '123' or '!!!')."""
     return any(c.isalpha() for c in text)
 
+def _now():
+    """Current time in TIMESTAMP_FORMAT."""
+    return datetime.now().strftime(TIMESTAMP_FORMAT)
+
+
+def _generate_id():
+    """ID for typed entries, e.g. 'fb_3f9a1c2e'. Won't clash with 'fb_001'."""
+    return f"fb_{uuid.uuid4().hex[:8]}"
