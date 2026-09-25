@@ -1,5 +1,6 @@
 
 from datetime import datetime
+import json
 import logging
 from typing import Final
 import uuid
@@ -74,3 +75,16 @@ def validate_entry(raw):
         return None, f"timestamp must look like {TIMESTAMP_FORMAT}"
 
     return entry, ""
+
+def read_json(path):
+    """Read raw rows from a JSON file (expects a list). Returns [] if bad."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        logger.warning("Could not read JSON %s: %s", path, exc)
+        return []
+    if not isinstance(data, list):
+        logger.warning("JSON %s must contain a list of entries", path)
+        return []
+    return data
