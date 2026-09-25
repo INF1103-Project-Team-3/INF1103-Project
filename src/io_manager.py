@@ -43,5 +43,34 @@ def _now():
 
 
 def _generate_id():
-    """ID for typed entries, e.g. 'fb_3f9a1c2e'. Won't clash with 'fb_001'."""
+    """ID for typed entries, e.g. 'fb_3f9a1c2e'."""
     return f"fb_{uuid.uuid4().hex[:8]}"
+
+
+def validate_entry(raw):
+    """Validate one raw row.
+
+    Returns (clean_entry, "") on success or (None, reason) on failure.
+    """
+    if not isinstance(raw, dict):
+        return None, "row is not an object"
+
+    missing = [
+        f for f in REQUIRED_FIELDS
+        if raw.get(f) is None or not str(raw[f]).strip()
+    ]
+    if missing:
+        return None, f"missing field(s): {', '.join(missing)}"
+
+    entry = {f: str(raw[f]).strip() for f in REQUIRED_FIELDS}
+
+    if not letter_validation(entry["text"]):
+        return None, "text contains no letters"
+    if len(entry["text"]) > MAX_TEXT_LENGTH:
+        return None, f"text longer than {MAX_TEXT_LENGTH} characters"
+    try:
+        datetime.strptime(entry["timestamp"], TIMESTAMP_FORMAT)
+    except ValueError:
+        return None, f"timestamp must look like {TIMESTAMP_FORMAT}"
+
+    return entry, ""
