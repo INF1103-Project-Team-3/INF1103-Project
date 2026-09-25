@@ -1,5 +1,6 @@
 from datetime import datetime
 import io
+import json
 from src import io_manager 
 
 # Test print_out()
@@ -128,3 +129,35 @@ def test_validate_entry_bad_timestamp():
 
     assert cleaned is None
     assert "timestamp must look like" in error
+
+#  Test read_json() 
+
+def test_read_json_valid(tmp_path):
+    data = [
+        {
+            "feedback_id": "fb_12345678",
+            "text": "Good",
+            "timestamp": "2026-09-25T10:30:00",
+        }
+    ]
+
+    file = tmp_path / "data.json"
+    file.write_text(json.dumps(data), encoding="utf-8")
+
+    assert io_manager.read_json(file) == data
+
+
+def test_read_json_invalid_json(tmp_path):
+    file = tmp_path / "bad.json"
+    file.write_text("{invalid json", encoding="utf-8")
+
+    assert io_manager.read_json(file) == []
+
+
+def test_read_json_not_list(tmp_path):
+    file = tmp_path / "dict.json"
+    file.write_text(json.dumps({"hello": "world"}), encoding="utf-8")
+
+    assert io_manager.read_json(file) == []
+
+
