@@ -1,4 +1,5 @@
 from datetime import datetime
+import io
 from src import io_manager 
 
 # Test print_out()
@@ -55,3 +56,75 @@ def test_generate_id_is_unique():
     id2 = io_manager.generate_id()
 
     assert id1 != id2
+
+# Test validate_entry() 
+
+def test_validate_entry_valid():
+    entry = {
+        "feedback_id": "fb_12345678",
+        "text": "Great service!",
+        "timestamp": "2026-09-25T10:30:00",
+    }
+
+    cleaned, error = io_manager.validate_entry(entry)
+
+    assert error == ""
+    assert cleaned == entry
+
+
+def test_validate_entry_not_dict():
+    cleaned, error = io_manager.validate_entry("hello")
+
+    assert cleaned is None
+    assert error == "row is not an object"
+
+
+def test_validate_entry_missing_field():
+    entry = {
+        "feedback_id": "fb_12345678",
+        "text": "Great service!"
+    }
+
+    cleaned, error = io_manager.validate_entry(entry)
+
+    assert cleaned is None
+    assert "missing field(s): timestamp" in error
+
+
+def test_validate_entry_no_letters():
+    entry = {
+        "feedback_id": "fb_12345678",
+        "text": "12345!!!",
+        "timestamp": "2026-09-25T10:30:00",
+    }
+
+    cleaned, error = io_manager.validate_entry(entry)
+
+    assert cleaned is None
+    assert error == "text contains no letters"
+
+
+def test_validate_entry_text_too_long():
+    entry = {
+        "feedback_id": "fb_12345678",
+        "text": "a" * (io_manager.MAX_TEXT_LENGTH + 1),
+        "timestamp": "2026-09-25T10:30:00",
+    }
+
+    cleaned, error = io_manager.validate_entry(entry)
+
+    assert cleaned is None
+    assert "text longer than" in error
+
+
+def test_validate_entry_bad_timestamp():
+    entry = {
+        "feedback_id": "fb_12345678",
+        "text": "Good",
+        "timestamp": "25/09/2026",
+    }
+
+    cleaned, error = io_manager.validate_entry(entry)
+
+    assert cleaned is None
+    assert "timestamp must look like" in error
