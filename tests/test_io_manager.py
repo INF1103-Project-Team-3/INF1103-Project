@@ -161,3 +161,39 @@ def test_read_json_not_list(tmp_path):
     assert io_manager.read_json(file) == []
 
 
+# prompt_until_valid() 
+
+def test_prompt_until_valid_success(monkeypatch):
+    monkeypatch.setattr(io_manager, "_prompt", lambda msg: "hello")
+
+    def validator(answer):
+        return answer.upper(), ""
+
+    result = io_manager.prompt_until_valid("Enter: ", validator)
+
+    assert result == "HELLO"
+
+
+def test_prompt_until_valid_retry(monkeypatch):
+    answers = iter(["123", "hello"])
+    monkeypatch.setattr(io_manager, "_prompt", lambda msg: next(answers))
+
+    def validator(answer):
+        if answer.isalpha():
+            return answer, ""
+        return None, "letters only"
+
+    result = io_manager.prompt_until_valid("Enter: ", validator)
+
+    assert result == "hello"
+
+
+def test_prompt_until_valid_quit(monkeypatch):
+    monkeypatch.setattr(io_manager, "_prompt", lambda msg: None)
+
+    def validator(answer):
+        return answer, ""
+
+    result = io_manager.prompt_until_valid("Enter: ", validator)
+
+    assert result is None
