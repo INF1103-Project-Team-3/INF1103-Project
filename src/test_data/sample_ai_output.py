@@ -17,9 +17,9 @@ SAMPLE_RECORDS = [
         "timestamp": "2026-09-15T10:32:00",
         "theme": "Pacing",
         "sentiment": "negative",
-        "severity": "medium",
+        "severity": "critical",
         "summary": "Student struggles to keep up with fast-paced slides.",
-        "confidence": 0.92,
+        "confidence": 0.02,
     },
     {
         "feedback_id": "fb_002",
