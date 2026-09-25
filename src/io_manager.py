@@ -12,15 +12,38 @@ SUPPORTED_EXTENSIONS = (".csv", ".json")
 TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S"
 QUIT_COMMANDS = ("q", "quit")
 MAX_TEXT_LENGTH = 2000
+ADMIN_PASSWORD = "123456"
 
 def print_out(message=""):
     """The only place print() is called."""
     print(message)
 
+def prompt_role():
+    """Ask whether the user is a user or an admin.
+
+    Returns "admin" only after the correct password is entered.
+    Returns "user" for the regular single-entry flow, or None on quit.
+    """
+    choice = _prompt("Are you a user or admin? ")
+    if choice is None:
+        return None
+
+    choice = choice.strip().lower()
+    if choice in ("admin"):
+        return "admin" if _authenticate_admin() else None
+    return "user"
+
+def _authenticate_admin():
+    """Prompt for the admin password. Returns True/False. No retry cap
+    beyond what _prompt_until_valid enforces (none, per your last change).
+    """
+    def check(password):
+        return (True, "") if password == ADMIN_PASSWORD else (None, "wrong password")
+
+    return prompt_until_valid("Admin password: ", check) is True
 
 def _prompt(message):
-    """The only place input() is called.
-
+    """
     Returns the stripped answer, or None on quit, Ctrl+C or EOF.
     An empty string means the user just pressed Enter.
     """

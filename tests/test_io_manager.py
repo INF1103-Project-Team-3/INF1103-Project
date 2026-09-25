@@ -1,5 +1,4 @@
 from datetime import datetime
-import io
 import json
 from src import io_manager 
 
@@ -197,3 +196,4 @@ def test_prompt_until_valid_quit(monkeypatch):
     result = io_manager.prompt_until_valid("Enter: ", validator)
 
     assert result is None
+
