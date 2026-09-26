@@ -214,3 +214,33 @@ def run_admin_single_entry():
         return
     print_out(f"Entry ID: {entry['feedback_id']}")
     print_out(f"  {entry}")
+
+
+def run_admin_files(loader, file_desc):
+    """Shared bulk-import flow: load raw rows and validate them. Used
+    identically for JSON and CSV so both file types go through the exact
+    same pipeline.
+    """
+    path = input(f"Path to a {file_desc} file, or 'q' to cancel: ").strip()
+    if path.lower() in ("q", "quit"):
+        print_out("Cancelled.")
+        return
+ 
+    rows = loader(path)
+    if not rows:
+        print_out("No rows loaded.")
+        return
+ 
+    accepted, rejected = validate_import(rows)
+ 
+    print_out(f"\nValidated {len(accepted)} of {len(rows)} row(s).")
+    if accepted:
+        print_out("Accepted rows:")
+        for entry in accepted:
+            print_out(f"  {entry}")
+    if rejected:
+        print_out("Rejected rows:")
+        for i, error in rejected:
+            print_out(f"  Row {i}: {error}")
+
+
