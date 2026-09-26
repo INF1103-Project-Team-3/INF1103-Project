@@ -180,3 +180,12 @@ def submit_single_entry():
         print_out("Cancelled.")
         return None
     return entry
+
+def run_user_flow():
+    """User workflow: a single feedback attempt, then a thank-you message."""
+    print_out("\n--- Feedback ---")
+    entry = submit_single_entry()
+    if entry is None:
+        return
+    print_out("Thank you! Your response has been saved.")
+    print_out(f"  {entry}")
