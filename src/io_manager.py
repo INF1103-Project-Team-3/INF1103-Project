@@ -189,3 +189,11 @@ def run_user_flow():
         return
     print_out("Thank you! Your response has been saved.")
     print_out(f"  {entry}")
+
+def run_admin_single_entry():
+    """Admin sub-flow: submit one feedback entry."""
+    entry = submit_single_entry()
+    if entry is None:
+        return
+    print_out(f"Entry ID: {entry['feedback_id']}")
+    print_out(f"  {entry}")
