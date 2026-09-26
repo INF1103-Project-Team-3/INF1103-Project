@@ -173,7 +173,7 @@ def read_entry():
 
     return prompt_until_valid("Enter feedback (quit to cancel): ", check)
 
-def validate_import(rows):
+def validate_files(rows):
     """Validate a batch of raw rows.
  
     Returns (accepted, rejected):
@@ -231,7 +231,7 @@ def run_admin_files(loader, file_desc):
         print_out("No rows loaded.")
         return
  
-    accepted, rejected = validate_import(rows)
+    accepted, rejected = validate_files(rows)
  
     print_out(f"\nValidated {len(accepted)} of {len(rows)} row(s).")
     if accepted:
@@ -244,3 +244,6 @@ def run_admin_files(loader, file_desc):
             print_out(f"  Row {i}: {error}")
 
 
+def run_admin_files_json():
+    """Admin sub-flow: bulk-import a JSON file of feedback rows."""
+    run_admin_files(read_json, "JSON")
