@@ -270,3 +270,22 @@ def run_admin_flow():
         run_admin_files_csv()
     else:
         run_admin_single_entry()
+
+def main():
+    print_out("=== Feedback Manager ===")
+ 
+    role = prompt_role()
+    if role is None:
+        print_out("Goodbye.")
+        return
+ 
+    if role == "admin":
+        run_admin_flow()
+    else:
+        run_user_flow()
+ 
+    print_out("Goodbye.")
+ 
+ 
+if __name__ == "__main__":
+    main()
