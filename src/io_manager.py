@@ -13,6 +13,7 @@ TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S"
 QUIT_COMMANDS = ("q", "quit")
 MAX_TEXT_LENGTH = 2000
 ADMIN_PASSWORD = "123456"
+STORE_FILE = "feedback_store.json"
 
 def print_out(message=""):
     """The only place print() is called."""
@@ -30,10 +31,32 @@ def prompt_role():
 
     choice = choice.strip().lower()
     if choice == "admin":
-        return "admin" if _authenticate_admin() else None
+        return "admin" if authenticate_admin() else None
     return "user"
 
-def _authenticate_admin():
+def prompt_admin_action():
+    """Ask an admin to choose: single entry, JSON import, or CSV import.
+
+    Returns "entry", "json", "csv", or None on quit.
+    """
+    while True:
+        choice = _prompt("Single entry, JSON import, or CSV import? (entry/json/csv): ")
+
+        if choice is None:
+            return None
+
+        choice = choice.strip().lower()
+
+        if choice == "entry":
+            return "entry"
+        elif choice == "json":
+            return "json"
+        elif choice == "csv":
+            return "csv"
+
+        print_out("Invalid option. Please enter 'entry', 'json', or 'csv'.")
+
+def authenticate_admin():
     """Prompt for the admin password. Returns True/False. No retry cap
     beyond what _prompt_until_valid enforces (none, per your last change).
     """
@@ -139,3 +162,4 @@ def read_entry():
         })
 
     return prompt_until_valid("Enter feedback (quit to cancel): ", check)
+
