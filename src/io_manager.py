@@ -173,6 +173,7 @@ def read_entry():
 
     return prompt_until_valid("Enter feedback (quit to cancel): ", check)
 
+
 def validate_files(rows):
     """Validate a batch of raw rows.
  
@@ -198,6 +199,7 @@ def submit_single_entry():
         return None
     return entry
 
+
 def run_user_flow():
     """User workflow: a single feedback attempt, then a thank-you message."""
     print_out("\n--- Feedback ---")
@@ -206,6 +208,7 @@ def run_user_flow():
         return
     print_out("Thank you! Your response has been saved.")
     print_out(f"  {entry}")
+
 
 def run_admin_single_entry():
     """Admin sub-flow: submit one feedback entry."""
@@ -248,6 +251,22 @@ def run_admin_files_json():
     """Admin sub-flow: bulk-import a JSON file of feedback rows."""
     run_admin_files(read_json, "JSON")
 
-def run_admin_import_csv():
+
+def run_admin_files_csv():
     """Admin sub-flow: bulk-import a CSV file of feedback rows."""
     run_admin_files(read_csv, "CSV")
+
+
+def run_admin_flow():
+    """Admin workflow: choose single entry, JSON import, or CSV import."""
+    print_out("\n--- Admin ---")
+    action = prompt_admin_action()
+    if action is None:
+        print_out("Cancelled.")
+        return
+    if action == "json":
+        run_admin_files_json()
+    elif action == "csv":
+        run_admin_files_csv()
+    else:
+        run_admin_single_entry()
