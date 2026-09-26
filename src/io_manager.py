@@ -173,6 +173,23 @@ def read_entry():
 
     return prompt_until_valid("Enter feedback (quit to cancel): ", check)
 
+def validate_import(rows):
+    """Validate a batch of raw rows.
+ 
+    Returns (accepted, rejected):
+      - accepted: list of clean entry dicts
+      - rejected: list of (row_number, reason) tuples, 1-indexed
+    """
+    accepted, rejected = [], []
+    for i, raw in enumerate(rows, start=1):
+        entry, error = validate_entry(raw)
+        if error:
+            rejected.append((i, error))
+        else:
+            accepted.append(entry)
+    return accepted, rejected
+
+
 def submit_single_entry():
     """Collect one feedback entry. Returns the entry dict, or None on cancel."""
     entry = read_entry()
