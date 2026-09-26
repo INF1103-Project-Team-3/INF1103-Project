@@ -173,3 +173,10 @@ def read_entry():
 
     return prompt_until_valid("Enter feedback (quit to cancel): ", check)
 
+def submit_single_entry():
+    """Collect one feedback entry. Returns the entry dict, or None on cancel."""
+    entry = read_entry()
+    if entry is None:
+        print_out("Cancelled.")
+        return None
+    return entry
