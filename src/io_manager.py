@@ -1,4 +1,5 @@
 
+import csv
 from datetime import datetime
 import json
 import logging
@@ -133,6 +134,15 @@ def read_json(path):
         logger.warning("JSON %s must contain a list of entries", path)
         return []
     return data
+
+def read_csv(path):
+    """Read raw rows from a CSV file as dicts. Returns [] if bad."""    
+    try:
+        with open(path, newline="", encoding="utf-8") as f:
+            return list(csv.DictReader(f))
+    except (OSError, UnicodeDecodeError, csv.Error) as exc:
+        logger.warning("Could not read CSV %s: %s", path, exc)
+        return []
 
 def prompt_until_valid(message, validator):
     """Prompt until validator(answer) -> (value, error) succeeds.

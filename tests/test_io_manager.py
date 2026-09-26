@@ -159,6 +159,69 @@ def test_read_json_not_list(tmp_path):
 
     assert io_manager.read_json(file) == []
 
+# Test read_csv()
+
+def test_read_csv_valid(tmp_path):
+    file = tmp_path / "feedback.csv"
+
+    file.write_text(
+        "feedback_id,text,timestamp\n"
+        "fb_12345678,Great service,2026-09-25T10:30:00\n",
+        encoding="utf-8"
+    )
+
+    result = io_manager.read_csv(file)
+
+    assert result == [
+        {
+            "feedback_id": "fb_12345678",
+            "text": "Great service",
+            "timestamp": "2026-09-25T10:30:00",
+        }
+    ]
+
+
+def test_read_csv_multiple_rows(tmp_path):
+    file = tmp_path / "feedback.csv"
+
+    file.write_text(
+        "feedback_id,text,timestamp\n"
+        "fb_11111111,Good,2026-09-25T10:30:00\n"
+        "fb_22222222,Excellent,2026-09-25T11:00:00\n",
+        encoding="utf-8"
+    )
+
+    result = io_manager.read_csv(file)
+
+    assert len(result) == 2
+    assert result[0]["text"] == "Good"
+    assert result[1]["text"] == "Excellent"
+
+
+def test_read_csv_missing_file():
+    result = io_manager.read_csv("does_not_exist.csv")
+
+    assert result == []
+
+
+def test_read_csv_empty_file(tmp_path):
+    file = tmp_path / "empty.csv"
+    file.write_text("", encoding="utf-8")
+
+    result = io_manager.read_csv(file)
+
+    assert result == []
+
+
+def test_read_csv_bad_encoding(tmp_path):
+    file = tmp_path / "bad.csv"
+
+    # Invalid UTF-8 bytes
+    file.write_bytes(b"\xff\xfe\xfd")
+
+    result = io_manager.read_csv(file)
+
+    assert result == []
 
 # Test prompt_until_valid() 
 
