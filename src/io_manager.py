@@ -8,12 +8,10 @@ import uuid
 logger = logging.getLogger(__name__)
 
 REQUIRED_FIELDS = ("feedback_id", "text", "timestamp")
-SUPPORTED_EXTENSIONS = (".csv", ".json")
 TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S"
 QUIT_COMMANDS = ("q", "quit")
 MAX_TEXT_LENGTH = 2000
 ADMIN_PASSWORD = "123456"
-STORE_FILE = "feedback_store.json"
 
 
 def print_out(message=""):
@@ -68,7 +66,7 @@ def prompt_admin_action():
 
 def authenticate_admin():
     """Prompt for the admin password. Returns True/False. No retry cap
-    beyond what _prompt_until_valid enforces (none, per your last change).
+    beyond what prompt_until_valid enforces (none, per your last change).
     """
     def check(password):
         return (True, "") if password == ADMIN_PASSWORD else (None, "wrong password")
@@ -263,7 +261,7 @@ def run_admin_files(loader, file_desc):
         for i, error in rejected:
             print_out(f"  Row {i}: {error}")
 
-            
+
 def run_admin_files_json():
     """Admin sub-flow: bulk-import a JSON file of feedback rows."""
     run_admin_files(read_json, "JSON")
