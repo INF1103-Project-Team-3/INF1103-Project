@@ -29,7 +29,7 @@ def prompt_role():
         return None
 
     choice = choice.strip().lower()
-    if choice in ("admin"):
+    if choice == "admin":
         return "admin" if _authenticate_admin() else None
     return "user"
 
@@ -124,3 +124,18 @@ def prompt_until_valid(message, validator):
             return value
         print_out(f"  Invalid: {error}")
 
+
+def read_entry():
+    """Prompt for one piece of feedback.
+
+    Returns an entry dict, or None if the user 
+    quits or fails validation too many times.
+    """
+    def check(text):
+        return validate_entry({
+            "feedback_id": generate_id(),
+            "text": text,
+            "timestamp": _now(),
+        })
+
+    return prompt_until_valid("Enter feedback (quit to cancel): ", check)

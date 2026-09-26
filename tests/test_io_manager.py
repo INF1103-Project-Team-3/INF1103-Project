@@ -160,7 +160,7 @@ def test_read_json_not_list(tmp_path):
     assert io_manager.read_json(file) == []
 
 
-# prompt_until_valid() 
+# Test prompt_until_valid() 
 
 def test_prompt_until_valid_success(monkeypatch):
     monkeypatch.setattr(io_manager, "_prompt", lambda msg: "hello")
@@ -196,4 +196,50 @@ def test_prompt_until_valid_quit(monkeypatch):
     result = io_manager.prompt_until_valid("Enter: ", validator)
 
     assert result is None
+
+# Test read_entry()
+
+def test_read_entry_success(monkeypatch):
+    expected = {
+        "feedback_id": "fb_12345678",
+        "text": "Great service!",
+        "timestamp": "2026-09-25T10:30:00",
+    }
+
+    monkeypatch.setattr(io_manager, "prompt_until_valid", lambda message, validator: expected)
+
+    result = io_manager.read_entry()
+
+    assert result == expected
+
+def test_read_entry_quit(monkeypatch):
+    monkeypatch.setattr(io_manager, "prompt_until_valid", lambda message, validator: None)
+
+    result = io_manager.read_entry()
+
+    assert result is None
+
+
+def test_read_entry_builds_entry(monkeypatch):
+    monkeypatch.setattr(io_manager, "generate_id", lambda: "fb_test123")
+    monkeypatch.setattr(io_manager, "_now", lambda: "2026-09-25T10:30:00")
+
+    def fake_validate(entry):
+        assert entry["feedback_id"] == "fb_test123"
+        assert entry["text"] == "Great service!"
+        assert entry["timestamp"] == "2026-09-25T10:30:00"
+        return entry, ""
+
+    monkeypatch.setattr(io_manager, "validate_entry", fake_validate)
+
+    def fake_prompt(message, validator):
+        value, error = validator("Great service!")
+        assert error == ""
+        return value
+
+    monkeypatch.setattr(io_manager, "prompt_until_valid", fake_prompt)
+
+    result = io_manager.read_entry()
+
+    assert result["text"] == "Great service!"
 
