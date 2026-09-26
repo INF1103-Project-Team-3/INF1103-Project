@@ -247,3 +247,7 @@ def run_admin_files(loader, file_desc):
 def run_admin_files_json():
     """Admin sub-flow: bulk-import a JSON file of feedback rows."""
     run_admin_files(read_json, "JSON")
+
+def run_admin_import_csv():
+    """Admin sub-flow: bulk-import a CSV file of feedback rows."""
+    run_admin_files(read_csv, "CSV")
