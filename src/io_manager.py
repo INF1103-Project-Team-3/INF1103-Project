@@ -3,7 +3,6 @@ import csv
 from datetime import datetime
 import json
 import logging
-
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -16,24 +15,33 @@ MAX_TEXT_LENGTH = 2000
 ADMIN_PASSWORD = "123456"
 STORE_FILE = "feedback_store.json"
 
+
 def print_out(message=""):
     """The only place print() is called."""
     print(message)
+
 
 def prompt_role():
     """Ask whether the user is a user or an admin.
 
     Returns "admin" only after the correct password is entered.
     Returns "user" for the regular single-entry flow, or None on quit.
+    Re-prompts on anything other than "user" or "admin".
     """
-    choice = _prompt("Are you a user or admin? ")
-    if choice is None:
+    def check(choice):
+        choice = choice.strip().lower()
+        if choice in ("user", "admin"):
+            return choice, ""
+        return None, "please enter 'user' or 'admin'"
+
+    role = prompt_until_valid("Are you a user or admin? (user/admin): ", check)
+    if role is None:
         return None
 
-    choice = choice.strip().lower()
-    if choice == "admin":
+    if role == "admin":
         return "admin" if authenticate_admin() else None
     return "user"
+
 
 def prompt_admin_action():
     """Ask an admin to choose: single entry, JSON import, or CSV import.
@@ -57,6 +65,7 @@ def prompt_admin_action():
 
         print_out("Invalid option. Please enter 'entry', 'json', or 'csv'.")
 
+
 def authenticate_admin():
     """Prompt for the admin password. Returns True/False. No retry cap
     beyond what _prompt_until_valid enforces (none, per your last change).
@@ -65,6 +74,7 @@ def authenticate_admin():
         return (True, "") if password == ADMIN_PASSWORD else (None, "wrong password")
 
     return prompt_until_valid("Admin password: ", check) is True
+
 
 def _prompt(message):
     """
@@ -80,9 +90,11 @@ def _prompt(message):
         return None
     return answer
 
+
 def letter_validation(text):
     """If text contains at least one letter, return True (rejects '123' or '!!!')."""
     return any(c.isalpha() for c in text)
+
 
 def _now():
     """Current time in TIMESTAMP_FORMAT."""
@@ -122,6 +134,7 @@ def validate_entry(raw):
 
     return entry, ""
 
+
 def read_json(path):
     """Read raw rows from a JSON file (expects a list). Returns [] if bad."""
     try:
@@ -135,6 +148,7 @@ def read_json(path):
         return []
     return data
 
+
 def read_csv(path):
     """Read raw rows from a CSV file as dicts. Returns [] if bad."""    
     try:
@@ -143,6 +157,7 @@ def read_csv(path):
     except (OSError, UnicodeDecodeError, csv.Error) as exc:
         logger.warning("Could not read CSV %s: %s", path, exc)
         return []
+
 
 def prompt_until_valid(message, validator):
     """Prompt until validator(answer) -> (value, error) succeeds.
@@ -222,20 +237,22 @@ def run_admin_single_entry():
 def run_admin_files(loader, file_desc):
     """Shared bulk-import flow: load raw rows and validate them. Used
     identically for JSON and CSV so both file types go through the exact
-    same pipeline.
+    same pipeline. Reprompts for the path until a file loads successfully
+    or the user quits.
     """
-    path = input(f"Path to a {file_desc} file, or 'q' to cancel: ").strip()
-    if path.lower() in ("q", "quit"):
-        print_out("Cancelled.")
-        return
- 
-    rows = loader(path)
-    if not rows:
-        print_out("No rows loaded.")
-        return
- 
+    while True:
+        path = _prompt(f"Path to a {file_desc} file, or 'quit' to cancel: ")
+        if path is None:
+            print_out("Cancelled.")
+            return
+
+        rows = loader(path)
+        if rows:
+            break
+        print_out(f"  Invalid: could not read '{path}' as {file_desc} (check the path and format).")
+
     accepted, rejected = validate_files(rows)
- 
+
     print_out(f"\nValidated {len(accepted)} of {len(rows)} row(s).")
     if accepted:
         print_out("Accepted rows:")
@@ -246,7 +263,7 @@ def run_admin_files(loader, file_desc):
         for i, error in rejected:
             print_out(f"  Row {i}: {error}")
 
-
+            
 def run_admin_files_json():
     """Admin sub-flow: bulk-import a JSON file of feedback rows."""
     run_admin_files(read_json, "JSON")
@@ -284,7 +301,7 @@ def main():
     else:
         run_user_flow()
  
-    print_out("Goodbye.")
+    print_out("Thank you for using Feedback Manager. Goodbye.")
  
  
 if __name__ == "__main__":
