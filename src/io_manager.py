@@ -2,6 +2,7 @@
 import csv
 from datetime import datetime
 import json
+import pwinput
 import logging
 import uuid
 
@@ -71,19 +72,23 @@ def authenticate_admin():
     def check(password):
         return (True, "") if password == ADMIN_PASSWORD else (None, "wrong password")
 
-    return prompt_until_valid("Admin password: ", check) is True
+    return prompt_until_valid("Admin password: ", check, hide_input=True) is True
 
 
-def _prompt(message):
+def _prompt(message, hide_input=False):
     """
     Returns the stripped answer, or None on quit, Ctrl+C or EOF.
     An empty string means the user just pressed Enter.
     """
+    read_input = (lambda m: pwinput.pwinput(m, mask="*")) if hide_input else input
     try:
-        answer = input(message).strip() 
+        answer = read_input(message)
     except (EOFError, KeyboardInterrupt):
         print_out()
         return None
+    if hide_input:
+        return answer
+    answer = answer.strip()
     if answer.lower() in QUIT_COMMANDS:
         return None
     return answer
@@ -157,12 +162,12 @@ def read_csv(path):
         return []
 
 
-def prompt_until_valid(message, validator):
+def prompt_until_valid(message, validator,hide_input=False):
     """Prompt until validator(answer) -> (value, error) succeeds.
     Returns value or None on quit.
     """
     while True:
-        answer = _prompt(message)
+        answer = _prompt(message, hide_input=hide_input)
         if answer is None:
             return None
         value, error = validator(answer)
@@ -288,7 +293,7 @@ def run_admin_flow():
 
 def main():
     print_out("=== Feedback Manager ===")
- 
+    
     role = prompt_role()
     if role is None:
         print_out("Goodbye.")
