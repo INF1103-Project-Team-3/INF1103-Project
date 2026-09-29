@@ -183,6 +183,29 @@ def validate_files(rows):
     return accepted, rejected
 
 
+def print_rows(title, rows):
+    """Print a titled, indented list. Prints nothing if the list is empty."""
+    if rows:
+        print_out(title)
+        for row in rows:
+            print_out(f"  {row}")
+ 
+ 
+def validate_and_report(rows):
+    """Validate rows from a JSON file (or a converted CSV) and print what
+    passed or failed.
+ 
+    Returns the accepted rows as a payload, or None if none were valid.
+    """
+    accepted, rejected = validate_files(rows)
+ 
+    print_out(f"\nValidated {len(accepted)} of {len(rows)} row(s).")
+    print_rows("Accepted rows:", accepted)
+    print_rows("Rejected rows:", [f"Row {i}: {error}" for i, error in rejected])
+ 
+    return entries_to_payload(accepted) if accepted else None
+
+
 # ---------------------------------------------------------------------------
 # File reading / conversion
 # ---------------------------------------------------------------------------
@@ -237,9 +260,37 @@ def convert_csv_to_json(csv_path, json_path):
         logger.warning("Could not write JSON %s: %s", json_path, exc)
         return False
     return True
+#---------------------------------------------------------------------------
+
+ 
+# Payloads
+# ---------------------------------------------------------------------------
+# Single entries are passed as a JSON string. File imports are passed as an
+# in-memory JSON file: (filename, content_bytes, mime_type).
+PAYLOAD_MIME = "application/json"
+PAYLOAD_EXT = ".json"
+ 
+ 
+def entry_to_payload(entry):
+    """One validated entry -> JSON string.
+ 
+    """
+    return json.dumps(entry, ensure_ascii=False, indent=2)
+ 
+ 
+def entries_to_payload(entries):
+    """A list of validated entries -> file (filename, bytes, mime_type).
+ 
+    Named like 'feedback_20260929_143000.json'. The file holds a JSON array.
+    Only accepted rows go in; rejected rows never reach the payload.
+    """
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    content = json.dumps(entries, ensure_ascii=False, indent=2).encode("utf-8")
+    return (f"feedback_{stamp}{PAYLOAD_EXT}", content, PAYLOAD_MIME)
 
 
 # ---------------------------------------------------------------------------
+
 # Flows
 # ---------------------------------------------------------------------------
 
@@ -266,71 +317,64 @@ def submit_single_entry():
     return entry
 
 
-def run_user_flow():
-    """Regular user flow: one feedback entry."""
-    print_out("\n--- Feedback ---")
-    entry = submit_single_entry()
+def run_single_entry(is_admin=False):
+    """Collect one feedback entry and confirm it (user or admin).
+ 
+    Returns the entry as a payload, or None if they cancelled.
+    """
+    entry = read_entry()
     if entry is None:
-        return
-    print_out("Thank you! Your response has been saved.")
+        print_out("Cancelled.")
+        return None
+ 
+    if is_admin:
+        print_out(f"Entry ID: {entry['feedback_id']}")
+    else:
+        print_out("Thank you! Your response has been saved.")
     print_out(f"  {entry}")
-
-
-def run_admin_single_entry():
-    """Admin flow: submit one feedback entry and show its ID."""
-    entry = submit_single_entry()
-    if entry is None:
-        return
-    print_out(f"Entry ID: {entry['feedback_id']}")
-    print_out(f"  {entry}")
+    return entry_to_payload(entry)
 
 
 def run_admin_files_json():
-    """Admin flow: import a JSON file, then show which rows passed or failed.
-
-    Keeps asking for a path until a file loads or the admin quits.
+    """Admin flow: import a JSON file. Keeps asking for a path until a file
+    loads or the admin quits.
+ 
+    Returns the accepted rows as a payload, or None.
     """
     while True:
         path = _prompt("Path to a JSON file, or 'quit' to cancel: ")
         if path is None:
             print_out("Cancelled.")
-            return
-
+            return None
+ 
         rows = read_json(path)
-        if rows:  # empty list counts as a failed load, so reprompt
+        if rows:  # empty list counts as a failed load, so we reprompt
             break
         print_out(f"  Invalid: could not read '{path}' as JSON (check the path and format).")
-
-    accepted, rejected = validate_files(rows)
-
-    print_out(f"\nValidated {len(accepted)} of {len(rows)} row(s).")
-    if accepted:
-        print_out("Accepted rows:")
-        for entry in accepted:
-            print_out(f"  {entry}")
-    if rejected:
-        print_out("Rejected rows:")
-        for i, error in rejected:
-            print_out(f"  Row {i}: {error}")
+ 
+    return validate_and_report(rows)
 
 
 def run_admin_convert():
-    """Admin flow: convert a CSV into a JSON file saved next to it.
-
-    Keeps asking for a path until the conversion works or the admin quits.
+    """Admin flow: convert a CSV into a JSON file saved next to it, then
+    validate the converted rows the same way as a JSON import.
+ 
+    Returns the accepted rows as a payload, or None.
     """
     while True:
         csv_path = _prompt("Path to a CSV file, or 'quit' to cancel: ")
         if csv_path is None:
             print_out("Cancelled.")
-            return
-
+            return None
+ 
         # data.csv -> data.json, in the same folder
         json_path = os.path.splitext(csv_path)[0] + ".json"
         if convert_csv_to_json(csv_path, json_path):
-            print_out(f"Converted to '{json_path}'. Use the 'json' option to import it.")
-            return
+            break
         print_out(f"  Invalid: could not convert '{csv_path}' (check the path and format).")
+ 
+    print_out(f"Converted to '{json_path}'.")
+    return validate_and_report(read_json(json_path))
 
 
 def run_admin_flow():
@@ -341,28 +385,32 @@ def run_admin_flow():
         print_out("Cancelled.")
         return
     if action == "json":
-        run_admin_files_json()
-    elif action == "convert":
-        run_admin_convert()
+        return run_admin_files_json()
+    elif action == "csv":
+        return run_admin_convert()
     else:  # "entry"
-        run_admin_single_entry()
+        return run_single_entry(is_admin=True)
 
+def run_role_flow(role):
+    """Run the flow for this role. Returns its payload, or None."""
+    if role == "admin":
+        return run_admin_flow()
+    print_out("\n--- Feedback ---")
+    return run_single_entry()
 
 def main():
+    """Run the session. Returns the payload (nothing is printed for it), or None."""
     print_out("=== Feedback Manager ===")
-
+ 
     role = prompt_role()
     if role is None:
         print_out("Goodbye.")
-        return
-
-    if role == "admin":
-        run_admin_flow()
-    else:
-        run_user_flow()
-
+        return None
+ 
+    payload = run_role_flow(role)
     print_out("Thank you for using Feedback Manager. Goodbye.")
-
-
+    return payload
+ 
+ 
 if __name__ == "__main__":
     main()
