@@ -4,90 +4,74 @@ import hashlib
 import logging
 import os
 import sys
+import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 class DataManager:
     """
-    Data Manager that converts CSV feedback data into a structured JSON dataset,
-    computes reports, maintains state across Docker runs, and provides search functionality.
+    Data Manager that handles a structured JSON dataset,
+    computes reports, maintains state across Docker runs,
+    captures inputs from the AI Manager, and provides search functionality.
     """
 
     def __init__(
         self,
-        json_storage_path: str = "/data/feedback_store.json",
-        csv_import_path: str = "/data/input.csv",
-        force_csv_import: bool = False
+        json_storage_path: str = "/data/feedback_store.json"
     ) -> None:
         self.json_path = Path(json_storage_path)
-        self.csv_path = Path(csv_import_path)
-        self.records: List[Dict[str, Any]] = []
-        self.report: Dict[str, Any] = {}
+        self.records: List[Dict[str, Any]] = [] #list to hold feedback records
+        self.report: Dict[str, Any] = {} #list to hold the summary report
 
         # Ensure directory exists inside Docker volume
         self.json_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # 1. First attempt to load existing JSON state
-        self.load_records()
-        self.load_report()
+        # Ingest state on startup from JSON storage
+        self.load_records() #pulls feedback records from the JSON file into memory
+        self.load_report() #pulls summary report data from the JSON file into memory
 
-        # 2. Ingest CSV if no JSON records exist OR if force_csv_import is True
-        if (not self.records or force_csv_import) and self.csv_path.exists():
-            logging.info(f"Ingesting CSV data from '{self.csv_path}'...")
-            self.import_from_csv(self.csv_path)
+    def receive_ai_input(self, raw_ai_text: str) -> Union[Dict[str, Any], List[Any]]:
+        """
+        Receives raw JSON text from the AI Manager, archives it as a unique, 
+        non-overlapping file inside the Docker data volume directory, 
+        and returns the data object for the Logic Manager.
+        """
+        # 1. Clean up potential AI markdown syntax formatting blocks
+        cleaned_text = raw_ai_text.strip()
+        if cleaned_text.startswith("```json"):
+            cleaned_text = cleaned_text.replace("```json", "", 1).rstrip("`").strip()
+        elif cleaned_text.startswith("```"):
+            cleaned_text = cleaned_text.replace("```", "", 1).rstrip("`").strip()
 
-    def import_from_csv(self, csv_filepath: Path) -> List[Dict[str, Any]]:
-        """Reads CSV, converts rows into typed feedback records, and persists to JSON."""
-        if not csv_filepath.exists():
-            logging.warning(f"CSV file at '{csv_filepath}' does not exist.")
-            return []
-
-        imported_records = []
+        # 2. Parse string data into a structured Python object
         try:
-            with open(csv_filepath, "r", encoding="utf-8-sig") as f:
-                reader = csv.DictReader(f)
-                if reader.fieldnames:
-                    reader.fieldnames = [field.strip() for field in reader.fieldnames]
+            parsed_data = json.loads(cleaned_text)
+        except json.JSONDecodeError as e:
+            logging.error("Text structural validation failed on AI output: %s", e)
+            raise ValueError(f"[Data Manager Error] AI text is not valid JSON: {e}") from e
 
-                for row in reader:
-                    reasons_raw = str(row.get("review_reasons", "[]")).strip()
-                    try:
-                        review_reasons = json.loads(reasons_raw.replace("'", '"')) if reasons_raw else []
-                    except Exception:
-                        review_reasons = [r.strip() for r in reasons_raw.split(",") if r.strip()]
+        # 3. Generate an absolute non-overlapping unique filename using timestamps and nano-ticks
+        date_prefix = time.strftime("%Y%m%d_%H%M%S")
+        nano_tick = time.perf_counter_ns()
+        filename = f"ai_output_{date_prefix}_{nano_tick}.json"
+        
+        # Uses your existing self.json_path.parent directory (/data/)
+        file_path = self.json_path.parent / filename
 
-                    try:
-                        confidence_val = float(row.get("confidence", 0.0))
-                    except (ValueError, TypeError):
-                        confidence_val = 0.0
+        # 4. Write the payload securely into the Docker container volume file path
+        try:
+            with open(file_path, "w", encoding="utf-8") as file:
+                json.dump(parsed_data, file, indent=4, ensure_ascii=False)
+            logging.info("AI operational stream successfully logged to disk -> %s", file_path)
+        except IOError as e:
+            # Logs warning but keeps system pipeline alive for the logic manager
+            logging.warning("Disk write interrupted but operational stream intact: %s", e)
 
-                    record = {
-                        "feedback_id": str(row.get("feedback_id", "")).strip(),
-                        "feedback": str(row.get("feedback", "")).strip(),
-                        "timestamp": str(row.get("timestamp", "")).strip(),
-                        "theme": str(row.get("theme", "Uncategorized")).strip(),
-                        "sentiment": str(row.get("sentiment", "neutral")).strip(),
-                        "severity": str(row.get("severity", "low")).strip(),
-                        "summary": str(row.get("summary", "")).strip(),
-                        "confidence": confidence_val,
-                        "needs_review": str(row.get("needs_review", "")).strip().lower() in ("true", "1", "yes"),
-                        "review_reasons": review_reasons,
-                        "counted": str(row.get("counted", "")).strip().lower() in ("true", "1", "yes")
-                    }
-                    imported_records.append(record)
-
-            self.records = imported_records
-            self._persist_to_file()
-            logging.info(f"Successfully converted and saved {len(imported_records)} records from CSV.")
-
-        except Exception as e:
-            logging.error(f"Error importing CSV file '{csv_filepath}': {e}. Recovering with empty dataset.")
-            self.records = []
-
-        return self.records
+        # 5. Instantly hand off the ready object data payload to your Logic Manager loop
+        return parsed_data
 
     def _persist_to_file(self) -> bool:
         """Saves current records and report state into a consolidated JSON file."""
@@ -100,7 +84,7 @@ class DataManager:
                 json.dump(payload, f, indent=2)
             return True
         except Exception as e:
-            logging.error(f"Failed to write to '{self.json_path}': {e}")
+            logging.error("Failed to write to '%s': %s", self.json_path, e)
             return False
 
     def load_records(self) -> List[Dict[str, Any]]:
@@ -112,7 +96,7 @@ class DataManager:
                 data = json.load(f)
                 self.records = data.get("records", []) if isinstance(data, dict) else []
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            logging.error(f"Corrupt JSON at '{self.json_path}': {e}. Resetting memory.")
+            logging.error("Corrupt JSON at '%s': %s. Resetting memory.", self.json_path, e)
             self.records = []
         return self.records
 
@@ -149,7 +133,7 @@ class DataManager:
 
     def search_records(self, query_text: str) -> List[Dict[str, Any]]:
         """
-        Searches records matching terms against text, sentiment, severity, or theme.
+        Searches records matching terms against text, sentiment, severity, or topic.
         Example query: 'negative high'
         """
         if not query_text.strip():
@@ -163,7 +147,7 @@ class DataManager:
                 f"{record.get('feedback', '')} "
                 f"{record.get('sentiment', '')} "
                 f"{record.get('severity', '')} "
-                f"{record.get('theme', '')} "
+                f"{record.get('topic', '')} "
                 f"{record.get('summary', '')}"
             ).lower()
 
@@ -174,16 +158,16 @@ class DataManager:
         return results
 
 
+
+
 # -------------------------------------------------------------------
 # Interactive Terminal Menu Execution
 # -------------------------------------------------------------------
 if __name__ == "__main__":
     # Initialize DataManager pointing strictly to /data
     dm = DataManager(
-        json_storage_path="/data/feedback_store.json",
-        csv_import_path="/data/input.csv",
-        force_csv_import=False
-    )
+        json_storage_path="/data/feedback_store.json"
+        )
 
     if not dm.records:
         print("\n[WARNING] No records found in /data/feedback_store.json or /data/input.csv.")
@@ -224,7 +208,7 @@ if __name__ == "__main__":
                     print(f"  Timestamp : {item.get('timestamp', 'N/A')}")
                     print(f"  Sentiment : {str(item.get('sentiment')).upper()}")
                     print(f"  Severity  : {str(item.get('severity')).upper()}")
-                    print(f"  Theme     : {item.get('theme', 'N/A')}")
+                    print(f"  Topic     : {item.get('topic', 'N/A')}")
                     print("-" * 65)
             else:
                 print("No records matched your search query.")
