@@ -399,7 +399,7 @@ def run_role_flow(role):
     return run_single_entry()
 
 def main():
-    """Run the session. Returns the payload (nothing is printed for it), or None."""
+    """Run the session. Returns the payload or None."""
     print_out("=== Feedback Manager ===")
  
     role = prompt_role()
