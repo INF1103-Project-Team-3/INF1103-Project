@@ -5,6 +5,7 @@ import json
 import pwinput
 import logging
 import uuid
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -43,24 +44,18 @@ def prompt_role():
 
 
 def prompt_admin_action():
-    """Ask an admin to choose: single entry, JSON import, or CSV import.
+    """Ask an admin to choose: single entry, JSON import, or CSV-to-JSON conversion.
 
     Returns "entry", "json", "csv", or None on quit.
     """
     while True:
-        choice = _prompt("Single entry, JSON import, or CSV import? (entry/json/csv): ")
-
+        choice = _prompt("Single entry, JSON import, or CSV to JSON import? (entry/json/csv): ")
         if choice is None:
             return None
 
-        choice = choice.strip().lower()
-
-        if choice == "entry":
-            return "entry"
-        elif choice == "json":
-            return "json"
-        elif choice == "csv":
-            return "csv"
+        choice = choice.lower()
+        if choice in ("entry", "json", "csv"):
+            return choice
 
         print_out("Invalid option. Please enter 'entry', 'json', or 'csv'.")
 
@@ -153,13 +148,37 @@ def read_json(path):
 
 
 def read_csv(path):
-    """Read raw rows from a CSV file as dicts. Returns [] if bad."""    
+    """Read raw rows from a CSV file as dicts. Returns [] if bad."""
     try:
-        with open(path, newline="", encoding="utf-8") as f:
+        with open(path, newline="", encoding="utf-8-sig") as f:
             return list(csv.DictReader(f))
     except (OSError, UnicodeDecodeError, csv.Error) as exc:
         logger.warning("Could not read CSV %s: %s", path, exc)
         return []
+
+
+def convert_csv_to_json(csv_path, json_path):
+    """Convert a CSV file to a JSON file.
+    Returns True on success, False if the CSV can't be read or the
+    JSON can't be written.
+    """
+    rows = read_csv(csv_path)
+    if not rows:
+        return False
+
+    # DictReader stores extra cells under a None key; drop those.
+    rows = [{k: v for k, v in row.items() if k is not None} for row in rows]
+
+    try:
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(rows, f, indent=2, ensure_ascii=False)
+    except OSError as exc:
+        logger.warning("Could not write JSON %s: %s", json_path, exc)
+        return False
+    return True
+
+
+
 
 
 def prompt_until_valid(message, validator,hide_input=False):
@@ -237,22 +256,35 @@ def run_admin_single_entry():
     print_out(f"  {entry}")
 
 
-def run_admin_files(loader, file_desc):
-    """Shared bulk-import flow: load raw rows and validate them. Used
-    identically for JSON and CSV so both file types go through the exact
-    same pipeline. Reprompts for the path until a file loads successfully
-    or the user quits.
+def run_admin_convert():
+    """Admin sub-flow: convert a CSV file into a JSON file next to it."""
+    while True:
+        csv_path = _prompt("Path to a CSV file, or 'quit' to cancel: ")
+        if csv_path is None:
+            print_out("Cancelled.")
+            return
+
+        json_path = os.path.splitext(csv_path)[0] + ".json"
+        if convert_csv_to_json(csv_path, json_path):
+            print_out(f"Converted to '{json_path}'. Use the 'json' option to import it.")
+            return
+        print_out(f"  Invalid: could not convert '{csv_path}' (check the path and format).")
+
+
+def run_admin_files_json():
+    """Admin sub-flow: bulk-import a JSON file of feedback rows.
+    Reprompts for the path until a file loads or the user quits.
     """
     while True:
-        path = _prompt(f"Path to a {file_desc} file, or 'quit' to cancel: ")
+        path = _prompt("Path to a JSON file, or 'quit' to cancel: ")
         if path is None:
             print_out("Cancelled.")
             return
 
-        rows = loader(path)
+        rows = read_json(path)
         if rows:
             break
-        print_out(f"  Invalid: could not read '{path}' as {file_desc} (check the path and format).")
+        print_out(f"  Invalid: could not read '{path}' as JSON (check the path and format).")
 
     accepted, rejected = validate_files(rows)
 
@@ -267,18 +299,9 @@ def run_admin_files(loader, file_desc):
             print_out(f"  Row {i}: {error}")
 
 
-def run_admin_files_json():
-    """Admin sub-flow: bulk-import a JSON file of feedback rows."""
-    run_admin_files(read_json, "JSON")
-
-
-def run_admin_files_csv():
-    """Admin sub-flow: bulk-import a CSV file of feedback rows."""
-    run_admin_files(read_csv, "CSV")
-
 
 def run_admin_flow():
-    """Admin workflow: choose single entry, JSON import, or CSV import."""
+    """Admin workflow: single entry, JSON import, or CSV-to-JSON conversion."""
     print_out("\n--- Admin ---")
     action = prompt_admin_action()
     if action is None:
@@ -287,9 +310,10 @@ def run_admin_flow():
     if action == "json":
         run_admin_files_json()
     elif action == "csv":
-        run_admin_files_csv()
+        run_admin_convert()
     else:
         run_admin_single_entry()
+
 
 def main():
     print_out("=== Feedback Manager ===")
