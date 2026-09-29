@@ -5,6 +5,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List
 
+
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
@@ -16,8 +18,8 @@ class DataManager:
 
     def __init__(
         self,
-        json_storage_path: str = "/app/data/feedback_store.json",
-        csv_import_path: str = "/app/data/input.csv",
+        json_storage_path: str = "data/feedback_store.json",
+        csv_import_path: str = "data/input.csv",
         force_csv_import: bool = False  # Added force_csv_import parameter
     ) -> None:
         self.json_path = Path(json_storage_path)
@@ -173,8 +175,8 @@ if __name__ == "__main__":
 
     # Force CSV import so input.csv converts directly to JSON
     dm = DataManager(
-        json_storage_path="/app/data/feedback_store.json",
-        csv_import_path="/app/data/input.csv",
+        json_storage_path="data/feedback_store.json",
+        csv_import_path="data/input.csv",
         force_csv_import=True
     )
 
@@ -193,4 +195,4 @@ if __name__ == "__main__":
     }
     dm.save_report(sample_report)
 
-    logging.info("--- Execution Complete. Check /app/data/feedback_store.json ---")
+    logging.info("--- Execution Complete. Check data/feedback_store.json ---")

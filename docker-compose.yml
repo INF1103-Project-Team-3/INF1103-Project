@@ -1,8 +1,11 @@
 version: '3.8'
 
 services:
-  data_processor:
+  data_manager:
     build: .
     volumes:
-      # Mount local host './data' folder to container '/app/data'
-      - ./data:/app/data
+      # Map local host ./data directory strictly to /data inside container
+      - ./data:/data
+    stdin_open: true  # Enables interactive terminal input (-i)
+    tty: true         # Enables pseudo-TTY (-t)
+    command: python /app/data_manager1.py /data/feedback_store.json
