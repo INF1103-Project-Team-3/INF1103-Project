@@ -35,9 +35,8 @@ class DataManager:
 
     def receive_ai_input(self, raw_ai_text: str) -> Union[Dict[str, Any], List[Any]]:
         """
-        Receives raw JSON text from the AI Manager, archives it as a unique, 
-        non-overlapping file inside the Docker data volume directory, 
-        and returns the data object for the Logic Manager.
+        Receives raw JSON text from the AI Manager, increments a counter based on 
+        existing folder contents (e.g., ai_output_1.json, ai_output_2.json), saves it, and returns the object.
         """
         # 1. Clean up potential AI markdown syntax formatting blocks
         cleaned_text = raw_ai_text.strip()
@@ -50,28 +49,45 @@ class DataManager:
         try:
             parsed_data = json.loads(cleaned_text)
         except json.JSONDecodeError as e:
-            logging.error("Text structural validation failed on AI output: %s", e)
-            raise ValueError(f"[Data Manager Error] AI text is not valid JSON: {e}") from e
+            logging.error(f"Text structural validation failed on AI output: {e}")
+            raise ValueError(f"[Data Manager Error] AI text is not valid JSON: {e}")
 
-        # 3. Generate an absolute non-overlapping unique filename using timestamps and nano-ticks
-        date_prefix = time.strftime("%Y%m%d_%H%M%S")
-        nano_tick = time.perf_counter_ns()
-        filename = f"ai_output_{date_prefix}_{nano_tick}.json"
+        # 3. Scan directory to calculate the next sequential file number
+        folder = self.json_path.parent
+        next_index = 1
         
-        # Uses your existing self.json_path.parent directory (/data/)
-        file_path = self.json_path.parent / filename
+        if folder.exists():
+            # Find all files matching 'ai_output_*.json'
+            existing_files = folder.glob("ai_output_*.json")
+            existing_numbers = []
+            
+            for file in existing_files:
+                # Extract the number between 'ai_output_' and '.json'
+                try:
+                    # file.stem gets 'ai_output_1', splitting by '_' gets ['ai_output', '1']
+                    num_part = file.stem.split("_")[-1]
+                    existing_numbers.append(int(num_part))
+                except (ValueError, IndexError):
+                    continue
+            
+            if existing_numbers:
+                next_index = max(existing_numbers) + 1
 
-        # 4. Write the payload securely into the Docker container volume file path
+        # 4. Construct the ultra-short filename (e.g., ai_output_1.json, ai_output_2.json)
+        filename = f"ai_output_{next_index}.json"
+        file_path = folder / filename
+
+        # 5. Write the payload securely into the Docker container volume file path
         try:
             with open(file_path, "w", encoding="utf-8") as file:
                 json.dump(parsed_data, file, indent=4, ensure_ascii=False)
-            logging.info("AI operational stream successfully logged to disk -> %s", file_path)
+            logging.info(f"AI operational stream successfully logged to disk -> {file_path}")
         except IOError as e:
-            # Logs warning but keeps system pipeline alive for the logic manager
-            logging.warning("Disk write interrupted but operational stream intact: %s", e)
+            logging.warning(f"Disk write interrupted but operational stream intact: {e}")
 
-        # 5. Instantly hand off the ready object data payload to your Logic Manager loop
+        # 6. Instantly hand off the ready object data payload to your Logic Manager loop
         return parsed_data
+
 
     def _persist_to_file(self) -> bool:
         """Saves current records and report state into a consolidated JSON file."""
@@ -158,64 +174,101 @@ class DataManager:
         return results
 
 
+# =====================================================================
+# FUNCTION VERIFICATION TEST
+# =====================================================================
+if __name__ == "__main__":
+    # 1. Initialize your DataManager class pointing to your target folder path
+    # If you run this inside Docker, keep it as "/data/feedback_store.json"
+    data_manager = DataManager(json_storage_path="./data/feedback_store.json")
+
+    # 2. Simulate raw markdown text received from your AI Manager call
+    simulated_ai_output = """
+    ```json
+    {
+        "status": "success",
+        "timestamp": "2026-09-29T09:23:00Z",
+        "insights": {
+            "summary": "Users are reporting system performance speed improvements on build 2.4.",
+            "primary_sentiment": "positive",
+            "action_required": false
+        }
+    }
+    ```
+    """
+
+    print("--- Starting Pipeline Verification Test ---")
+    print("Feeding raw AI manager output into DataManager...")
+    
+    try:
+        # 3. Call your function to process and log the information
+        logic_payload = data_manager.receive_ai_input(simulated_ai_output)
+        
+        print("\n[SUCCESS] Pipeline completed successfully without crashing!")
+        print(f"Data payload returned clean for Logic Manager: {logic_payload}")
+        print("\nCheck your directory folder context: Look inside your './data/' directory.")
+        print("You will see a freshly minted 'ai_output_<index>.json' file!")
+
+    except Exception as error:
+        print(f"\n[FAILURE] Test run threw an error: {error}")
 
 
 # -------------------------------------------------------------------
 # Interactive Terminal Menu Execution
 # -------------------------------------------------------------------
-if __name__ == "__main__":
-    # Initialize DataManager pointing strictly to /data
-    dm = DataManager(
-        json_storage_path="/data/feedback_store.json"
-        )
+# if __name__ == "__main__":
+#     # Initialize DataManager pointing strictly to /data
+#     dm = DataManager(
+#         json_storage_path="/data/feedback_store.json"
+#         )
 
-    if not dm.records:
-        print("\n[WARNING] No records found in /data/feedback_store.json or /data/input.csv.")
-        print("Please place 'input.csv' inside your local './data/' directory.")
-        sys.exit(0)
+#     if not dm.records:
+#         print("\n[WARNING] No records found in /data/feedback_store.json or /data/input.csv.")
+#         print("Please place 'input.csv' inside your local './data/' directory.")
+#         sys.exit(0)
 
-    print(f"\nSuccessfully loaded {len(dm.records)} feedback items from storage.")
+#     print(f"\nSuccessfully loaded {len(dm.records)} feedback items from storage.")
 
-    # Terminal Menu Loop
-    while True:
-        choice = input(
-            "\nWould you like to see a (summary) of what is most important, (search) by keyword, or (exit)? "
-        ).strip().lower()
+#     # Terminal Menu Loop
+#     while True:
+#         choice = input(
+#             "\nWould you like to see a (summary) of what is most important, (search) by keyword, or (exit)? "
+#         ).strip().lower()
 
-        if choice in ("summary", "sum", "s"):
-            stats = dm.hash_stats()
-            print("\n==================================================")
-            print("                FEEDBACK SUMMARY                  ")
-            print("==================================================")
-            print(f"Total Stored Records : {stats['total_records']}")
-            print(f"Dataset SHA256 Hash  : {stats['sha256_hash']}")
-            if dm.report:
-                print(f"Overall Summary      : {dm.report.get('overall_summary', 'N/A')}")
-            else:
-                print("Overall Summary      : No report compiled yet.")
-            print("==================================================\n")
+#         if choice in ("summary", "sum", "s"):
+#             stats = dm.hash_stats()
+#             print("\n==================================================")
+#             print("                FEEDBACK SUMMARY                  ")
+#             print("==================================================")
+#             print(f"Total Stored Records : {stats['total_records']}")
+#             print(f"Dataset SHA256 Hash  : {stats['sha256_hash']}")
+#             if dm.report:
+#                 print(f"Overall Summary      : {dm.report.get('overall_summary', 'N/A')}")
+#             else:
+#                 print("Overall Summary      : No report compiled yet.")
+#             print("==================================================\n")
 
-        elif choice in ("search", "find", "f", "keyword"):
-            query = input("\nEnter search criteria (e.g. 'negative high', 'pacing', 'low'): ").strip()
-            results = dm.search_records(query)
+#         elif choice in ("search", "find", "f", "keyword"):
+#             query = input("\nEnter search criteria (e.g. 'negative high', 'pacing', 'low'): ").strip()
+#             results = dm.search_records(query)
 
-            print(f"\nFound {len(results)} matching feedback entry/entries:\n")
-            print("-" * 65)
-            if results:
-                for idx, item in enumerate(results, 1):
-                    print(f"Result #{idx}")
-                    print(f"  Feedback  : {item.get('feedback') or item.get('summary')}")
-                    print(f"  Timestamp : {item.get('timestamp', 'N/A')}")
-                    print(f"  Sentiment : {str(item.get('sentiment')).upper()}")
-                    print(f"  Severity  : {str(item.get('severity')).upper()}")
-                    print(f"  Topic     : {item.get('topic', 'N/A')}")
-                    print("-" * 65)
-            else:
-                print("No records matched your search query.")
+#             print(f"\nFound {len(results)} matching feedback entry/entries:\n")
+#             print("-" * 65)
+#             if results:
+#                 for idx, item in enumerate(results, 1):
+#                     print(f"Result #{idx}")
+#                     print(f"  Feedback  : {item.get('feedback') or item.get('summary')}")
+#                     print(f"  Timestamp : {item.get('timestamp', 'N/A')}")
+#                     print(f"  Sentiment : {str(item.get('sentiment')).upper()}")
+#                     print(f"  Severity  : {str(item.get('severity')).upper()}")
+#                     print(f"  Topic     : {item.get('topic', 'N/A')}")
+#                     print("-" * 65)
+#             else:
+#                 print("No records matched your search query.")
 
-        elif choice in ("exit", "quit", "q"):
-            print("Exiting application. Goodbye!")
-            break
+#         elif choice in ("exit", "quit", "q"):
+#             print("Exiting application. Goodbye!")
+#             break
 
-        else:
-            print("Invalid input. Please type 'summary', 'search', or 'exit'.")
+#         else:
+#             print("Invalid input. Please type 'summary', 'search', or 'exit'.")
