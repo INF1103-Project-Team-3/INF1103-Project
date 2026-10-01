@@ -19,16 +19,16 @@
       "avg_sentiment": -0.33,
       "examples": [
         {
+          "severity": "medium",
+          "summary": "Lecturer's slides move too fast, preventing the student from taking proper notes."
+        },
+        {
           "severity": "low",
           "summary": "Tutorial repeats example unnecessarily, wasting session time after students understand it."
         },
         {
           "severity": "low",
           "summary": "Student praises best trimester, capstone briefing well organized and lecturers engaged with projects."
-        },
-        {
-          "severity": "medium",
-          "summary": "Lecturer's slides move too fast, preventing the student from taking proper notes."
         }
       ]
     },
@@ -52,14 +52,6 @@
           "summary": "Broken air conditioning makes 2\u2011hour lecture unbearable for student."
         },
         {
-          "severity": "low",
-          "summary": "Student praises new lab benches for providing more space during practical sessions."
-        },
-        {
-          "severity": "low",
-          "summary": "Library wifi is occasionally slow, causing a minor inconvenience."
-        },
-        {
           "severity": "medium",
           "summary": "Printing credits deplete each trimester, forcing student to pay out-of-pocket for required hard copies."
         },
@@ -70,6 +62,14 @@
         {
           "severity": "medium",
           "summary": "Vending machine on level 3 eats coins, causing student to lose about $4 this month."
+        },
+        {
+          "severity": "low",
+          "summary": "Student praises new lab benches for providing more space during practical sessions."
+        },
+        {
+          "severity": "low",
+          "summary": "Library wifi is occasionally slow, causing a minor inconvenience."
         }
       ]
     },
@@ -147,12 +147,12 @@
           "summary": "Improved lab booking system crashes when booking close to deadline, hindering slot reservation."
         },
         {
-          "severity": "low",
-          "summary": "Student suggests automatic timetable clash detection before module registration."
-        },
-        {
           "severity": "medium",
           "summary": "Portal for timetables frequently times out, requiring multiple retries each week."
+        },
+        {
+          "severity": "low",
+          "summary": "Student suggests automatic timetable clash detection before module registration."
         }
       ]
     },

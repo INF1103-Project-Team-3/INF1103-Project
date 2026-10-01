@@ -81,7 +81,7 @@ def aggregate_themes(records):
     theme_list = []
     for theme in themes.values(): #loops through each theme and calculates the average sentiment score for that theme
         theme["avg_sentiment"] = round(theme["sentiment_sum"] / theme["count"],2) #calculating the average sentiment score for each theme, rounded to 2 decimal places
-        theme["examples"] = sorted(theme["feedbacks"], key=lambda x: x["severity"], reverse=False) #sorting the feedbacks by severity 
+        theme["examples"] = sorted(theme["feedbacks"], key=lambda x: SEVERITY_RANK[x["severity"]], reverse=True) #sorting the feedbacks by severity 
         del theme["sentiment_sum"]  # Remove the temporary sentiment sum
         del theme["feedbacks"]  # Remove the temporary feedbacks list
         theme_list.append(theme)
