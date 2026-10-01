@@ -85,6 +85,7 @@ def aggregate_themes(records):
         del theme["sentiment_sum"]  # Remove the temporary sentiment sum
         del theme["feedbacks"]  # Remove the temporary feedbacks list
         theme_list.append(theme)
+    theme_list.sort(key=lambda t: t["count"], reverse=True) #most mentioned themes will be at the top of the list
     return {
         "total_entries": len(records),
         "counted_entries": len(counted),
