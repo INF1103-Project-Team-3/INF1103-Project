@@ -1,11 +1,8 @@
 import json
 
-from test_data.sample_ai_output import SAMPLE_RECORDS
-
 MIN_CONFIDENCE = 0.5
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3} #for sorting feedback by severity
-total_entries = 0
-counted_entries = 0
+
 
 def apply_record_rules(record): #checks if feedback is critical and if confidence is below threshold
     review = []
@@ -17,12 +14,12 @@ def apply_record_rules(record): #checks if feedback is critical and if confidenc
         review.append(f"Agreement {record['agreement']:.2f} - AI outputs did not fully agree.")
     return {
         **record,
-        "counted": record["confidence"] >= MIN_CONFIDENCE, #feedback will be counted if confidence is above threshold 
+        "counted": record["confidence"] >= MIN_CONFIDENCE , #feedback will be counted if confidence is above threshold 
         "needs_review": len(review) > 0,  #feedback needs reviews if there are any review notes
         "review_reason": review   
     }
 
-def review_records(records): #to collate all feedback that needs review and their reasons
+def review_records(records): #this function is not currently used in the main block, but can be used in dashboard to generate a list of feedback that needs review
     for_review = []
     for record in records:
         if record["needs_review"]: #check if feedback needs review
@@ -94,20 +91,25 @@ def aggregate_themes(records):
     }
     # return sentiment_counts,severity_counts,themes
 
-processed_records = [apply_record_rules(record) for record in SAMPLE_RECORDS]
-total_entries = len(processed_records)                                   
-counted_entries = len([r for r in processed_records if r["counted"]]) 
-for_review = review_records(processed_records)
-aggregated_sentiment = aggregate_themes(processed_records)
-# print("Aggregated Sentiment Counts:", aggregated_sentiment[0])
-# print("Aggregated Severity Counts:", aggregated_sentiment[1])
-with open("aggregated_output.json", "w") as f:
-    json.dump(aggregated_sentiment, f, indent=2)
+if __name__ == "__main__":
+    from test_data.sample_ai_output import SAMPLE_RECORDS
+    processed_records = [apply_record_rules(record) for record in SAMPLE_RECORDS] #run through all the feedback and apply the rules to each record
+    total_entries = len(processed_records)                                   
+    counted_entries = len([r for r in processed_records if r["counted"]]) 
+    # for_review = review_records(processed_records) 
+    aggregated_sentiment = aggregate_themes(processed_records)
+    # print("Aggregated Sentiment Counts:", aggregated_sentiment[0])
+    # print("Aggregated Severity Counts:", aggregated_sentiment[1])
+    with open("aggregated_output.json", "w") as f:
+        json.dump(aggregated_sentiment, f, indent=2)
 
-print(for_review)
-# print(f"Total entries processed: {total_entries}")
-# print(f"Entries counted (confidence >= {MIN_CONFIDENCE}): {counted_entries}")
+    review_queue = [r for r in processed_records if r["needs_review"]]
+    with open("for_review.json", "w") as f:
+        json.dump(review_queue, f, indent=2)
+    print(f"Total: {total_entries}, Counted: {counted_entries}, Flagged for review: {len(review_queue)}")
+    # print(f"Total entries processed: {total_entries}")
+    # print(f"Entries counted (confidence >= {MIN_CONFIDENCE}): {counted_entries}")
 
 
-#make an output function to output only json file for 2nd ai call
-#flag out if agreement is 0.33 or 0.67
+#make an output function to output only json file for 2nd ai call (done)
+#flag out if agreement is 0.33 or 0.67 (done)
