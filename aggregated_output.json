@@ -1,38 +1,30 @@
 {
   "total_entries": 30,
-  "counted_entries": 28,
+  "counted_entries": 20,
   "sentiment_distribution": {
     "positive": 2,
-    "neutral": 4,
-    "negative": 22
+    "neutral": 3,
+    "negative": 15
   },
   "themes": [
     {
       "theme": "Facilities",
-      "count": 7,
+      "count": 4,
       "severity_counts": {
         "critical": 1,
-        "high": 1,
-        "medium": 3,
-        "low": 2
+        "high": 0,
+        "medium": 2,
+        "low": 1
       },
-      "avg_sentiment": -0.71,
+      "avg_sentiment": -0.5,
       "examples": [
         {
           "severity": "critical",
           "summary": "Loose stairwell railing near makerspace poses safety hazard that could cause injury."
         },
         {
-          "severity": "high",
-          "summary": "Broken air conditioning makes 2\u2011hour lecture unbearable for student."
-        },
-        {
           "severity": "medium",
           "summary": "Printing credits deplete each trimester, forcing student to pay out-of-pocket for required hard copies."
-        },
-        {
-          "severity": "medium",
-          "summary": "Long printer queue wastes time, causing student to be late for next class."
         },
         {
           "severity": "medium",
@@ -41,23 +33,19 @@
         {
           "severity": "low",
           "summary": "Student praises new lab benches for providing more space during practical sessions."
-        },
-        {
-          "severity": "low",
-          "summary": "Library wifi is occasionally slow, causing a minor inconvenience."
         }
       ]
     },
     {
       "theme": "Assessment",
-      "count": 5,
+      "count": 4,
       "severity_counts": {
         "critical": 0,
         "high": 1,
-        "medium": 4,
+        "medium": 3,
         "low": 0
       },
-      "avg_sentiment": -0.8,
+      "avg_sentiment": -1.0,
       "examples": [
         {
           "severity": "high",
@@ -73,36 +61,7 @@
         },
         {
           "severity": "medium",
-          "summary": "Student observed a classmate possibly plagiarizing and is unsure whether to report it."
-        },
-        {
-          "severity": "medium",
           "summary": "Student is uncertain about how the group contribution component is marked."
-        }
-      ]
-    },
-    {
-      "theme": "Teaching Quality",
-      "count": 3,
-      "severity_counts": {
-        "critical": 0,
-        "high": 0,
-        "medium": 1,
-        "low": 2
-      },
-      "avg_sentiment": -0.33,
-      "examples": [
-        {
-          "severity": "medium",
-          "summary": "Lecturer's slides move too fast, preventing the student from taking proper notes."
-        },
-        {
-          "severity": "low",
-          "summary": "Tutorial repeats example unnecessarily, wasting session time after students understand it."
-        },
-        {
-          "severity": "low",
-          "summary": "Student praises best trimester, capstone briefing well organized and lecturers engaged with projects."
         }
       ]
     },
@@ -132,36 +91,32 @@
       ]
     },
     {
-      "theme": "Administration",
-      "count": 3,
+      "theme": "Teaching Quality",
+      "count": 2,
       "severity_counts": {
         "critical": 0,
-        "high": 1,
+        "high": 0,
         "medium": 1,
         "low": 1
       },
-      "avg_sentiment": -0.67,
+      "avg_sentiment": 0.0,
       "examples": [
         {
-          "severity": "high",
-          "summary": "Improved lab booking system crashes when booking close to deadline, hindering slot reservation."
-        },
-        {
           "severity": "medium",
-          "summary": "Portal for timetables frequently times out, requiring multiple retries each week."
+          "summary": "Lecturer's slides move too fast, preventing the student from taking proper notes."
         },
         {
           "severity": "low",
-          "summary": "Student suggests automatic timetable clash detection before module registration."
+          "summary": "Student praises best trimester, capstone briefing well organized and lecturers engaged with projects."
         }
       ]
     },
     {
       "theme": "Well-being",
-      "count": 3,
+      "count": 2,
       "severity_counts": {
         "critical": 1,
-        "high": 2,
+        "high": 1,
         "medium": 0,
         "low": 0
       },
@@ -174,31 +129,27 @@
         {
           "severity": "high",
           "summary": "Student feels overwhelmed by increasing deadlines and doubts managing the semester."
-        },
-        {
-          "severity": "high",
-          "summary": "Student feels overwhelmed by confusing brief and lab conflict, leading to sleeplessness."
         }
       ]
     },
     {
-      "theme": "Internship Placement",
+      "theme": "Administration",
       "count": 2,
       "severity_counts": {
         "critical": 0,
         "high": 1,
-        "medium": 1,
-        "low": 0
+        "medium": 0,
+        "low": 1
       },
-      "avg_sentiment": -1.0,
+      "avg_sentiment": -0.5,
       "examples": [
         {
           "severity": "high",
-          "summary": "Student hasn't received any project work from IWSP company for three weeks, leaving them idle."
+          "summary": "Improved lab booking system crashes when booking close to deadline, hindering slot reservation."
         },
         {
-          "severity": "medium",
-          "summary": "Placement tasks are unrelated to the course, limited to photocopying and data entry."
+          "severity": "low",
+          "summary": "Student suggests automatic timetable clash detection before module registration."
         }
       ]
     },
@@ -220,6 +171,23 @@
         {
           "severity": "low",
           "summary": "Student advertises a calculator, not a feedback."
+        }
+      ]
+    },
+    {
+      "theme": "Internship Placement",
+      "count": 1,
+      "severity_counts": {
+        "critical": 0,
+        "high": 1,
+        "medium": 0,
+        "low": 0
+      },
+      "avg_sentiment": -1.0,
+      "examples": [
+        {
+          "severity": "high",
+          "summary": "Student hasn't received any project work from IWSP company for three weeks, leaving them idle."
         }
       ]
     }

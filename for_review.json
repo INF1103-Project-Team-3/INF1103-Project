@@ -25,7 +25,7 @@
     "summary": "Portal for timetables frequently times out, requiring multiple retries each week.",
     "confidence": 0.92,
     "agreement": 0.67,
-    "counted": true,
+    "counted": false,
     "needs_review": true,
     "review_reason": [
       "Agreement 0.67 - AI outputs did not fully agree."
@@ -73,7 +73,7 @@
     "summary": "Broken air conditioning makes 2\u2011hour lecture unbearable for student.",
     "confidence": 0.92,
     "agreement": 0.67,
-    "counted": true,
+    "counted": false,
     "needs_review": true,
     "review_reason": [
       "Agreement 0.67 - AI outputs did not fully agree."
@@ -89,7 +89,7 @@
     "summary": "Tutorial repeats example unnecessarily, wasting session time after students understand it.",
     "confidence": 0.9,
     "agreement": 0.67,
-    "counted": true,
+    "counted": false,
     "needs_review": true,
     "review_reason": [
       "Agreement 0.67 - AI outputs did not fully agree."
@@ -105,7 +105,7 @@
     "summary": "Placement tasks are unrelated to the course, limited to photocopying and data entry.",
     "confidence": 0.85,
     "agreement": 0.67,
-    "counted": true,
+    "counted": false,
     "needs_review": true,
     "review_reason": [
       "Agreement 0.67 - AI outputs did not fully agree."
@@ -153,7 +153,7 @@
     "summary": "Library wifi is occasionally slow, causing a minor inconvenience.",
     "confidence": 0.92,
     "agreement": 0.67,
-    "counted": true,
+    "counted": false,
     "needs_review": true,
     "review_reason": [
       "Agreement 0.67 - AI outputs did not fully agree."
@@ -169,7 +169,7 @@
     "summary": "Long printer queue wastes time, causing student to be late for next class.",
     "confidence": 0.88,
     "agreement": 0.67,
-    "counted": true,
+    "counted": false,
     "needs_review": true,
     "review_reason": [
       "Agreement 0.67 - AI outputs did not fully agree."
@@ -185,7 +185,7 @@
     "summary": "Student feels overwhelmed by confusing brief and lab conflict, leading to sleeplessness.",
     "confidence": 0.73,
     "agreement": 0.33,
-    "counted": true,
+    "counted": false,
     "needs_review": true,
     "review_reason": [
       "Agreement 0.33 - AI outputs did not fully agree."
@@ -201,7 +201,7 @@
     "summary": "Student observed a classmate possibly plagiarizing and is unsure whether to report it.",
     "confidence": 0.78,
     "agreement": 0.67,
-    "counted": true,
+    "counted": false,
     "needs_review": true,
     "review_reason": [
       "Agreement 0.67 - AI outputs did not fully agree."

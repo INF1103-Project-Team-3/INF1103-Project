@@ -14,7 +14,7 @@ def apply_record_rules(record): #checks if feedback is critical and if confidenc
         review.append(f"Agreement {record['agreement']:.2f} - AI outputs did not fully agree.")
     return {
         **record,
-        "counted": record["confidence"] >= MIN_CONFIDENCE , #feedback will be counted if confidence is above threshold 
+        "counted": record["confidence"] >= MIN_CONFIDENCE and record["agreement"] >= 1.0, #feedback will be counted if confidence is above threshold 
         "needs_review": len(review) > 0,  #feedback needs reviews if there are any review notes
         "review_reason": review   
     }
@@ -103,9 +103,9 @@ if __name__ == "__main__":
     with open("aggregated_output.json", "w") as f:
         json.dump(aggregated_sentiment, f, indent=2)
 
-    review_queue = [r for r in processed_records if r["needs_review"]]
-    with open("for_review.json", "w") as f:
-        json.dump(review_queue, f, indent=2)
+    review_queue = [r for r in processed_records if r["needs_review"]] #filter out feedback that needs review
+    with open("for_review.json", "w") as f: #write the feedback that needs review to a json file
+        json.dump(review_queue, f, indent=2) 
     print(f"Total: {total_entries}, Counted: {counted_entries}, Flagged for review: {len(review_queue)}")
     # print(f"Total entries processed: {total_entries}")
     # print(f"Entries counted (confidence >= {MIN_CONFIDENCE}): {counted_entries}")
