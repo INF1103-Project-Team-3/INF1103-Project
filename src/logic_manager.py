@@ -4,7 +4,7 @@ MIN_CONFIDENCE = 0.5
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3} #for sorting feedback by severity
 
 
-def apply_record_rules(record): #checks if feedback is critical and if confidence is below threshold
+def apply_feedback_rules(record): #checks if feedback is critical and if confidence is below threshold
     review = []
     if record["severity"] == "critical": #checking if feedback is critical
         review.append("Critical severity")
@@ -19,7 +19,7 @@ def apply_record_rules(record): #checks if feedback is critical and if confidenc
         "review_reason": review   
     }
 
-def review_records(records): #this function is not currently used in the main block, but can be used in dashboard to generate a list of feedback that needs review
+def review_feedbacks(records): #this function is not currently used in the main block, but can be used in dashboard to generate a list of feedback that needs review
     for_review = []
     for record in records:
         if record["needs_review"]: #check if feedback needs review
@@ -93,17 +93,15 @@ def aggregate_themes(records):
 
 if __name__ == "__main__":
     from test_data.sample_ai_output import SAMPLE_RECORDS
-    processed_records = [apply_record_rules(record) for record in SAMPLE_RECORDS] #run through all the feedback and apply the rules to each record
-    total_entries = len(processed_records)                                   
-    counted_entries = len([r for r in processed_records if r["counted"]]) 
-    # for_review = review_records(processed_records) 
-    aggregated_sentiment = aggregate_themes(processed_records)
-    # print("Aggregated Sentiment Counts:", aggregated_sentiment[0])
-    # print("Aggregated Severity Counts:", aggregated_sentiment[1])
+    processed_feedbacks = [apply_feedback_rules(record) for record in SAMPLE_RECORDS] #run through all the feedback and apply the rules to each record
+    total_entries = len(processed_feedbacks)                                   
+    counted_entries = len([r for r in processed_feedbacks if r["counted"]]) 
+    # for_review = review_feedbacks(processed_feedbacks) 
+    aggregated_sentiment = aggregate_themes(processed_feedbacks)
     with open("aggregated_output.json", "w") as f:
         json.dump(aggregated_sentiment, f, indent=2)
 
-    review_queue = [r for r in processed_records if r["needs_review"]] #filter out feedback that needs review
+    review_queue = [r for r in processed_feedbacks if r["needs_review"]] #filter out feedback that needs review
     with open("for_review.json", "w") as f: #write the feedback that needs review to a json file
         json.dump(review_queue, f, indent=2) 
     print(f"Total: {total_entries}, Counted: {counted_entries}, Flagged for review: {len(review_queue)}")
