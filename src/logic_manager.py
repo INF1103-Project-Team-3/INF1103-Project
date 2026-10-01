@@ -3,6 +3,7 @@ import json
 from test_data.sample_ai_output import SAMPLE_RECORDS
 
 MIN_CONFIDENCE = 0.5
+SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3} #for sorting feedback by severity
 total_entries = 0
 counted_entries = 0
 
@@ -12,6 +13,8 @@ def apply_record_rules(record): #checks if feedback is critical and if confidenc
         review.append("Critical severity")
     if record["confidence"] < MIN_CONFIDENCE: #checking if feedback is below confidence threshold
         review.append(f"Confidence {record['confidence']:.2f} is below threshold {MIN_CONFIDENCE}.")
+    if record["agreement"] < 1.0: #checking if feedback has low agreement
+        review.append(f"Agreement {record['agreement']:.2f} - AI outputs did not fully agree.")
     return {
         **record,
         "counted": record["confidence"] >= MIN_CONFIDENCE, #feedback will be counted if confidence is above threshold 
@@ -100,7 +103,7 @@ aggregated_sentiment = aggregate_themes(processed_records)
 with open("aggregated_output.json", "w") as f:
     json.dump(aggregated_sentiment, f, indent=2)
 
-# print(for_review)
+print(for_review)
 # print(f"Total entries processed: {total_entries}")
 # print(f"Entries counted (confidence >= {MIN_CONFIDENCE}): {counted_entries}")
 
