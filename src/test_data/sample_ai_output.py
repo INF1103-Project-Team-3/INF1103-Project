@@ -19,7 +19,7 @@ SAMPLE_RECORDS = [
         "sentiment": "negative",
         "severity": "critical",
         "summary": "Student struggles to keep up with fast-paced slides.",
-        "confidence": 0.02,
+        "confidence": 0.82,
     },
     {
         "feedback_id": "fb_002",
