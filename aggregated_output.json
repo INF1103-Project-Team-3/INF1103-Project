@@ -1,0 +1,104 @@
+{
+  "total_entries": 8,
+  "counted_entries": 7,
+  "sentiment_distribution": {
+    "positive": 2,
+    "neutral": 0,
+    "negative": 5
+  },
+  "themes": [
+    {
+      "theme": "Pacing",
+      "count": 3,
+      "severity_counts": {
+        "critical": 1,
+        "high": 1,
+        "medium": 0,
+        "low": 1
+      },
+      "avg_sentiment": -0.33,
+      "examples": [
+        {
+          "severity": "critical",
+          "summary": "Student struggles to keep up with fast-paced slides."
+        },
+        {
+          "severity": "high",
+          "summary": "Persistent difficulty keeping up with lecture speed all semester."
+        },
+        {
+          "severity": "low",
+          "summary": "Student found this week's lecture pace easier to follow."
+        }
+      ]
+    },
+    {
+      "theme": "Social Environment",
+      "count": 1,
+      "severity_counts": {
+        "critical": 1,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "avg_sentiment": -1.0,
+      "examples": [
+        {
+          "severity": "critical",
+          "summary": "Student receives threatening messages from a groupmate and feels unsafe on campus."
+        }
+      ]
+    },
+    {
+      "theme": "Facilities",
+      "count": 1,
+      "severity_counts": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 1
+      },
+      "avg_sentiment": 1.0,
+      "examples": [
+        {
+          "severity": "low",
+          "summary": "Student likes the extra space at the new lab benches."
+        }
+      ]
+    },
+    {
+      "theme": "Assessment",
+      "count": 1,
+      "severity_counts": {
+        "critical": 0,
+        "high": 0,
+        "medium": 1,
+        "low": 0
+      },
+      "avg_sentiment": -1.0,
+      "examples": [
+        {
+          "severity": "medium",
+          "summary": "Unclear marking criteria for the last assignment."
+        }
+      ]
+    },
+    {
+      "theme": "Administration",
+      "count": 1,
+      "severity_counts": {
+        "critical": 0,
+        "high": 1,
+        "medium": 0,
+        "low": 0
+      },
+      "avg_sentiment": -1.0,
+      "examples": [
+        {
+          "severity": "high",
+          "summary": "Timetable clash between two required modules."
+        }
+      ]
+    }
+  ]
+}

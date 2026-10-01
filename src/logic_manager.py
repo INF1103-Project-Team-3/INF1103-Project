@@ -1,3 +1,5 @@
+import json
+
 from test_data.sample_ai_output import SAMPLE_RECORDS
 
 MIN_CONFIDENCE = 0.5
@@ -76,7 +78,7 @@ def aggregate_themes(records):
     theme_list = []
     for theme in themes.values(): #loops through each theme and calculates the average sentiment score for that theme
         theme["avg_sentiment"] = round(theme["sentiment_sum"] / theme["count"],2) #calculating the average sentiment score for each theme, rounded to 2 decimal places
-        theme["examples"] = sorted(theme["feedbacks"], key=lambda x: x["severity"], reverse=True) #sorting the feedbacks by severity 
+        theme["examples"] = sorted(theme["feedbacks"], key=lambda x: x["severity"], reverse=False) #sorting the feedbacks by severity 
         del theme["sentiment_sum"]  # Remove the temporary sentiment sum
         del theme["feedbacks"]  # Remove the temporary feedbacks list
         theme_list.append(theme)
@@ -95,7 +97,8 @@ for_review = review_records(processed_records)
 aggregated_sentiment = aggregate_themes(processed_records)
 # print("Aggregated Sentiment Counts:", aggregated_sentiment[0])
 # print("Aggregated Severity Counts:", aggregated_sentiment[1])
-
+with open("aggregated_output.json", "w") as f:
+    json.dump(aggregated_sentiment, f, indent=2)
 
 # print(for_review)
 # print(f"Total entries processed: {total_entries}")
