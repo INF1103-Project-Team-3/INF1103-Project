@@ -10,177 +10,167 @@ from typing import Any, Dict, List, Union
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
+# ==========================================
+# MODULE STATE & CONFIGURATION (Replaces __init__)
+# ==========================================
+JSON_STORAGE_PATH = Path(os.getenv("JSON_STORAGE_PATH", "/data/feedback_store.json"))
 
-class DataManager:
-    """
-    Data Manager that handles a structured JSON dataset,
-    computes reports, maintains state across Docker runs,
-    captures inputs from the AI Manager, and provides search functionality.
-    """
+# Global states to hold current information in memory
+records_store: List[Dict[str, Any]] = [] 
+report_store: Dict[str, Any] = {} 
 
-    def __init__(
-        self,
-        json_storage_path: str = "/data/feedback_store.json"
-    ) -> None:
-        self.json_path = Path(json_storage_path)
-        self.records: List[Dict[str, Any]] = [] #list to hold feedback records
-        self.report: Dict[str, Any] = {} #list to hold the summary report
+def init_manager(storage_path: str = "/data/feedback_store.json") -> None:
+    """Initializes paths, folders, and populates the global memory stores."""
+    global JSON_STORAGE_PATH, records_store, report_store
+    
+    JSON_STORAGE_PATH = Path(storage_path)
+    JSON_STORAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Ingest state on initialization
+    records_store = load_records()
+    report_store = load_report()
 
-        # Ensure directory exists inside Docker volume
-        self.json_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Ingest state on startup from JSON storage
-        self.load_records() #pulls feedback records from the JSON file into memory
-        self.load_report() #pulls summary report data from the JSON file into memory
+# ==========================================
+# CORE FUNCTIONAL LOGIC
+# ==========================================
 
-    def receive_ai_input(self, raw_ai_text: str) -> Union[Dict[str, Any], List[Any]]:
-        """
-        Receives raw JSON text from the AI Manager, increments a counter based on 
-        existing folder contents (e.g., ai_output_1.json, ai_output_2.json), saves it, and returns the object.
-        """
-        # 1. Clean up potential AI markdown syntax formatting blocks
-        cleaned_text = raw_ai_text.strip()
-        if cleaned_text.startswith("```json"):
-            cleaned_text = cleaned_text.replace("```json", "", 1).rstrip("`").strip()
-        elif cleaned_text.startswith("```"):
-            cleaned_text = cleaned_text.replace("```", "", 1).rstrip("`").strip()
+def receive_ai_input(raw_ai_text: str) -> Union[Dict[str, Any], List[Any]]:
+    """Receives raw JSON text from the AI Manager and logs it sequentially."""
+    cleaned_text = raw_ai_text.strip()
+    if cleaned_text.startswith("```json"):
+        cleaned_text = cleaned_text.replace("```json", "", 1).rstrip("`").strip()
+    elif cleaned_text.startswith("```"):
+        cleaned_text = cleaned_text.replace("```", "", 1).rstrip("`").strip()
 
-        # 2. Parse string data into a structured Python object
-        try:
-            parsed_data = json.loads(cleaned_text)
-        except json.JSONDecodeError as e:
-            logging.error(f"Text structural validation failed on AI output: {e}")
-            raise ValueError(f"[Data Manager Error] AI text is not valid JSON: {e}")
+    try:
+        parsed_data = json.loads(cleaned_text)
+    except json.JSONDecodeError as e:
+        logging.error(f"Text structural validation failed on AI output: {e}")
+        raise ValueError(f"[Data Manager Error] AI text is not valid JSON: {e}")
 
-        # 3. Scan directory to calculate the next sequential file number
-        folder = self.json_path.parent
-        next_index = 1
+    folder = JSON_STORAGE_PATH.parent
+    next_index = 1
+    
+    if folder.exists():
+        existing_files = folder.glob("ai_output_*.json")
+        existing_numbers = []
         
-        if folder.exists():
-            # Find all files matching 'ai_output_*.json'
-            existing_files = folder.glob("ai_output_*.json")
-            existing_numbers = []
-            
-            for file in existing_files:
-                # Extract the number between 'ai_output_' and '.json'
-                try:
-                    # file.stem gets 'ai_output_1', splitting by '_' gets ['ai_output', '1']
-                    num_part = file.stem.split("_")[-1]
-                    existing_numbers.append(int(num_part))
-                except (ValueError, IndexError):
-                    continue
-            
-            if existing_numbers:
-                next_index = max(existing_numbers) + 1
+        for file in existing_files:
+            try:
+                num_part = file.stem.split("_")[-1]
+                existing_numbers.append(int(num_part))
+            except (ValueError, IndexError):
+                continue
+        
+        if existing_numbers:
+            next_index = max(existing_numbers) + 1
 
-        # 4. Construct the ultra-short filename (e.g., ai_output_1.json, ai_output_2.json)
-        filename = f"ai_output_{next_index}.json"
-        file_path = folder / filename
+    filename = f"ai_output_{next_index}.json"
+    file_path = folder / filename
 
-        # 5. Write the payload securely into the Docker container volume file path
-        try:
-            with open(file_path, "w", encoding="utf-8") as file:
-                json.dump(parsed_data, file, indent=4, ensure_ascii=False)
-            logging.info(f"AI operational stream successfully logged to disk -> {file_path}")
-        except IOError as e:
-            logging.warning(f"Disk write interrupted but operational stream intact: {e}")
+    try:
+        with open(file_path, "w", encoding="utf-8") as file:
+            json.dump(parsed_data, file, indent=4, ensure_ascii=False)
+        logging.info(f"AI operational stream successfully logged to disk -> {file_path}")
+    except IOError as e:
+        logging.warning(f"Disk write interrupted but operational stream intact: {e}")
 
-        # 6. Instantly hand off the ready object data payload to your Logic Manager loop
-        return parsed_data
+    return parsed_data
 
 
-    def _persist_to_file(self) -> bool:
-        """Saves current records and report state into a consolidated JSON file."""
-        try:
-            payload = {
-                "records": self.records,
-                "report": self.report
-            }
-            with open(self.json_path, "w", encoding="utf-8") as f:
-                json.dump(payload, f, indent=2)
-            return True
-        except Exception as e:
-            logging.error("Failed to write to '%s': %s", self.json_path, e)
-            return False
-
-    def load_records(self) -> List[Dict[str, Any]]:
-        """Loads records array from JSON store. Handles corrupt files safely."""
-        if not self.json_path.exists():
-            return []
-        try:
-            with open(self.json_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                self.records = data.get("records", []) if isinstance(data, dict) else []
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            logging.error("Corrupt JSON at '%s': %s. Resetting memory.", self.json_path, e)
-            self.records = []
-        return self.records
-
-    def save_record(self, record: Dict[str, Any]) -> bool:
-        """Appends a new feedback record and saves."""
-        self.records.append(record)
-        return self._persist_to_file()
-
-    def load_report(self) -> Dict[str, Any]:
-        """Loads report dictionary from JSON store."""
-        if not self.json_path.exists():
-            return {}
-        try:
-            with open(self.json_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                self.report = data.get("report", {}) if isinstance(data, dict) else {}
-        except Exception:
-            self.report = {}
-        return self.report
-
-    def save_report(self, report_data: Dict[str, Any]) -> bool:
-        """Updates and persists report dictionary."""
-        self.report = report_data
-        return self._persist_to_file()
-
-    def hash_stats(self) -> Dict[str, Any]:
-        """Calculates dataset SHA-256 fingerprint and summary statistics."""
-        serialized = json.dumps(self.records, sort_keys=True).encode("utf-8")
-        dataset_hash = hashlib.sha256(serialized).hexdigest()
-        return {
-            "total_records": len(self.records),
-            "sha256_hash": dataset_hash
+def _persist_to_file() -> bool:
+    """Saves the current global records and report state into the flat JSON file."""
+    try:
+        payload = {
+            "records": records_store,
+            "report": report_store
         }
+        with open(JSON_STORAGE_PATH, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+        return True
+    except Exception as e:
+        logging.error("Failed to write to '%s': %s", JSON_STORAGE_PATH, e)
+        return False
 
-    def search_records(self, query_text: str) -> List[Dict[str, Any]]:
-        """
-        Searches records matching terms against text, sentiment, severity, or topic.
-        Example query: 'negative high'
-        """
-        if not query_text.strip():
-            return self.records
 
-        terms = query_text.lower().split()
-        results = []
+def load_records() -> List[Dict[str, Any]]:
+    """Loads records array from JSON store into global memory."""
+    global records_store
+    if not JSON_STORAGE_PATH.exists():
+        return []
+    try:
+        with open(JSON_STORAGE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            records_store = data.get("records", []) if isinstance(data, dict) else []
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        logging.error("Corrupt JSON at '%s': %s. Resetting memory.", JSON_STORAGE_PATH, e)
+        records_store = []
+    return records_store
 
-        for record in self.records:
-            content = (
-                f"{record.get('feedback', '')} "
-                f"{record.get('sentiment', '')} "
-                f"{record.get('severity', '')} "
-                f"{record.get('topic', '')} "
-                f"{record.get('summary', '')}"
-            ).lower()
 
-            # Record must contain all typed query words (e.g. "negative" AND "high")
-            if all(term in content for term in terms):
-                results.append(record)
+def save_record(record: Dict[str, Any]) -> bool:
+    """Appends a new feedback record to global state and saves."""
+    records_store.append(record)
+    return _persist_to_file()
 
-        return results
+
+def load_report() -> Dict[str, Any]:
+    """Loads report dictionary from JSON store into global memory."""
+    global report_store
+    if not JSON_STORAGE_PATH.exists():
+        return {}
+    try:
+        with open(JSON_STORAGE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            report_store = data.get("report", {}) if isinstance(data, dict) else {}
+    except Exception:
+        report_store = {}
+    return report_store
+
+
+def save_report(report_data: Dict[str, Any]) -> bool:
+    """Updates global report dictionary and persists state."""
+    global report_store
+    report_store = report_data
+    return _persist_to_file()
+
+
+def search_records(query_text: str) -> List[Dict[str, Any]]:
+    """Searches active global memory records matching input criteria terms."""
+    if not query_text.strip():
+        return records_store
+
+    terms = query_text.lower().split()
+    results = []
+
+    for record in records_store:
+        content = (
+            f"{record.get('feedback', '')} "
+            f"{record.get('sentiment', '')} "
+            f"{record.get('severity', '')} "
+            f"{record.get('topic', '')} "
+            f"{record.get('summary', '')}"
+        ).lower()
+
+        if all(term in content for term in terms):
+            results.append(record)
+
+    return results
+
 
 
 # =====================================================================
 # FUNCTION VERIFICATION TEST
 # =====================================================================
 if __name__ == "__main__":
-    # 1. Initialize your DataManager class pointing to your target folder path
-    # If you run this inside Docker, keep it as "/data/feedback_store.json"
-    data_manager = DataManager(json_storage_path="./data/feedback_store.json")
+    # ===================================================================
+    # Pipeline Verification Test
+    # ===================================================================
+    
+    # 1. Initialize your DataManager path config pointing to your target folder path
+    # If you run this inside Docker, change it back to "/data/feedback_store.json"
+    init_manager(storage_path="./data/feedback_store.json")
 
     # 2. Simulate raw markdown text received from your AI Manager call
     simulated_ai_output = """
@@ -198,11 +188,11 @@ if __name__ == "__main__":
     """
 
     print("--- Starting Pipeline Verification Test ---")
-    print("Feeding raw AI manager output into DataManager...")
+    print("Feeding raw AI manager output into standalone function...")
     
     try:
-        # 3. Call your function to process and log the information
-        logic_payload = data_manager.receive_ai_input(simulated_ai_output)
+        # 3. Call your functional conversion block to process and log the information
+        logic_payload = receive_ai_input(simulated_ai_output)
         
         print("\n[SUCCESS] Pipeline completed successfully without crashing!")
         print(f"Data payload returned clean for Logic Manager: {logic_payload}")
@@ -213,21 +203,19 @@ if __name__ == "__main__":
         print(f"\n[FAILURE] Test run threw an error: {error}")
 
 
-# -------------------------------------------------------------------
-# Interactive Terminal Menu Execution
-# -------------------------------------------------------------------
+# # -------------------------------------------------------------------
+# # Interactive Terminal Menu Execution
+# # -------------------------------------------------------------------
 # if __name__ == "__main__":
-#     # Initialize DataManager pointing strictly to /data
-#     dm = DataManager(
-#         json_storage_path="/data/feedback_store.json"
-#         )
+#     # Initialize data storage mapping strictly to local folder or /data path
+#     init_manager(storage_path="./data/feedback_store.json")
 
-#     if not dm.records:
-#         print("\n[WARNING] No records found in /data/feedback_store.json or /data/input.csv.")
+#     if not records_store:
+#         print("\n[WARNING] No records found in feedback_store.json or input.csv.")
 #         print("Please place 'input.csv' inside your local './data/' directory.")
 #         sys.exit(0)
 
-#     print(f"\nSuccessfully loaded {len(dm.records)} feedback items from storage.")
+#     print(f"\nSuccessfully loaded {len(records_store)} feedback items from storage.")
 
 #     # Terminal Menu Loop
 #     while True:
@@ -236,21 +224,19 @@ if __name__ == "__main__":
 #         ).strip().lower()
 
 #         if choice in ("summary", "sum", "s"):
-#             stats = dm.hash_stats()
 #             print("\n==================================================")
 #             print("                FEEDBACK SUMMARY                  ")
 #             print("==================================================")
-#             print(f"Total Stored Records : {stats['total_records']}")
-#             print(f"Dataset SHA256 Hash  : {stats['sha256_hash']}")
-#             if dm.report:
-#                 print(f"Overall Summary      : {dm.report.get('overall_summary', 'N/A')}")
+#             print(f"Total Stored Records : {len(records_store)}")
+#             if report_store:
+#                 print(f"Overall Summary      : {report_store.get('overall_summary', 'N/A')}")
 #             else:
 #                 print("Overall Summary      : No report compiled yet.")
 #             print("==================================================\n")
 
 #         elif choice in ("search", "find", "f", "keyword"):
 #             query = input("\nEnter search criteria (e.g. 'negative high', 'pacing', 'low'): ").strip()
-#             results = dm.search_records(query)
+#             results = search_records(query)
 
 #             print(f"\nFound {len(results)} matching feedback entry/entries:\n")
 #             print("-" * 65)
