@@ -20,7 +20,7 @@ ADMIN_PASSWORD = "123456"
 
 
 def print_out(message=""):
-    """The only place print() is called, so output is easy to redirect later."""
+    """Making it easy for Output to be redirected later."""
     print(message)
 
 
@@ -31,30 +31,29 @@ def print_out(message=""):
 def _prompt(message, hidden=False):
     """Ask for input. Returns the answer, or None if the user quits.
 
-    Quit means typing q/quit, or pressing Ctrl+C.
+    Quit means typing q/quit.
 
-    With hidden=True (passwords), input shows as '*' and is returned as-is:
-    Use Ctrl+C cancels there.
+    With hidden=True (passwords), input shows as '*':
     """
     reader = (lambda m: pwinput.pwinput(m, mask="*")) if hidden else input
     try:
         answer = reader(message)
     except (EOFError, KeyboardInterrupt):
-        print_out()  # move to a fresh line after ^C
+        print_out()
         return None
     if hidden:
         return answer
     answer = answer.strip()
-    if answer.lower() in QUIT_COMMANDS: 
+    if answer.lower() in QUIT_COMMANDS: # quit
         return None
     return answer
 
 
 def prompt_until_valid(message, validator, hidden=False):
-    """Keep asking until validator(answer) -> (value, error) has no error.
+    """Keep asking until validator(answer) has no error.
 
     Returns the validated value, or None if the user quits.
-    There is no retry limit.
+    Will keep prompting until a valid value is entered.
     """
     while True:
         answer = _prompt(message, hidden=hidden)
@@ -69,7 +68,8 @@ def prompt_until_valid(message, validator, hidden=False):
 def authenticate_admin():
     """Ask for the admin password (masked). Returns True only if it matches.
 
-    Quitting (Ctrl+C / Ctrl+D) returns False. Wrong guesses re-prompts.
+    Quitting (typing 'q' or 'quit') returns False. 
+    Wrong guesses keep prompting until a valid value is entered
     """
     def check(password):
         return (True, "") if password == ADMIN_PASSWORD else (None, "wrong password")
@@ -78,9 +78,9 @@ def authenticate_admin():
 
 
 def prompt_role():
-    """Ask if the person is a 'user' or an 'admin'.
+    """Ask if the person is a user or an admin.
 
-    Returns "user", "admin", or None if they
+    Returns user, admin, or None if they
     quit or cancel.
     """
     def check(choice):
@@ -99,7 +99,7 @@ def prompt_role():
 
 
 def prompt_admin_action():
-    """Ask the admin what to do: 'entry', 'json' or 'csv'.
+    """Ask the admin what to do: entry, JSON, or convert CSV to JSON.
 
     Returns the chosen word, or None if they quit.
     """
@@ -135,7 +135,7 @@ def generate_id():
 
 
 def validate_entry(raw):
-    """Check one raw row and clean it up.
+    """Check each raw row and clean it.
 
     Returns (clean_entry, "") if it's valid, or (None, reason) if not.
     """
@@ -171,7 +171,7 @@ def validate_files(rows):
 
     Returns (accepted, rejected):
       accepted: list of clean entry dicts
-      rejected: list of (row_number, reason), numbered from 1
+      rejected: list of (row_number, reason)
     """
     accepted, rejected = [], []
     for i, raw in enumerate(rows, start=1):
@@ -184,7 +184,7 @@ def validate_files(rows):
 
 
 def print_rows(title, rows):
-    """Print a titled, indented list. Prints nothing if the list is empty."""
+    """Print an indented list. Prints nothing if the list is empty."""
     if rows:
         print_out(title)
         for row in rows:
@@ -192,7 +192,7 @@ def print_rows(title, rows):
  
  
 def validate_and_report(rows):
-    """Validate rows from a JSON file (or a converted CSV) and print what
+    """Validate rows from a JSON file or the converted CSV and print what
     passed or failed.
  
     Returns the accepted rows as a payload, or None if none were valid.
@@ -211,7 +211,7 @@ def validate_and_report(rows):
 # ---------------------------------------------------------------------------
 
 def read_json(path):
-    """Load a JSON file that holds a list of rows. Returns [] on any problem."""
+    """Load a JSON file that holds a list of rows. """
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
@@ -227,11 +227,9 @@ def read_json(path):
 
 def read_csv(path):
     """Load a CSV file as a list of dicts (first row = column names).
-    Returns [] on any problem.
     """
     try:
-        # utf-8-sig ignores the invisible BOM that Excel adds, which would
-        # otherwise corrupt the first column name.
+        # utf-8-sig ignores the invisible BOM, which would corrupt the first column name.
         with open(path, newline="", encoding="utf-8-sig") as f:
             return list(csv.DictReader(f))
     except (OSError, UnicodeDecodeError, csv.Error) as exc:
@@ -249,8 +247,7 @@ def convert_csv_to_json(csv_path, json_path):
     if not rows:  # unreadable, or only a header row
         return False
 
-    # If a row has more cells than the header, DictReader files the extras
-    # under a None key. Drop them.
+    # If a row has more cells than the header, put it under a None key. Drop them.
     rows = [{k: v for k, v in row.items() if k is not None} for row in rows]
 
     try:
@@ -265,24 +262,24 @@ def convert_csv_to_json(csv_path, json_path):
  
 # Payloads
 # ---------------------------------------------------------------------------
-# Single entries are passed as a JSON string. File imports are passed as an
-# in-memory JSON file: (filename, content_bytes, mime_type).
+# Single entries are passed as a JSON string. 
+# File imports are passed as an in-memory JSON file.
 PAYLOAD_MIME = "application/json"
 PAYLOAD_EXT = ".json"
  
  
 def entry_to_payload(entry):
-    """One validated entry -> JSON string.
+    """One validated entry: JSON string.
  
     """
     return json.dumps(entry, ensure_ascii=False, indent=2)
  
  
 def entries_to_payload(entries):
-    """A list of validated entries -> file (filename, bytes, mime_type).
+    """A list of validated entries: file(filename, bytes, mime_type).
  
-    Named like 'feedback_20260929_143000.json'. The file holds a JSON array.
-    Only accepted rows go in; rejected rows never reach the payload.
+    The file holds a JSON array.
+    Only accepted rows go in; rejected rows to be rejected.
     """
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     content = json.dumps(entries, ensure_ascii=False, indent=2).encode("utf-8")
@@ -298,7 +295,7 @@ def read_entry():
     """Ask for one piece of feedback. Returns an entry dict, or None if they quit."""
     def check(text):
         # ID and timestamp are generated on each attempt, then the whole
-        # entry goes through the same validation as imported rows.
+        # entry goes through the same validation.
         return validate_entry({
             "feedback_id": generate_id(),
             "text": text,
@@ -309,7 +306,7 @@ def read_entry():
 
 
 def submit_single_entry():
-    """Collect one entry, printing 'Cancelled.' if they quit. Returns the entry or None."""
+    """Collect one entry, printing 'Cancelled.' if they quit."""
     entry = read_entry()
     if entry is None:
         print_out("Cancelled.")
@@ -318,7 +315,7 @@ def submit_single_entry():
 
 
 def run_single_entry(is_admin=False):
-    """Collect one feedback entry and confirm it (user or admin).
+    """Collect one feedback entry and confirm if they are user or admin.
  
     Returns the entry as a payload, or None if they cancelled.
     """
@@ -348,7 +345,7 @@ def run_admin_files_json():
             return None
  
         rows = read_json(path)
-        if rows:  # empty list counts as a failed load, so we reprompt
+        if rows:  # empty list counts as a failed load, so will reprompt
             break
         print_out(f"  Invalid: could not read '{path}' as JSON (check the path and format).")
  
@@ -356,8 +353,8 @@ def run_admin_files_json():
 
 
 def run_admin_convert():
-    """Admin flow: convert a CSV into a JSON file saved next to it, then
-    validate the converted rows the same way as a JSON import.
+    """Admin flow: convert a CSV into a JSON file save the file, then
+    validate the converted rows.
  
     Returns the accepted rows as a payload, or None.
     """
@@ -367,7 +364,7 @@ def run_admin_convert():
             print_out("Cancelled.")
             return None
  
-        # data.csv -> data.json, in the same folder
+        # name.csv -> name.json, in the same folder
         json_path = os.path.splitext(csv_path)[0] + ".json"
         if convert_csv_to_json(csv_path, json_path):
             break
@@ -391,12 +388,14 @@ def run_admin_flow():
     else:  # "entry"
         return run_single_entry(is_admin=True)
 
+
 def run_role_flow(role):
     """Run the flow for this role. Returns its payload, or None."""
     if role == "admin":
         return run_admin_flow()
     print_out("\n--- Feedback ---")
     return run_single_entry()
+
 
 def main():
     """Run the session. Returns the payload or None."""
