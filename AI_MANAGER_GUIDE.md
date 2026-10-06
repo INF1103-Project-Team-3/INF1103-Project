@@ -1,7 +1,7 @@
 ### **AI Manager: Quick Guide**
 ___
 
-**What it does**: `ai_manager.py` sends each feedback entry to Groq (`openai/gpt-oss-120b`) and returns the entry with six AI fields added. Every LLM call in the app goes through it. It never prints (it uses `logging`) and holds no domain rules: `logic_manager` decides what the fields mean for review and counting.
+**What it does**: `ai_manager.py` makes the app's two LLM calls to Groq (`openai/gpt-oss-120b`). **Call 1** (`classify_entry`) returns each feedback entry with six AI fields added. **Call 2** (`summarise`) turns `logic_manager`'s aggregated stats into an overall summary and one suggested action per theme. Every LLM call in the app goes through it. It never prints (it uses `logging`) and holds no domain rules: `logic_manager` decides what the fields mean for review and counting.
 
 ### **Setup**
 ___
@@ -12,9 +12,12 @@ ___
 
 | File in `config/` | Purpose |
 |---|---|
-| `system_prompt.txt`, `themes.json` | The prompt and the 8 canonical themes. Tuned and tested: do not edit without re-testing. |
+| `system_prompt.txt`, `themes.json` | The call 1 prompt and the 8 canonical themes. Tuned and tested: do not edit without re-testing. |
+| `summary_prompt.txt` | The call 2 prompt. Tuned and tested: do not edit without re-testing. |
+| `aggregated_output.json` | Example `logic_manager.aggregate_themes` stats for those 30 entries: the shape `summarise` expects. |
+| `summary-output.json` | Real `summarise` output for `aggregated_output.json`. Build and test against it (e.g. storage, the dashboard) without calling the API. |
 | `test-input.json` | 30 sample input entries. |
-| `test-output.json` | Real `classify_entry` output for those 30. Build and test your module against it without calling the API. |
+| `test-output.json` | Real `classify_entry` output for the 30 entries in `test-input.json`. Build and test your module against it without calling the API. |
 | `test-data-ans-key.json` | Hand labels, for cross-checking accuracy only. |
 | `token-usage-log.json` | Created automatically; local daily-token ledger (git-ignored). |
 
@@ -40,6 +43,11 @@ for entry in entries:                                       # entries: from io_m
         continue
     known = ai_manager.find_new_themes([record], themes, known)
     # hand record to logic_manager.apply_record_rules, then data_manager
+
+summary_prompt = ai_manager.load_summary_prompt()          # once per run
+summary = ai_manager.summarise(stats, summary_prompt, api_key, key_label)  # stats: from logic_manager
+if summary is not None:                                     # failed after retries: keep the last summary
+    ...                                                     # hand summary to data_manager
 ```
 
 | Function | Returns |
@@ -48,11 +56,15 @@ for entry in entries:                                       # entries: from io_m
 | `load_system_prompt(canonical_themes, path=PROMPT_PATH)` | The prompt with `{themes}` filled in. Raises `ValueError` if the placeholder is missing. |
 | `find_new_themes(records, canonical_themes, known_themes=None)` | `known_themes` plus any non-canonical themes in `records`, so a label the model coined earlier is reused, not reinvented. |
 | `classify_entry(entry, system_prompt, api_key, key_label, known_themes=None)` | The classified record, or `None` if it failed. |
+| `load_summary_prompt(path=SUMMARY_PROMPT_PATH)` | The call 2 prompt. Raises `ValueError` if the file is empty. |
+| `summarise(stats, system_prompt, api_key, key_label)` | `{"overall_summary", "theme_actions"}`, or `None` if it failed. |
 
-The remaining functions (`call_api`, `request_structured_output`, `aggregate_samples` and so on) are internal. Call 2 (`summarise`) is not written yet.
+The remaining functions (`call_api`, `request_structured_output`, `aggregate_samples` and so on) are internal.
 
 ### **Input and Output**
 ___
+
+###### **Call 1 (`classify_entry`)**
 
 **Input**: a dict with `feedback_id` and `text` (required) and `timestamp`. Any other keys are passed through unchanged.
 
@@ -67,9 +79,23 @@ ___
 | `confidence` | 0.0 to 1.0 | The model's own estimate; it does ***not*** reliably track correctness |
 | `agreement` | `1.0`, `0.67` or `0.33` | Share of the 3 samples that agreed on the least-agreed field. Below `1.0` means unstable: send to review |
 
+###### **Call 2 (`summarise`)**
+
+**Input**: the stats dict from `logic_manager.aggregate_themes`: `total_entries`, `counted_entries`, `sentiment_distribution` and `themes` (each with `theme`, `count`, `severity_counts`, `avg_sentiment` and `examples` of `{severity, summary}`). See `config/aggregated_output.json`.
+
+**Output** (see `config/summary-output.json` for a real example):
+
+| Field | Values | How to read it |
+|---|---|---|
+| `overall_summary` | text, about 80 words, 120 at most | Opens with how many entries it covers, then critical entries, high-severity ones, other problems, and praise last. It may soften a critical entry's detail, so use the review queue, not the summary, to act on critical reports |
+| `theme_actions` | one `{theme, suggested_action}` per theme in `stats`, same order and exact names | Each action is one sentence, 30 words at most. Themes with critical entries start with handing them to the responsible team |
+
+The summary only repeats numbers found in `stats`; it never counts or calculates. The model often writes hyphens as a non-breaking hyphen (U+2011) and apostrophes as `’`, so display code should be UTF-8 safe.
+
 ### **Behaviour to Plan For**
 ___
 
 - **Three calls per entry**: each entry is classified 3 times; theme, sentiment and severity take the majority value (the first sample's if all three differ).
 - **Speed and quota**: about 25 to 35 seconds and 5,200 tokens per entry, so one key covers about 39 entries a day (200,000-token daily cap). `classify_entry` waits out rate limits itself, so your loop needs no `sleep`.
-- **Failures**: network errors, rate limits and invalid output are retried (3 attempts per sample). If any sample still fails, it returns `None` and logs the reason; nothing is raised.
+- **Call 2 cost**: one request of about 4,200 to 5,200 tokens and about 6 seconds, run once after the loop. The model reasons before answering, and occasionally reasons past the 5,000-token output cap; that attempt fails (about 7,400 tokens) and is retried.
+- **Failures**: network errors, rate limits, server errors and invalid output are retried (3 attempts per sample, or per summary); a bad key or malformed request fails at once, since retrying cannot fix it. If a call still fails, it returns `None` and logs the reason; nothing is raised.
