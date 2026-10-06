@@ -31,10 +31,14 @@ def main():
     # A missing key or bad config fails here before anything else is done.
     logging.basicConfig(level=logging.WARNING)
     load_dotenv(os.path.join(ai_manager.BASE_DIR, "config", ".env"))
-    api_key = os.environ["GROQ_API_KEY"]
-    key_label = os.environ["GROQ_KEY_LABEL"]
+    api_key = os.environ.get("GROQ_API_KEY")
+    key_label = os.environ.get("GROQ_KEY_LABEL")
+    if not api_key or not key_label:
+        logging.error("GROQ_API_KEY and GROQ_KEY_LABEL must be set in config/.env")
+        raise SystemExit(1)
     themes = ai_manager.load_canonical_themes()
     prompt = ai_manager.load_system_prompt(themes)
+    summary_prompt = ai_manager.load_summary_prompt()
 
     # -------------------------------------------------------------
     # Path to the input JSON. Read from the INPUT_FILE env var set in
@@ -75,7 +79,7 @@ def main():
         #  "sentiment": "negative",      # positive / neutral / negative
         #  "severity": "medium",         # low / medium / high / critical
         #  "summary": "Lecturer's slides move too fast, ...",  # 15 words max
-        #  "confidence": 0.9,            # 0.0 to 1.0; flag confidence < 0.9 for review
+        #  "confidence": 0.9,            # 0.0 to 1.0; does not reliably track correctness
         #  "agreement": 1.0}             # 1.0 / 0.67 / 0.33; below 1.0: unstable
         if record is None:  # not stored anywhere, so classified_records can be shorter than entries
             continue
@@ -97,10 +101,21 @@ def main():
 
     # --- Step 6: AI Manager (2nd call - summary) ------------------------
     # Different job from the 1st call, so it uses a separate function.
-    summary = ai_manager.summarize(logic_output)
+    # logic_output must be logic_manager.aggregate_themes' stats
+    # (same shape as config/aggregated_output.json).
+    summary = ai_manager.summarise(logic_output, summary_prompt, api_key, key_label)
+    # summary: two AI fields, or None if it failed after retries
+    # {"overall_summary": "This summary covers 20 of 30 entries received. ...",  # ~80 words, 120 max
+    #  "theme_actions": [                 # one per theme in logic_output, same order
+    #      {"theme": "Facilities",
+    #       "suggested_action": "Pass the loose railing report to estates ..."},  # 30 words max
+    #      ...]}
 
     # --- Step 7: Data Manager (store the summary) ------------------------
-    data_manager.save(summary, label="summary")
+    # A failed call 2 (None) is not saved, so the last good summary is kept
+    # rather than overwritten; ai_manager has already logged why it failed.
+    if summary is not None:
+        data_manager.save(summary, label="summary")
 
 
 if __name__ == "__main__":
