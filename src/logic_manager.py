@@ -1,9 +1,63 @@
 import json
 
-from numpy import rint
-
 MIN_CONFIDENCE = 0.5
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3} #for sorting feedback by severity
+THEME_ALIASES_BY_CANONICAL = {
+    "Teaching Quality": [
+        "teaching quality", "teaching", "teaching style", "teaching methods",
+        "lecture quality", "lectures", "lecture delivery", "lecturer",
+        "lecturers", "lecture speed", "lecture pace", "pacing", "pace",
+        "course pace", "tutorial quality", "tutorials", "instructor quality",
+        "instruction quality", "course content", "module content",
+        "teaching staff", "professor quality",
+    ],
+    "Assessment": [
+        "assessment", "assessments", "assignments", "assignment",
+        "grading", "marking", "marking criteria", "grading criteria",
+        "rubric", "rubrics", "exams", "exam", "examinations", "tests",
+        "quizzes", "coursework", "group project grading", "academic integrity",
+        "plagiarism",
+    ],
+    "Facilities": [
+        "facilities", "facility", "campus facilities", "infrastructure",
+        "equipment", "classrooms", "lecture theatre", "lecture theater",
+        "labs", "lab", "laboratory", "library", "printing", "printers",
+        "wifi", "wi fi", "internet", "air conditioning", "aircon",
+        "canteen", "food", "vending machine", "maintenance", "campus safety",
+    ],
+    "Administration": [
+        "administration", "admin", "administrative", "timetable",
+        "timetabling", "scheduling", "module registration", "registration",
+        "enrolment", "enrollment", "student portal", "portal",
+        "booking system", "bookings", "communication", "announcements",
+        "bureaucracy", "student services", "fees",
+    ],
+    "Well-being": [
+        "well being", "wellbeing", "wellness", "mental health",
+        "stress", "workload", "burnout", "student welfare", "welfare",
+        "health", "counselling", "counseling", "mental wellbeing",
+        "emotional wellbeing", "work life balance",
+    ],
+    "Social Environment": [
+        "social environment", "social", "campus culture", "culture",
+        "harassment", "bullying", "discrimination", "peer relationships",
+        "group dynamics", "teamwork", "classmates", "safety",
+        "personal safety", "stalking", "inclusion", "diversity",
+    ],
+    "Internship Placement": [
+        "internship placement", "internship", "internships", "placement",
+        "placements", "iwsp", "work study", "work integrated learning",
+        "industry attachment", "attachment", "industry placement",
+    ],
+    "Unclear": [
+        "unclear", "unknown", "other", "others", "n a", "none", "general",
+        "miscellaneous", "misc", "off topic", "no feedback", "spam",
+    ],
+}
+
+def _clean_label(label: str) -> str: #Lowercases, turns hyphens/underscores/punctuation into spaces and collapses repeated spaces so 'Well-being', 'well_being' and'  WELL  being ' all become 'well being' before lookup.
+    cleaned = "".join(ch if ch.isalnum() else " " for ch in label.lower())
+    return " ".join(cleaned.split())
 
 
 def apply_feedback_rules(record): #checks if feedback is critical and if confidence is below threshold
