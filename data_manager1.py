@@ -1,4 +1,3 @@
-import csv
 import json
 import hashlib
 import logging
@@ -22,21 +21,50 @@ summary_store: Dict[str, Any] = {}
 
 
 def init_manager(storage_path: str = "/data/feedback_store.json") -> None:
-    """Initializes paths, folders, and populates the global memory stores."""
+    """Initializes paths and populates memory state from disk."""
     global JSON_STORAGE_PATH, SUMMARY_STORAGE_PATH
-
+    
     JSON_STORAGE_PATH = Path(storage_path)
     JSON_STORAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
     SUMMARY_STORAGE_PATH = Path("/data/summary.json")
 
-    # Load existing disk datasets into memory state on boot
+    # Load existing feedback records and summary state
     load_feedback_records()
     load_summary()
-
 
 # ==========================================
 # CORE FUNCTIONAL LOGIC
 # ==========================================
+
+def get_or_create_json_store(
+    default_data: Dict[str, Any], 
+    filepath: str = "/data/summary.json"
+) -> Dict[str, Any]:
+    """
+    Checks if a JSON file exists at filepath.
+    - If it exists and is valid: Loads and returns the existing dictionary.
+    - If missing or empty: Creates parent directories, writes default_data to disk, and returns it.
+    """
+    path = Path(filepath)
+
+    # 1. Check if the file already exists on disk
+    if path.exists() and path.stat().st_size > 0:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                logging.info("Existing JSON file found at '%s'. Loaded successfully.", path)
+                return data
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            logging.warning("File at '%s' is corrupt (%s). Overwriting with default dictionary.", path, e)
+
+    # 2. File doesn't exist or is empty -> Create parent directory & new JSON file
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(default_data, f, indent=2, ensure_ascii=False)
+
+    logging.info("JSON file created successfully at '%s'.", path)
+    return default_data
 
 def receive_ai_input(raw_ai_text: str) -> Union[Dict[str, Any], List[Any]]:
     """Receives raw JSON text from the AI Manager and logs it sequentially."""
@@ -81,12 +109,37 @@ def receive_ai_input(raw_ai_text: str) -> Union[Dict[str, Any], List[Any]]:
 
     return parsed_data
 
+def save_feedback_dict(feedback_dict: Dict[str, Any]) -> bool:
+    """
+    Receives a single feedback dictionary or a list of feedback dictionaries,
+    appends them to global memory, and persists them into /data/feedback_store.json.
+    """
+    global records_store
+
+    # 1. Ensure records_store is populated before appending
+    if not records_store:
+        load_feedback_records()
+
+    # 2. Append incoming feedback (handles both a single dict or a list of dicts)
+    if isinstance(feedback_dict, dict):
+        records_store.append(feedback_dict)
+    elif isinstance(feedback_dict, list):
+        records_store.extend(feedback_dict)
+    else:
+        logging.error("Invalid data type passed. Expected dict or list of dicts.")
+        return False
+
+    # 3. Persist updated memory state to disk (/data/feedback_store.json)
+    success = _persist_to_file()
+    if success:
+        logging.info("Feedback dictionary successfully converted to JSON and stored.")
+    return success
+
 def _persist_to_file() -> bool:
-    """Saves the current global records and summary state into feedback_store.json."""
+    """Saves current global feedback records into feedback_store.json."""
     try:
         payload = {
-            "records": records_store,
-            "summary": summary_store
+            "records": records_store
         }
         with open(JSON_STORAGE_PATH, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, ensure_ascii=False)
@@ -130,13 +183,13 @@ def save_feedback_record(record: Dict[str, Any]) -> bool:
 
 
 def _persist_summary_to_file() -> bool:
-    """Saves the current global summary state into the flat JSON file."""
+    """Saves the current global summary_store state into /data/summary.json."""
     try:
         # Ensure target directory exists
         SUMMARY_STORAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
         
         with open(SUMMARY_STORAGE_PATH, "w", encoding="utf-8") as f:
-            json.dump(summary_store, f, indent=2)
+            json.dump(summary_store, f, indent=2, ensure_ascii=False)
         return True
     except Exception as e:
         logging.error("Failed to write summary to '%s': %s", SUMMARY_STORAGE_PATH, e)
@@ -161,25 +214,27 @@ def load_summary() -> Dict[str, Any]:
 
     return summary_store
 
-def save_summary(summary_data: Dict[str, Any]) -> bool:
-    """Updates summary state and persists directly to /data/summary.json."""
-    global summary_store
-    if isinstance(summary_data, dict):
-        summary_store.update(summary_data)
-    else:
-        summary_store = summary_data
 
-    try:
-        SUMMARY_STORAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(SUMMARY_STORAGE_PATH, "w", encoding="utf-8") as f:
-            json.dump(summary_store, f, indent=2, ensure_ascii=False)
-        return True
-    except Exception as e:
-        logging.error("Failed to save summary to '%s': %s", SUMMARY_STORAGE_PATH, e)
+def save_summary(summary_data: Dict[str, Any]) -> bool:
+    """Updates global summary state (dictionary) and persists directly to /data/summary.json."""
+    global summary_store
+    
+    if not isinstance(summary_data, dict):
+        logging.error("Invalid summary data passed. Expected dict.")
         return False
+
+    # Initialize memory if empty
+    if not summary_store:
+        load_summary()
+
+    # Merge incoming dictionary into global summary memory
+    summary_store.update(summary_data)
+
+    # Delegate file writing strictly to helper function
+    return _persist_summary_to_file()
     
 def search_records(query_text: str) -> List[Dict[str, Any]]:
-    """Searches active global memory records matching query terms."""
+    """Searches feedback records matching query terms."""
     if not query_text.strip():
         return records_store
 
@@ -188,12 +243,12 @@ def search_records(query_text: str) -> List[Dict[str, Any]]:
 
     for record in records_store:
         content = (
-            f"{record.get('text', '')} "
             f"{record.get('feedback', '')} "
+            f"{record.get('text', '')} "
             f"{record.get('sentiment', '')} "
             f"{record.get('severity', '')} "
-            f"{record.get('theme', '')} "
             f"{record.get('topic', '')} "
+            f"{record.get('theme', '')} "
             f"{record.get('summary', '')}"
         ).lower()
 
@@ -202,6 +257,31 @@ def search_records(query_text: str) -> List[Dict[str, Any]]:
 
     return results
 
+    def save_dict_to_json(data_dict: Dict[str, Any], filepath: str = "/data/summary.json") -> bool:
+        """
+        Receives a dictionary and saves/updates it to a JSON file.
+        Creates the directory and file if they do not exist.
+        """
+        path = Path(filepath)
+        path.parent.mkdir(parents=True, exist_ok=True)  # Auto-create folders if missing
+
+        # Load existing data if file exists, otherwise start with empty dict
+        existing_data = {}
+        if path.exists() and path.stat().st_size > 0:
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    existing_data = json.load(f)
+            except json.JSONDecodeError:
+                existing_data = {}
+
+        # Merge new dictionary fields into existing data
+        existing_data.update(data_dict)
+
+        # Write merged dictionary back to JSON
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(existing_data, f, indent=2, ensure_ascii=False)
+
+        return True
 
 
 # # =====================================================================
@@ -255,29 +335,37 @@ def search_records(query_text: str) -> List[Dict[str, Any]]:
 if __name__ == "__main__":
     init_manager("/data/feedback_store.json")
 
+    # Don't hard-exit if records_store is empty so you can still add records!
     if not records_store:
-        print("\n[WARNING] No records found in /data/feedback_store.json.")
-        sys.exit(0)
-
-    print(f"\nSuccessfully loaded {len(records_store)} feedback items from storage.")
+        print("\n[NOTICE] No records found in /data/feedback_store.json. You can start adding new entries!")
+    else:
+        print(f"\nSuccessfully loaded {len(records_store)} feedback items from storage.")
 
     while True:
         choice = input(
-            "\nWould you like to see a (summary) of what is most important, (search) by keyword, or (exit)? "
+            "\nOptions: (summary), (search), (add) feedback, (update) summary fields, or (exit): "
         ).strip().lower()
 
+        # --------------------------------------------------
+        # 1. VIEW SUMMARY
+        # --------------------------------------------------
         if choice in ("summary", "sum", "s"):
+            load_summary()
+
             print("\n==================================================")
             print("                FEEDBACK SUMMARY                  ")
             print("==================================================")
             print(f"Total Stored Records : {len(records_store)}")
             if summary_store:
-                print(f"Overall Summary      : {summary_store.get('overall_summary', 'N/A')}")
-                print(f"Status               : {summary_store.get('status', 'N/A')}")
+                print("\nCurrent Summary Content:")
+                print(json.dumps(summary_store, indent=2))
             else:
                 print("Overall Summary      : No summary compiled yet.")
             print("==================================================\n")
 
+        # --------------------------------------------------
+        # 2. SEARCH RECORDS
+        # --------------------------------------------------
         elif choice in ("search", "find", "f", "keyword"):
             query = input("\nEnter search criteria (e.g. 'negative high', 'pacing'): ").strip()
             results = search_records(query)
@@ -296,10 +384,100 @@ if __name__ == "__main__":
             else:
                 print("No records matched your search query.")
 
+        # --------------------------------------------------
+        # 3. ADD NEW FEEDBACK DICTIONARY
+        # --------------------------------------------------
+        elif choice in ("add", "a", "new"):
+            print("\n--- Add New Feedback Dictionary ---")
+            fb_text = input("Enter feedback text: ").strip()
+            fb_topic = input("Enter topic/theme (e.g., Docker, UI): ").strip() or "General"
+            fb_sentiment = input("Enter sentiment (positive/neutral/negative): ").strip().lower() or "neutral"
+            fb_severity = input("Enter severity (low/medium/high): ").strip().lower() or "low"
+
+            new_feedback_dict = {
+                "feedback_id": f"fb_{len(records_store) + 1:03d}",
+                "feedback": fb_text,
+                "topic": fb_topic,
+                "sentiment": fb_sentiment,
+                "severity": fb_severity,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+            }
+
+            success = save_feedback_dict(new_feedback_dict)
+            if success:
+                print(f"Successfully added and saved feedback into /data/feedback_store.json!")
+                print(f"Current Record Count: {len(records_store)}")
+            else:
+                print("Failed to save feedback.")
+
+        # --------------------------------------------------
+        # 4. UPDATE EXISTING SUMMARY FIELDS ONLY
+        # --------------------------------------------------
+        elif choice in ("update", "u", "edit"):
+            load_summary()
+            if not summary_store:
+                print("\n[WARNING] No summary found to update. Run load_summary() or initialize summary.json first.")
+                continue
+
+            print("\n--- Update Summary Fields ---")
+            print("1. Update Root Field (e.g. overall_summary, status, total_records)")
+            print("2. Update Field Inside summary_list (e.g. topic or summary for sum_001, sum_002)")
+            
+            sub_choice = input("Select update target (1 or 2): ").strip()
+
+            if sub_choice == "1":
+                root_keys = [k for k in summary_store.keys() if k != "summary_list"]
+                print(f"\nExisting Root Fields: {root_keys}")
+                field = input("Enter field name to update: ").strip()
+
+                if field in root_keys:
+                    val = input(f"Enter new value for '{field}': ").strip()
+                    if val.isdigit():
+                        val = int(val)
+                    
+                    summary_store[field] = val
+                    summary_store["last_updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    if _persist_summary_to_file():
+                        print(f"Successfully updated root field '{field}'!")
+                else:
+                    print(f"Invalid field. Choose from existing keys: {root_keys}")
+
+            elif sub_choice == "2":
+                summary_list = summary_store.get("summary_list", [])
+                if not summary_list:
+                    print("No summary_list items found in summary.json.")
+                    continue
+
+                print("\nAvailable Summary Entries:")
+                for item in summary_list:
+                    print(f"  - ID: {item.get('summary_id')} | Topic: '{item.get('topic')}' | Summary: '{item.get('summary')}'")
+
+                target_id = input("\nEnter summary_id to modify (e.g., sum_001): ").strip()
+                target_item = next((item for item in summary_list if item.get("summary_id") == target_id), None)
+
+                if target_item:
+                    print(f"Existing fields for {target_id}: {list(target_item.keys())}")
+                    field = input("Enter field to update (e.g. topic, summary, status): ").strip()
+
+                    if field in target_item:
+                        new_val = input(f"Enter new value for '{field}': ").strip()
+                        target_item[field] = new_val
+                        summary_store["last_updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+
+                        if _persist_summary_to_file():
+                            print(f"Successfully updated '{field}' for '{target_id}' in /data/summary.json!")
+                    else:
+                        print(f"Field '{field}' does not exist on {target_id}.")
+                else:
+                    print(f"Summary ID '{target_id}' not found.")
+
+        # --------------------------------------------------
+        # 5. EXIT
+        # --------------------------------------------------
         elif choice in ("exit", "quit", "q"):
             print("Exiting application. Goodbye!")
             break
 
         else:
-            print("Invalid input. Please type 'summary', 'search', or 'exit'.")
-
+            print("Invalid input. Type 'summary', 'search', 'add', 'update', or 'exit'.")
