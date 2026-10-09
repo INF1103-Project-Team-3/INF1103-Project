@@ -1,5 +1,7 @@
 import json
 
+from numpy import rint
+
 MIN_CONFIDENCE = 0.5
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3} #for sorting feedback by severity
 
@@ -111,3 +113,6 @@ if __name__ == "__main__":
 
 #make an output function to output only json file for 2nd ai call (done)
 #flag out if agreement is 0.33 or 0.67 (done)
+#make a function to read json file, so dont need to import dictionary.
+#separate into smaller functions
+
