@@ -5,7 +5,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Union, Optional
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -43,6 +43,83 @@ from typing import Any, Dict
 
 logging.basicConfig(level=logging.INFO)
 
+def update_summary_fields(
+    root_updates: Optional[Dict[str, Any]] = None,
+    item_updates: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
+    filename: str = "summary.json",
+    base_dir: str = "/data"
+) -> bool:
+    """
+    Updates root-level fields and/or specific objects in summary_list within summary.json.
+
+    :param root_updates: Dict of root keys to update (e.g. {"status": "healthy", "overall_summary": "New summary"})
+    :param item_updates: Dict or List[Dict] with target summary_id and fields to update 
+                        (e.g. {"summary_id": "sum_001", "summary": "Updated text", "topic": "Docker"})
+    :param filename: Name of the JSON file (defaults to "summary.json")
+    :param base_dir: Path to storage directory (defaults to "/data")
+    """
+    filepath = Path(base_dir) / filename
+
+    # 1. Load existing data from file
+    data: Dict[str, Any] = {}
+    if filepath.exists() and filepath.stat().st_size > 0:
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            logging.error("Failed to read '%s': %s", filepath, e)
+            return False
+
+    # 2. Update Top-Level Root Fields
+    if root_updates and isinstance(root_updates, dict):
+        for key, value in root_updates.items():
+            data[key] = value
+
+    # 3. Update Item(s) inside summary_list by summary_id
+    if item_updates:
+        updates_list = [item_updates] if isinstance(item_updates, dict) else item_updates
+
+        if "summary_list" not in data or not isinstance(data["summary_list"], list):
+            data["summary_list"] = []
+
+        summary_list = data["summary_list"]
+
+        for update_payload in updates_list:
+            if not isinstance(update_payload, dict):
+                continue
+
+            target_id = update_payload.get("summary_id")
+            if not target_id:
+                logging.warning("Skipping update item missing 'summary_id'.")
+                continue
+
+            # Find matching record in summary_list
+            matched_item = next(
+                (item for item in summary_list if item.get("summary_id") == target_id),
+                None
+            )
+
+            if matched_item:
+                # Update provided fields for matching summary_id
+                for k, v in update_payload.items():
+                    matched_item[k] = v
+            else:
+                # If summary_id doesn't exist yet, append it as a new record
+                summary_list.append(update_payload)
+
+    # 4. Automatically refresh timestamp
+    data["last_updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    # 5. Save updated dictionary back to summary.json
+    try:
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        logging.info("Successfully updated fields in '%s'.", filepath)
+        return True
+    except Exception as e:
+        logging.error("Failed to write to '%s': %s", filepath, e)
+        return False
 
 def load_or_create_feedback_before_ai(
     filename: str = "feedback_before_ai.json", 
