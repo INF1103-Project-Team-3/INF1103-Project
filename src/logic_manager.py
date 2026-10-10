@@ -85,12 +85,6 @@ def normalise_theme(theme: str) -> str:
     wrong bucket."""
     return THEME_ALIASES.get(_clean_label(theme), theme.strip())
 
-def rank_review_queue(records: list) -> list: #sort themes by urgency, then theme, then feedback_id. This is so that the most urgent feedback is at the top of the list, and feedback of the same theme is grouped together for easier review.
-    queue = [r for r in records if r["needs_review"]]
-    return sorted(
-        queue,
-        key=lambda r: (-SEVERITY_RANK[r["severity"]], r["theme"], r["feedback_id"]),
-    )
 
 def apply_feedback_rules(record): #checks if feedback is critical and if confidence is below threshold
     review = []
@@ -125,6 +119,25 @@ def review_feedbacks(records): #this function is not currently used in the main 
                 f"Feedback ID {record['feedback_id']} needs review: {reasons}" #adding the feedback ID and reason to the for_review list
             )
     return for_review
+
+def rank_review_queue(records: list) -> list: #sort themes by urgency, then theme, then feedback_id. This is so that the most urgent feedback is at the top of the list, and feedback of the same theme is grouped together for easier review.
+    queue = [r for r in records if r["needs_review"]]
+    return sorted(
+        queue,
+        key=lambda r: (-SEVERITY_RANK[r["severity"]], r["theme"], r["feedback_id"]),
+    )
+
+def theme_priority_score(theme: dict) -> int: 
+    """0-100 continuous priority score instead of a flat true/false flag.
+    Combines severity mix, average sentiment, and frequency, so admin can
+    sort themes by urgency rather than just filtering a binary flag."""
+    severe_entries = theme["severity_counts"]["high"] + theme["severity_counts"]["critical"]
+    severity_ratio = severe_entries / theme["count"] if theme["count"] else 0
+    negativity = max(0, -theme["avg_sentiment"])
+    frequency_factor = min(theme["count"] / 10, 1.0)
+ 
+    score = (severity_ratio * 50) + (negativity * 30) + (frequency_factor * 20)
+    return round(score)
 
 def aggregate_themes(records):
     themes = {} #intializing list to store different themes
@@ -175,6 +188,7 @@ def aggregate_themes(records):
     theme_list = []
     for theme in themes.values(): #loops through each theme and calculates the average sentiment score for that theme
         theme["avg_sentiment"] = round(theme["sentiment_sum"] / theme["count"],2) #calculating the average sentiment score for each theme, rounded to 2 decimal places
+        theme["priority_score"] = theme_priority_score(theme)
         theme["examples"] = sorted(theme["feedbacks"], key=lambda x: SEVERITY_RANK[x["severity"]], reverse=True) #sorting the feedbacks by severity 
         del theme["sentiment_sum"]  # Remove the temporary sentiment sum
         del theme["feedbacks"]  # Remove the temporary feedbacks list
