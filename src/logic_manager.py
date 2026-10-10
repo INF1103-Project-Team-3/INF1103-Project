@@ -1,7 +1,12 @@
 import json
+from pathlib import Path
 
 MIN_CONFIDENCE = 0.5
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3} #for sorting feedback by severity
+REPO_ROOT = Path(__file__).resolve().parent.parent
+INPUT_FILE = REPO_ROOT / "config" / "test-output.json"   # AI output to read
+OUTPUT_DIR = REPO_ROOT / "output"    # scratch results (git-ignored)
+
 THEME_ALIASES_BY_CANONICAL = {
     "Teaching Quality": [
         "teaching quality", "teaching", "teaching style", "teaching methods",
@@ -54,6 +59,17 @@ THEME_ALIASES_BY_CANONICAL = {
         "miscellaneous", "misc", "off topic", "no feedback", "spam",
     ],
 }
+
+def read_json(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def write_json(path, data):
+   
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 def _clean_label(label: str) -> str: #Lowercases, turns hyphens/underscores/punctuation into spaces and collapses repeated spaces so 'Well-being', 'well_being' and'  WELL  being ' all become 'well being' before lookup.
     cleaned = "".join(ch if ch.isalnum() else " " for ch in label.lower())
@@ -225,4 +241,5 @@ if __name__ == "__main__":
 
 #make a function to read json file, so dont need to import dictionary.
 #separate into smaller functions
+
 
