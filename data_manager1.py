@@ -36,35 +36,65 @@ def init_manager(storage_path: str = "/data/feedback_store.json") -> None:
 # CORE FUNCTIONAL LOGIC
 # ==========================================
 
-def get_or_create_json_store(
-    default_data: Dict[str, Any], 
-    filepath: str = "/data/summary.json"
+import json
+import logging
+from pathlib import Path
+from typing import Any, Dict
+
+logging.basicConfig(level=logging.INFO)
+
+
+def load_or_create_feedback_before_ai(
+    filename: str = "feedback_before_ai.json", 
+    base_dir: str = "/data"
 ) -> Dict[str, Any]:
-    """
-    Checks if a JSON file exists at filepath.
-    - If it exists and is valid: Loads and returns the existing dictionary.
-    - If missing or empty: Creates parent directories, writes default_data to disk, and returns it.
-    """
-    path = Path(filepath)
+    """Loads existing feedback_before_ai.json or creates a new empty one."""
+    filepath = Path(base_dir) / filename
 
-    # 1. Check if the file already exists on disk
-    if path.exists() and path.stat().st_size > 0:
+    if filepath.exists() and filepath.stat().st_size > 0:
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                logging.info("Existing JSON file found at '%s'. Loaded successfully.", path)
-                return data
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            logging.warning("File at '%s' is corrupt (%s). Overwriting with default dictionary.", path, e)
+                if isinstance(data, dict) and "records" in data:
+                    return data
+                elif isinstance(data, list):
+                    return {"records": data}
+        except Exception as e:
+            logging.warning("Failed to load '%s': %s. Re-creating.", filepath, e)
 
-    # 2. File doesn't exist or is empty -> Create parent directory & new JSON file
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # File does not exist or is empty -> create directory and empty structure
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    empty_store = {"records": []}
 
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(default_data, f, indent=2, ensure_ascii=False)
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(empty_store, f, indent=2, ensure_ascii=False)
 
-    logging.info("JSON file created successfully at '%s'.", path)
-    return default_data
+    return empty_store
+
+
+def save_to_feedback_before_ai(
+    incoming_data: Union[Dict[str, Any], List[Dict[str, Any]]], 
+    filename: str = "feedback_before_ai.json",
+    base_dir: str = "/data"
+) -> bool:
+    """Appends single dictionary OR multiple dictionaries at once."""
+    store = load_or_create_feedback_before_ai(filename, base_dir)
+
+    if "records" not in store or not isinstance(store["records"], list):
+        store["records"] = []
+
+    if isinstance(incoming_data, dict):
+        store["records"].append(incoming_data)
+    elif isinstance(incoming_data, list):
+        store["records"].extend(incoming_data)
+    else:
+        return False
+
+    filepath = Path(base_dir) / filename
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(store, f, indent=2, ensure_ascii=False)
+    
+    return True
 
 def receive_ai_input(raw_ai_text: str) -> Union[Dict[str, Any], List[Any]]:
     """Receives raw JSON text from the AI Manager and logs it sequentially."""
@@ -108,6 +138,7 @@ def receive_ai_input(raw_ai_text: str) -> Union[Dict[str, Any], List[Any]]:
         logging.warning("Disk write interrupted but operational stream intact: %s", e)
 
     return parsed_data
+
 
 def save_feedback_dict(feedback_dict: Dict[str, Any]) -> bool:
     """
