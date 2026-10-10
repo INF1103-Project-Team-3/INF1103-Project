@@ -60,25 +60,32 @@ THEME_ALIASES_BY_CANONICAL = {
     ],
 }
 
-def read_json(path):
+def read_json(path): #reads a json file
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-def write_json(path, data):
-   
+def write_json(path, data): #writes a json file, creating the parent directory if it doesn't exist
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
+def load_records(path=INPUT_FILE): #loads the AI's classified feedback from a JSON file. Accepts either a plain list of records, or a dict with the list under a "records" key.
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Input file not found: {path}")
+    data = read_json(path)
+    if isinstance(data, dict) and "records" in data: #checks if the data is a dictionary and contains a "records" key, if so, it extracts the list of records from that key
+        data = data["records"]
+    if not isinstance(data, list) or not all(isinstance(r, dict) for r in data):
+        raise ValueError(f"{path.name} should contain a list of feedback records")
+    return data
+
 def _clean_label(label: str) -> str: #Lowercases, turns hyphens/underscores/punctuation into spaces and collapses repeated spaces so 'Well-being', 'well_being' and'  WELL  being ' all become 'well being' before lookup.
     cleaned = "".join(ch if ch.isalnum() else " " for ch in label.lower())
     return " ".join(cleaned.split())
 
-def _build_alias_lookup(by_canonical: dict) -> dict:
-    """Flattens the grouped dictionary above into {alias: canonical}.
-    Raises if one alias is listed under two themes, since the second one
-    would otherwise silently overwrite the first and be very hard to spot."""
+def _build_alias_lookup(by_canonical: dict) -> dict: #flattens the grouped dictionary above into {alias: canonical}. Raises if one alias is listed under two themes, since the second one would otherwise silently overwrite the first and be very hard to spot.
     lookup = {}
     for canonical, aliases in by_canonical.items():
         for alias in [canonical] + aliases:
@@ -92,13 +99,7 @@ def _build_alias_lookup(by_canonical: dict) -> dict:
 
 THEME_ALIASES = _build_alias_lookup(THEME_ALIASES_BY_CANONICAL)
 
-def normalise_theme(theme: str) -> str:
-    """Maps near-duplicate theme labels onto one canonical name, so the
-    same underlying issue doesn't get split into separate, smaller theme
-    buckets just because the AI phrased it differently. A label with no
-    known alias (e.g. a genuinely new theme) is returned unchanged, so
-    new themes still show up instead of being silently forced into a
-    wrong bucket."""
+def normalise_theme(theme: str) -> str: #maps similar theme labels to a canonical name, so that the same underlying issue doesn't get split into separate buckets just because the AI phrased it differently. A label with no known alias is returned unchanged, so new themes still show up instead of being silently forced into a wrong bucket."
     return THEME_ALIASES.get(_clean_label(theme), theme.strip())
 
 
@@ -143,16 +144,13 @@ def rank_review_queue(records: list) -> list: #sort themes by urgency, then them
         key=lambda r: (-SEVERITY_RANK[r["severity"]], r["theme"], r["feedback_id"]),
     )
 
-def theme_priority_score(theme: dict) -> int: 
-    """0-100 continuous priority score instead of a flat true/false flag.
-    Combines severity mix, average sentiment, and frequency, so admin can
-    sort themes by urgency rather than just filtering a binary flag."""
-    severe_entries = theme["severity_counts"]["high"] + theme["severity_counts"]["critical"]
+def theme_priority_score(theme: dict) -> int:  #combines severity mix, average sentiment, and frequency to give a 0-100 continuous priority score instead of needing to look at multiple metrics to determine which themes are most urgent. 
+    severe_entries = theme["severity_counts"]["high"] + theme["severity_counts"]["critical"] #takes the number of high and critical severity feedbacks for that theme
     severity_ratio = severe_entries / theme["count"] if theme["count"] else 0
     negativity = max(0, -theme["avg_sentiment"])
     frequency_factor = min(theme["count"] / 10, 1.0)
  
-    score = (severity_ratio * 50) + (negativity * 30) + (frequency_factor * 20)
+    score = (severity_ratio * 50) + (negativity * 30) + (frequency_factor * 20) #formula can be adjusted to change the weight of each factor, currently severity is weighted highest, then negativity, then frequency
     return round(score)
 
 def aggregate_themes(records):
@@ -219,20 +217,23 @@ def aggregate_themes(records):
     # return sentiment_counts,severity_counts,themes
 
 if __name__ == "__main__":
-    from test_data.sample_ai_output import SAMPLE_RECORDS
-    processed_feedbacks = [apply_feedback_rules(record) for record in SAMPLE_RECORDS] #run through all the feedback and apply the rules to each record
+    records = load_records()
+    processed_feedbacks = [apply_feedback_rules(record) for record in records] #run through all the feedback and apply the rules to each record
     total_entries = len(processed_feedbacks)                                   
     counted_entries = len([r for r in processed_feedbacks if r["counted"]]) 
     # for_review = review_feedbacks(processed_feedbacks) 
     aggregated_sentiment = aggregate_themes(processed_feedbacks)
-    with open("aggregated_output.json", "w") as f:
-        json.dump(aggregated_sentiment, f, indent=2)
+    
+    # with open("aggregated_output.json", "w") as f:
+    #     json.dump(aggregated_sentiment, f, indent=2)
 
     review_queue = rank_review_queue(processed_feedbacks) #filter out feedback that needs review
+    write_json(OUTPUT_DIR / "aggregated_output.json", aggregated_sentiment)
+    write_json(OUTPUT_DIR / "for_review.json", review_queue)
     print(review_queue)
     # review_queue = [r for r in processed_feedbacks if r["needs_review"]] 
-    with open("for_review.json", "w") as f: #write the feedback that needs review to a json file
-        json.dump(review_queue, f, indent=2) 
+    # with open("for_review.json", "w") as f: #write the feedback that needs review to a json file
+    #     json.dump(review_queue, f, indent=2) 
     print(f"Total: {total_entries}, Counted: {counted_entries}, Flagged for review: {len(review_queue)}")
     # print(f"Total entries processed: {total_entries}")
     # print(f"Entries counted (confidence >= {MIN_CONFIDENCE}): {counted_entries}")
