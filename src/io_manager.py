@@ -17,21 +17,26 @@ QUIT_COMMANDS = ("q", "quit")
 MAX_TEXT_LENGTH = 2000
 PAYLOAD_MIME = "application/json"
 PAYLOAD_EXT = ".json"
+
 TEST_INPUT_FILE = "test-input.json"          # single entries are saved here
+AGGREGATED_FILE = "aggregated_output.json"   # theme table data
+SUMMARY_FILE = "summary-output.json"         # overall + suggested actions data
 
-AGGREGATED_FILE = "aggregated_output.json"   # theme table
-SUMMARY_FILE = "summary-output.json"         # overall + suggested actions
-FEEDBACK_FILE = "feedback.json"              # review queue
-
+# Display formatting for the dashboard.
 WIDTH = 68
-TEXT_LIMIT = 40
 COLUMN_THEME = 22
-
-# A theme is PRIORITY if it has any critical entry, or this many high+critical
-PRIORITY_THRESHOLD = 3
+PRIORITY_THRESHOLD = 3      # A theme is PRIORITY if it has any high/critical entry
 
 # Hardcoded password.
 ADMIN_PASSWORD = "123456"
+
+# Admin menu: number -> action name used by run_admin_flow.
+ADMIN_MENU = {
+    "1": ("entry", "Feedback Entry"),
+    "2": ("import", "CSV or JSON import"),
+    "3": ("dashboard", "Dashboard"),
+    "4": ("search", "Search Feedback"),
+}
 
 
 def print_out(message=""):
@@ -109,7 +114,7 @@ def prompt_role():
     quit or cancel.
     """
     def check(choice):
-        choice = choice.strip().lower()
+        choice = choice.lower()
         if choice in ("user", "admin"):
             return choice, ""
         return None, "please enter 'user' or 'admin'"
@@ -124,21 +129,24 @@ def prompt_role():
 
 
 def prompt_admin_action():
-    """Ask the admin what to do: entry, JSON, convert CSV to JSON, or display dashboard.
+    """Show the admin menu and ask what to do.
 
-    Returns the chosen word, or None if they quit.
+    Returns the chosen action (entry, import, dashboard, search), or None
+    if they quit.
     """
+    menu_lines = [f"{number}. {label}" for number, (_, label) in ADMIN_MENU.items()]
     while True:
-        choice = _prompt("Single entry, JSON import, convert CSV to JSON or display dashboard? (entry/json/csv/dashboard): ")
+        print_block(*menu_lines)
+        choice = _prompt(f"Choose an option (1-{len(ADMIN_MENU)}): ")
         if choice is None:
             return None
 
-        choice = choice.lower()  # _prompt already stripped whitespace
-        if choice in ("entry", "json", "csv", "dashboard"):
-            return choice
+        if choice in ADMIN_MENU:
+            return ADMIN_MENU[choice][0]
 
-        print_out("Invalid option. Please enter 'entry', 'json', 'csv', or 'dashboard'.")
-    
+        print_out(f"Invalid option. Please enter a number from 1 to {len(ADMIN_MENU)}.")
+
+
 # ---------------------------------------------------------------------------
 # Validation helpers
 # ---------------------------------------------------------------------------
@@ -190,23 +198,6 @@ def validate_entry(raw):
     return entry, ""
 
 
-def validate_files(rows):
-    """Validate all rows in that file.
-
-    Returns (accepted, rejected):
-      accepted: list of clean entry dicts
-      rejected: list of (row_number, reason)
-    """
-    accepted, rejected = [], []
-    for i, raw in enumerate(rows, start=1):
-        entry, error = validate_entry(raw)
-        if error:
-            rejected.append((i, error))
-        else:
-            accepted.append(entry)
-    return accepted, rejected
-
-
 def print_rows(title, rows):
     """Print a titled, indented list. Prints nothing if the list is empty."""
     if rows:
@@ -216,15 +207,21 @@ def print_rows(title, rows):
 def validate_and_report(rows):
     """Validate rows from a JSON file or the converted CSV and print what
     passed or failed.
- 
+
     Returns the accepted rows as a payload, or None if none were valid.
     """
-    accepted, rejected = validate_files(rows)
- 
+    accepted, rejected = [], []  # rejected: list of (row_number, reason)
+    for i, raw in enumerate(rows, start=1):
+        entry, error = validate_entry(raw)
+        if error:
+            rejected.append((i, error))
+        else:
+            accepted.append(entry)
+
     print_block(f"Validated {len(accepted)} of {len(rows)} row(s).")
     print_rows("Accepted rows:", accepted)
     print_rows("Rejected rows:", [f"Row {i}: {error}" for i, error in rejected])
- 
+
     return entries_to_payload(accepted) if accepted else None
 
 
@@ -283,9 +280,7 @@ def convert_csv_to_json(csv_path, json_path):
     if not rows:  # unreadable, or only a header row
         return False
 
-    # If a row has more cells than the header, put it under a None key. Drop them.
-    rows = [{k: v for k, v in row.items() if k is not None} for row in rows]
-
+    # If a row has more cells than the header, they sit under a None key (saved as "null"). validate_entry ignores them.
     return write_json(json_path, rows)
 #---------------------------------------------------------------------------
 
@@ -331,13 +326,10 @@ def clean(text):
                 .replace("\u2014", "-"))
 
 
-def load_dashboard_data(path, required=True):
+def load_dashboard_data(path):
     """Load a JSON file; return None if missing or unreadable."""
     if not os.path.exists(path):
-        if required:
-            print_block(f"{path} not found.")
-        else:
-            print_block(f"{path} not found (it may be gitignored), skipping review queue.")
+        print_block(f"{path} not found.")
         return None
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -347,19 +339,13 @@ def load_dashboard_data(path, required=True):
         return None
 
 
-def display_dashboard():
-    agg = load_dashboard_data(AGGREGATED_FILE)
-    if agg is None:
-        return
-    summary = load_dashboard_data(SUMMARY_FILE) or {}
-    feedback = load_dashboard_data(FEEDBACK_FILE)
-
-    # Header
+def print_dashboard_header(agg, summary):
+    """Print the title line with entry counts, then the overall summary
+    (one bullet per sentence)."""
     print_block(f"FEEDBACK DASHBOARD    entries: {agg['total_entries']}   "
                 f"counted: {agg['counted_entries']}  ")
     print_out("=" * WIDTH)
 
-    # Overall: one bullet per sentence
     overall = clean(summary.get("overall_summary", ""))
     if overall:
         print_block("OVERALL")
@@ -367,7 +353,9 @@ def display_dashboard():
             print_out(textwrap.fill(sentence, width=WIDTH,
                                     initial_indent="  - ", subsequent_indent="    "))
 
-    # Theme table: priority first, then by count
+
+def build_theme_rows(agg):
+    """Return (theme, urgent_count, is_priority) rows: priority first, then by count."""
     rows = []
     for t in agg["themes"]:
         sev = t["severity_counts"]
@@ -375,7 +363,11 @@ def display_dashboard():
         is_priority = sev["critical"] > 0 or urgent >= PRIORITY_THRESHOLD
         rows.append((t, urgent, is_priority))
     rows.sort(key=lambda r: (not r[2], -r[0]["count"]))
+    return rows
 
+
+def print_theme_table(rows):
+    """Print the theme table from rows made by build_theme_rows."""
     print_block("THEMES")
     print_out(f"{'THEME':<{COLUMN_THEME}}{'COUNT':>5}  {'AVG SENT':>8}  {'HIGH+CRIT':>9}  PRIORITY")
     print_out("-" * WIDTH)
@@ -383,18 +375,35 @@ def display_dashboard():
         print_out(f"{t['theme']:<{COLUMN_THEME}}{t['count']:>5}  {t['avg_sentiment']:>8.2f}  "
                   f"{urgent:>9}  {'YES' if is_priority else 'no'}")
 
-    # Suggested actions, in the same order as the table
+
+def print_suggested_actions(summary, rows):
+    """Print each theme's suggested action, in the same order as the table."""
     actions = {a["theme"]: a["suggested_action"]
                for a in summary.get("theme_actions", [])
                if a["theme"] != "Unclear"}
-    if actions:
-        print_block("SUGGESTED ACTIONS")
-        print_out("-" * WIDTH)
-        for t, _, _ in rows:
-            if t["theme"] in actions:
-                print_out(textwrap.fill(clean(actions[t["theme"]]), width=WIDTH,
-                                        initial_indent=f"{t['theme']:<{COLUMN_THEME}}",
-                                        subsequent_indent=" " * COLUMN_THEME))
+    if not actions:
+        return
+
+    print_block("SUGGESTED ACTIONS")
+    print_out("-" * WIDTH)
+    for t, _, _ in rows:
+        if t["theme"] in actions:
+            print_out(textwrap.fill(clean(actions[t["theme"]]), width=WIDTH,
+                                    initial_indent=f"{t['theme']:<{COLUMN_THEME}}",
+                                    subsequent_indent=" " * COLUMN_THEME))
+
+
+def display_dashboard():
+    """Load the output files and print the dashboard."""
+    agg = load_dashboard_data(AGGREGATED_FILE)
+    if agg is None:
+        return
+    summary = load_dashboard_data(SUMMARY_FILE) or {}
+
+    rows = build_theme_rows(agg)
+    print_dashboard_header(agg, summary)
+    print_theme_table(rows)
+    print_suggested_actions(summary, rows)
 
 
 # ---------------------------------------------------------------------------
@@ -438,48 +447,38 @@ def run_single_entry(is_admin=False):
     return entry
 
 
-def run_admin_files_json():
-    """Admin flow: import a JSON file. Keeps asking for a path until a file
-    loads or the admin quits.
- 
-    Returns the accepted rows as a payload, or None.
+def run_admin_import():
+    """Admin flow: import a JSON or CSV file. The file type is picked from
+    the extension. Keeps asking for a path until a file loads or the admin quits.
+
+    A CSV is converted to a JSON file (name.csv -> name.json) before
+    validating. Returns the accepted rows as a payload, or None.
     """
     print_block()
     while True:
-        path = _prompt("Path to a JSON file, or 'quit' to cancel: ")
+        path = _prompt("Path to a CSV or JSON file, or 'quit' to cancel: ")
         if path is None:
             print_block("Cancelled.")
             return None
- 
-        rows = read_json(path)
-        if rows:  # empty list counts as a failed load, so will reprompt
-            break
-        print_out(f"  Invalid: could not read '{path}' as JSON (check the path and format).")
- 
+
+        extension = os.path.splitext(path)[1].lower()
+        if extension == ".json":
+            rows = read_json(path)
+            if rows:  # empty list counts as a failed load, so will reprompt
+                break
+            print_out(f"  Invalid: could not read '{path}' as JSON (check the path and format).")
+        elif extension == ".csv":
+            # name.csv -> name.json, in the same folder
+            json_path = os.path.splitext(path)[0] + ".json"
+            if convert_csv_to_json(path, json_path):
+                print_block(f"Converted to '{json_path}'.")
+                rows = read_json(json_path)
+                break
+            print_out(f"  Invalid: could not convert '{path}' (check the path and format).")
+        else:
+            print_out("  Invalid: file must end in .csv or .json.")
+
     return validate_and_report(rows)
-
-
-def run_admin_convert():
-    """Admin flow: convert a CSV into a JSON file save the file, then
-    validate the converted rows.
- 
-    Returns the accepted rows as a payload, or None.
-    """
-    print_block()
-    while True:
-        csv_path = _prompt("Path to a CSV file, or 'quit' to cancel: ")
-        if csv_path is None:
-            print_block("Cancelled.")
-            return None
- 
-        # name.csv -> name.json, in the same folder
-        json_path = os.path.splitext(csv_path)[0] + ".json"
-        if convert_csv_to_json(csv_path, json_path):
-            break
-        print_out(f"  Invalid: could not convert '{csv_path}' (check the path and format).")
- 
-    print_block(f"Converted to '{json_path}'.")
-    return validate_and_report(read_json(json_path))
 
 
 def run_admin_flow():
@@ -489,14 +488,14 @@ def run_admin_flow():
     if action is None:
         print_block("Cancelled.")
         return
-    if action == "json":
-        return run_admin_files_json()
-    elif action == "csv":
-        return run_admin_convert()
+    if action == "entry":
+        return run_single_entry(is_admin=True)
+    elif action == "import":
+        return run_admin_import()
     elif action == "dashboard":
         return display_dashboard()
-    else:  # "entry"
-        return run_single_entry(is_admin=True)
+    else:  # "search"
+        return 
 
 
 def run_role_flow(role):
