@@ -59,18 +59,52 @@ def _clean_label(label: str) -> str: #Lowercases, turns hyphens/underscores/punc
     cleaned = "".join(ch if ch.isalnum() else " " for ch in label.lower())
     return " ".join(cleaned.split())
 
+def _build_alias_lookup(by_canonical: dict) -> dict:
+    """Flattens the grouped dictionary above into {alias: canonical}.
+    Raises if one alias is listed under two themes, since the second one
+    would otherwise silently overwrite the first and be very hard to spot."""
+    lookup = {}
+    for canonical, aliases in by_canonical.items():
+        for alias in [canonical] + aliases:
+            key = _clean_label(alias)
+            if key in lookup and lookup[key] != canonical:
+                raise ValueError(
+                    f"Alias '{alias}' is listed under both '{lookup[key]}' and '{canonical}'"
+                )
+            lookup[key] = canonical
+    return lookup
+
+THEME_ALIASES = _build_alias_lookup(THEME_ALIASES_BY_CANONICAL)
+
+def normalise_theme(theme: str) -> str:
+    """Maps near-duplicate theme labels onto one canonical name, so the
+    same underlying issue doesn't get split into separate, smaller theme
+    buckets just because the AI phrased it differently. A label with no
+    known alias (e.g. a genuinely new theme) is returned unchanged, so
+    new themes still show up instead of being silently forced into a
+    wrong bucket."""
+    return THEME_ALIASES.get(_clean_label(theme), theme.strip())
 
 def apply_feedback_rules(record): #checks if feedback is critical and if confidence is below threshold
     review = []
-    if record["severity"] == "critical": #checking if feedback is critical
+    theme = normalise_theme(record.get("theme", "Unclear")) #normalises the theme of the feedback, if no theme is provided, it defaults to "Unclear"
+    severity = record.get("severity", "low") #set default severity to low if not provided
+    confidence = record.get("confidence", 0.0) #set default confidence to 0.0 if not provided
+    agreement = record.get("agreement", 1.0) #set default agreement to 1.0 if not provided
+
+    if severity == "critical": #checking if feedback is critical
         review.append("Critical severity")
-    if record["confidence"] < MIN_CONFIDENCE: #checking if feedback is below confidence threshold
-        review.append(f"Confidence {record['confidence']:.2f} is below threshold {MIN_CONFIDENCE}.")
-    if record["agreement"] < 1.0: #checking if feedback has low agreement
-        review.append(f"Agreement {record['agreement']:.2f} - AI outputs did not fully agree.")
+    if confidence < MIN_CONFIDENCE: #checking if feedback is below confidence threshold
+        review.append(f"Confidence {confidence:.2f} is below threshold {MIN_CONFIDENCE}.")
+    if agreement < 1.0: #checking if feedback has low agreement
+        review.append(f"Agreement {agreement:.2f} - AI outputs did not fully agree.")
     return {
         **record,
-        "counted": record["confidence"] >= MIN_CONFIDENCE and record["agreement"] >= 1.0, #feedback will be counted if confidence is above threshold 
+        "theme": theme, #update theme to default if missing or normalised if provided
+        "severity": severity, #update severity to default if missing
+        "confidence": confidence, #update confidence to default if missing
+        "agreement": agreement, #update agreement to default if missing
+        "counted": confidence >= MIN_CONFIDENCE and agreement >= 1.0, #feedback will be counted if confidence is above threshold 
         "needs_review": len(review) > 0,  #feedback needs reviews if there are any review notes
         "review_reason": review   
     }
@@ -119,8 +153,8 @@ def aggregate_themes(records):
                 severity_counts["medium"] += 1
             case "low":
                 severity_counts["low"] += 1
-        theme = themes.setdefault(record["theme"],{ #splitting up feedback by theme, so each theme has its own counters, general sentiment, and a list of all the feedback that falls under that theme
-            "theme": record["theme"],
+        theme = themes.setdefault(normalise_theme(record["theme"]),{ #splitting up feedback by theme, so each theme has its own counters, general sentiment, and a list of all the feedback that falls under that theme
+            "theme": normalise_theme(record["theme"]),
             "count": 0,
             "severity_counts": {"critical": 0, "high": 0, "medium": 0, "low": 0},
             "sentiment_sum": 0,
@@ -153,6 +187,7 @@ if __name__ == "__main__":
     total_entries = len(processed_feedbacks)                                   
     counted_entries = len([r for r in processed_feedbacks if r["counted"]]) 
     # for_review = review_feedbacks(processed_feedbacks) 
+    print(processed_feedbacks)
     aggregated_sentiment = aggregate_themes(processed_feedbacks)
     with open("aggregated_output.json", "w") as f:
         json.dump(aggregated_sentiment, f, indent=2)
@@ -165,8 +200,7 @@ if __name__ == "__main__":
     # print(f"Entries counted (confidence >= {MIN_CONFIDENCE}): {counted_entries}")
 
 
-#make an output function to output only json file for 2nd ai call (done)
-#flag out if agreement is 0.33 or 0.67 (done)
+
 #make a function to read json file, so dont need to import dictionary.
 #separate into smaller functions
 
