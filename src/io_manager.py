@@ -3,8 +3,9 @@ from datetime import datetime
 import json
 import logging
 import os
+import re
 import uuid
-
+import textwrap
 import pwinput  # third-party: pip install pwinput
 
 logger = logging.getLogger(__name__)
@@ -14,6 +15,20 @@ REQUIRED_FIELDS = ("feedback_id", "text", "timestamp")
 TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S"  # e.g. 2026-09-29T10:30:00
 QUIT_COMMANDS = ("q", "quit")
 MAX_TEXT_LENGTH = 2000
+PAYLOAD_MIME = "application/json"
+PAYLOAD_EXT = ".json"
+TEST_INPUT_FILE = "test-input.json"          # single entries are saved here
+
+AGGREGATED_FILE = "aggregated_output.json"   # theme table
+SUMMARY_FILE = "summary-output.json"         # overall + suggested actions
+FEEDBACK_FILE = "feedback.json"              # review queue
+
+WIDTH = 68
+TEXT_LIMIT = 40
+COLUMN_THEME = 22
+
+# A theme is PRIORITY if it has any critical entry, or this many high+critical
+PRIORITY_THRESHOLD = 3
 
 # Hardcoded password.
 ADMIN_PASSWORD = "123456"
@@ -22,6 +37,16 @@ ADMIN_PASSWORD = "123456"
 def print_out(message=""):
     """Making it easy for Output to be redirected later."""
     print(message)
+
+
+def print_block(*lines):
+    """Print one blank line, then each line given.
+
+    Every block of output (headings, results, reports, goodbyes) are seperated by a line.
+    """
+    print_out()
+    for line in lines:
+        print_out(line)
 
 
 # ---------------------------------------------------------------------------
@@ -99,22 +124,21 @@ def prompt_role():
 
 
 def prompt_admin_action():
-    """Ask the admin what to do: entry, JSON, or convert CSV to JSON.
+    """Ask the admin what to do: entry, JSON, convert CSV to JSON, or display dashboard.
 
     Returns the chosen word, or None if they quit.
     """
     while True:
-        choice = _prompt("Single entry, JSON import, or convert CSV to JSON? (entry/json/csv): ")
+        choice = _prompt("Single entry, JSON import, convert CSV to JSON or display dashboard? (entry/json/csv/dashboard): ")
         if choice is None:
             return None
 
         choice = choice.lower()  # _prompt already stripped whitespace
-        if choice in ("entry", "json", "csv"):
+        if choice in ("entry", "json", "csv", "dashboard"):
             return choice
 
-        print_out("Invalid option. Please enter 'entry', 'json', or 'csv'.")
-
-
+        print_out("Invalid option. Please enter 'entry', 'json', 'csv', or 'dashboard'.")
+    
 # ---------------------------------------------------------------------------
 # Validation helpers
 # ---------------------------------------------------------------------------
@@ -184,11 +208,9 @@ def validate_files(rows):
 
 
 def print_rows(title, rows):
-    """Print an indented list. Prints nothing if the list is empty."""
+    """Print a titled, indented list. Prints nothing if the list is empty."""
     if rows:
-        print_out(title)
-        for row in rows:
-            print_out(f"  {row}")
+        print_block(title, *[f"  {row}" for row in rows])
  
  
 def validate_and_report(rows):
@@ -199,7 +221,7 @@ def validate_and_report(rows):
     """
     accepted, rejected = validate_files(rows)
  
-    print_out(f"\nValidated {len(accepted)} of {len(rows)} row(s).")
+    print_block(f"Validated {len(accepted)} of {len(rows)} row(s).")
     print_rows("Accepted rows:", accepted)
     print_rows("Rejected rows:", [f"Row {i}: {error}" for i, error in rejected])
  
@@ -223,6 +245,20 @@ def read_json(path):
         logger.warning("JSON %s must contain a list of entries", path)
         return []
     return data
+
+
+def write_json(path, data):
+    """Write data to path as JSON, creating the file if it doesn't exist.
+
+    Returns True on success, False if the file can't be written.
+    """
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except OSError as exc:
+        logger.warning("Could not write JSON %s: %s", path, exc)
+        return False
+    return True
 
 
 def read_csv(path):
@@ -250,29 +286,24 @@ def convert_csv_to_json(csv_path, json_path):
     # If a row has more cells than the header, put it under a None key. Drop them.
     rows = [{k: v for k, v in row.items() if k is not None} for row in rows]
 
-    try:
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(rows, f, indent=2, ensure_ascii=False)
-    except OSError as exc:
-        logger.warning("Could not write JSON %s: %s", json_path, exc)
-        return False
-    return True
+    return write_json(json_path, rows)
 #---------------------------------------------------------------------------
 
  
 # Payloads
 # ---------------------------------------------------------------------------
-# Single entries are passed as a JSON string. 
+# Single entries are saved to test-input.json (see save_entry).
 # File imports are passed as an in-memory JSON file.
-PAYLOAD_MIME = "application/json"
-PAYLOAD_EXT = ".json"
  
  
-def entry_to_payload(entry):
-    """One validated entry: JSON string.
- 
+def save_entry(entry, path=TEST_INPUT_FILE):
+    """Add one validated entry to the JSON list in path.
+
+    Creates the file if it doesn't exist yet. Returns True on success.
     """
-    return json.dumps(entry, ensure_ascii=False, indent=2)
+    entries = read_json(path) if os.path.exists(path) else []
+    entries.append(entry)
+    return write_json(path, entries)
  
  
 def entries_to_payload(entries):
@@ -288,6 +319,85 @@ def entries_to_payload(entries):
 
 # ---------------------------------------------------------------------------
 
+# Dashboard 
+# ---------------------------------------------------------------------------
+
+
+def clean(text):
+    """Replace characters that some terminals can't print."""
+    return (text.replace("\u2011", "-")     # non-breaking hyphen
+                .replace("\u2019", "'")     # curly apostrophe
+                .replace("\u2013", "-")
+                .replace("\u2014", "-"))
+
+
+def load_dashboard_data(path, required=True):
+    """Load a JSON file; return None if missing or unreadable."""
+    if not os.path.exists(path):
+        if required:
+            print_block(f"{path} not found.")
+        else:
+            print_block(f"{path} not found (it may be gitignored), skipping review queue.")
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        print_block(f"Could not read {path}.")
+        return None
+
+
+def display_dashboard():
+    agg = load_dashboard_data(AGGREGATED_FILE)
+    if agg is None:
+        return
+    summary = load_dashboard_data(SUMMARY_FILE) or {}
+    feedback = load_dashboard_data(FEEDBACK_FILE)
+
+    # Header
+    print_block(f"FEEDBACK DASHBOARD    entries: {agg['total_entries']}   "
+                f"counted: {agg['counted_entries']}  ")
+    print_out("=" * WIDTH)
+
+    # Overall: one bullet per sentence
+    overall = clean(summary.get("overall_summary", ""))
+    if overall:
+        print_block("OVERALL")
+        for sentence in re.split(r"(?<=\.)\s+", overall):
+            print_out(textwrap.fill(sentence, width=WIDTH,
+                                    initial_indent="  - ", subsequent_indent="    "))
+
+    # Theme table: priority first, then by count
+    rows = []
+    for t in agg["themes"]:
+        sev = t["severity_counts"]
+        urgent = sev["critical"] + sev["high"]
+        is_priority = sev["critical"] > 0 or urgent >= PRIORITY_THRESHOLD
+        rows.append((t, urgent, is_priority))
+    rows.sort(key=lambda r: (not r[2], -r[0]["count"]))
+
+    print_block("THEMES")
+    print_out(f"{'THEME':<{COLUMN_THEME}}{'COUNT':>5}  {'AVG SENT':>8}  {'HIGH+CRIT':>9}  PRIORITY")
+    print_out("-" * WIDTH)
+    for t, urgent, is_priority in rows:
+        print_out(f"{t['theme']:<{COLUMN_THEME}}{t['count']:>5}  {t['avg_sentiment']:>8.2f}  "
+                  f"{urgent:>9}  {'YES' if is_priority else 'no'}")
+
+    # Suggested actions, in the same order as the table
+    actions = {a["theme"]: a["suggested_action"]
+               for a in summary.get("theme_actions", [])
+               if a["theme"] != "Unclear"}
+    if actions:
+        print_block("SUGGESTED ACTIONS")
+        print_out("-" * WIDTH)
+        for t, _, _ in rows:
+            if t["theme"] in actions:
+                print_out(textwrap.fill(clean(actions[t["theme"]]), width=WIDTH,
+                                        initial_indent=f"{t['theme']:<{COLUMN_THEME}}",
+                                        subsequent_indent=" " * COLUMN_THEME))
+
+
+# ---------------------------------------------------------------------------
 # Flows
 # ---------------------------------------------------------------------------
 
@@ -305,31 +415,27 @@ def read_entry():
     return prompt_until_valid("Enter feedback (quit to cancel): ", check)
 
 
-def submit_single_entry():
-    """Collect one entry, printing 'Cancelled.' if they quit."""
-    entry = read_entry()
-    if entry is None:
-        print_out("Cancelled.")
-        return None
-    return entry
-
-
 def run_single_entry(is_admin=False):
     """Collect one feedback entry and confirm if they are user or admin.
  
-    Returns the entry as a payload, or None if they cancelled.
+    Saves the entry to test-input.json and returns it, or None if they
+    cancelled or it could not be saved.
     """
     entry = read_entry()
     if entry is None:
-        print_out("Cancelled.")
+        print_block("Cancelled.")
+        return None
+
+    if not save_entry(entry):
+        print_block(f"Could not save to '{TEST_INPUT_FILE}'.")
         return None
  
     if is_admin:
-        print_out(f"Entry ID: {entry['feedback_id']}")
+        print_block(f"Entry ID: {entry['feedback_id']}")
     else:
-        print_out("Thank you! Your response has been saved.")
+        print_block("Thank you! Your response has been saved.")
     print_out(f"  {entry}")
-    return entry_to_payload(entry)
+    return entry
 
 
 def run_admin_files_json():
@@ -338,10 +444,11 @@ def run_admin_files_json():
  
     Returns the accepted rows as a payload, or None.
     """
+    print_block()
     while True:
         path = _prompt("Path to a JSON file, or 'quit' to cancel: ")
         if path is None:
-            print_out("Cancelled.")
+            print_block("Cancelled.")
             return None
  
         rows = read_json(path)
@@ -358,10 +465,11 @@ def run_admin_convert():
  
     Returns the accepted rows as a payload, or None.
     """
+    print_block()
     while True:
         csv_path = _prompt("Path to a CSV file, or 'quit' to cancel: ")
         if csv_path is None:
-            print_out("Cancelled.")
+            print_block("Cancelled.")
             return None
  
         # name.csv -> name.json, in the same folder
@@ -370,21 +478,23 @@ def run_admin_convert():
             break
         print_out(f"  Invalid: could not convert '{csv_path}' (check the path and format).")
  
-    print_out(f"Converted to '{json_path}'.")
+    print_block(f"Converted to '{json_path}'.")
     return validate_and_report(read_json(json_path))
 
 
 def run_admin_flow():
     """Admin workflow: run whichever action the admin picks."""
-    print_out("\n--- Admin ---")
+    print_block("--- Admin ---")
     action = prompt_admin_action()
     if action is None:
-        print_out("Cancelled.")
+        print_block("Cancelled.")
         return
     if action == "json":
         return run_admin_files_json()
     elif action == "csv":
         return run_admin_convert()
+    elif action == "dashboard":
+        return display_dashboard()
     else:  # "entry"
         return run_single_entry(is_admin=True)
 
@@ -393,21 +503,21 @@ def run_role_flow(role):
     """Run the flow for this role. Returns its payload, or None."""
     if role == "admin":
         return run_admin_flow()
-    print_out("\n--- Feedback ---")
+    print_block("--- Feedback ---")
     return run_single_entry()
 
 
 def main():
     """Run the session. Returns the payload or None."""
-    print_out("=== Feedback Manager ===")
+    print_block("=== Feedback Manager ===")
  
     role = prompt_role()
     if role is None:
-        print_out("Goodbye.")
+        print_block("Goodbye.")
         return None
  
     payload = run_role_flow(role)
-    print_out("Thank you for using Feedback Manager. Goodbye.")
+    print_block("Thank you for using Feedback Manager. Goodbye.")
     return payload
  
  
