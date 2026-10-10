@@ -85,6 +85,13 @@ def normalise_theme(theme: str) -> str:
     wrong bucket."""
     return THEME_ALIASES.get(_clean_label(theme), theme.strip())
 
+def rank_review_queue(records: list) -> list: #sort themes by urgency, then theme, then feedback_id. This is so that the most urgent feedback is at the top of the list, and feedback of the same theme is grouped together for easier review.
+    queue = [r for r in records if r["needs_review"]]
+    return sorted(
+        queue,
+        key=lambda r: (-SEVERITY_RANK[r["severity"]], r["theme"], r["feedback_id"]),
+    )
+
 def apply_feedback_rules(record): #checks if feedback is critical and if confidence is below threshold
     review = []
     theme = normalise_theme(record.get("theme", "Unclear")) #normalises the theme of the feedback, if no theme is provided, it defaults to "Unclear"
@@ -187,12 +194,13 @@ if __name__ == "__main__":
     total_entries = len(processed_feedbacks)                                   
     counted_entries = len([r for r in processed_feedbacks if r["counted"]]) 
     # for_review = review_feedbacks(processed_feedbacks) 
-    print(processed_feedbacks)
     aggregated_sentiment = aggregate_themes(processed_feedbacks)
     with open("aggregated_output.json", "w") as f:
         json.dump(aggregated_sentiment, f, indent=2)
 
-    review_queue = [r for r in processed_feedbacks if r["needs_review"]] #filter out feedback that needs review
+    review_queue = rank_review_queue(processed_feedbacks) #filter out feedback that needs review
+    print(review_queue)
+    # review_queue = [r for r in processed_feedbacks if r["needs_review"]] 
     with open("for_review.json", "w") as f: #write the feedback that needs review to a json file
         json.dump(review_queue, f, indent=2) 
     print(f"Total: {total_entries}, Counted: {counted_entries}, Flagged for review: {len(review_queue)}")
