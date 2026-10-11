@@ -11,12 +11,13 @@
       "theme": "Facilities",
       "count": 4,
       "severity_counts": {
-        "critical": 1,
-        "high": 0,
+        "low": 1,
         "medium": 2,
-        "low": 1
+        "high": 0,
+        "critical": 1
       },
       "avg_sentiment": -0.5,
+      "priority_score": 36,
       "examples": [
         {
           "severity": "critical",
@@ -40,12 +41,13 @@
       "theme": "Assessment",
       "count": 4,
       "severity_counts": {
-        "critical": 0,
-        "high": 1,
+        "low": 0,
         "medium": 3,
-        "low": 0
+        "high": 1,
+        "critical": 0
       },
       "avg_sentiment": -1.0,
+      "priority_score": 50,
       "examples": [
         {
           "severity": "high",
@@ -69,12 +71,13 @@
       "theme": "Social Environment",
       "count": 3,
       "severity_counts": {
-        "critical": 3,
-        "high": 0,
+        "low": 0,
         "medium": 0,
-        "low": 0
+        "high": 0,
+        "critical": 3
       },
       "avg_sentiment": -1.0,
+      "priority_score": 86,
       "examples": [
         {
           "severity": "critical",
@@ -94,12 +97,13 @@
       "theme": "Teaching Quality",
       "count": 2,
       "severity_counts": {
-        "critical": 0,
-        "high": 0,
+        "low": 1,
         "medium": 1,
-        "low": 1
+        "high": 0,
+        "critical": 0
       },
       "avg_sentiment": 0.0,
+      "priority_score": 4,
       "examples": [
         {
           "severity": "medium",
@@ -115,12 +119,13 @@
       "theme": "Well-being",
       "count": 2,
       "severity_counts": {
-        "critical": 1,
-        "high": 1,
+        "low": 0,
         "medium": 0,
-        "low": 0
+        "high": 1,
+        "critical": 1
       },
       "avg_sentiment": -1.0,
+      "priority_score": 84,
       "examples": [
         {
           "severity": "critical",
@@ -136,12 +141,13 @@
       "theme": "Administration",
       "count": 2,
       "severity_counts": {
-        "critical": 0,
-        "high": 1,
+        "low": 1,
         "medium": 0,
-        "low": 1
+        "high": 1,
+        "critical": 0
       },
       "avg_sentiment": -0.5,
+      "priority_score": 44,
       "examples": [
         {
           "severity": "high",
@@ -157,12 +163,13 @@
       "theme": "Unclear",
       "count": 2,
       "severity_counts": {
-        "critical": 0,
-        "high": 0,
+        "low": 2,
         "medium": 0,
-        "low": 2
+        "high": 0,
+        "critical": 0
       },
       "avg_sentiment": 0.0,
+      "priority_score": 4,
       "examples": [
         {
           "severity": "low",
@@ -178,12 +185,13 @@
       "theme": "Internship Placement",
       "count": 1,
       "severity_counts": {
-        "critical": 0,
-        "high": 1,
+        "low": 0,
         "medium": 0,
-        "low": 0
+        "high": 1,
+        "critical": 0
       },
       "avg_sentiment": -1.0,
+      "priority_score": 82,
       "examples": [
         {
           "severity": "high",
