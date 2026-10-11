@@ -53,8 +53,8 @@ def update_summary_fields(
     Updates root-level fields and/or specific objects in summary_list within summary.json.
 
     :param root_updates: Dict of root keys to update (e.g. {"status": "healthy", "overall_summary": "New summary"})
-    :param item_updates: Dict or List[Dict] with target summary_id and fields to update 
-                        (e.g. {"summary_id": "sum_001", "summary": "Updated text", "topic": "Docker"})
+    :param item_updates: Dict or List[Dict] with target themes and fields to update 
+                        (e.g. {"themes": "theme_001", "summary": "Updated text", "topic": "Docker"})
     :param filename: Name of the JSON file (defaults to "summary.json")
     :param base_dir: Path to storage directory (defaults to "/data")
     """
@@ -88,23 +88,23 @@ def update_summary_fields(
             if not isinstance(update_payload, dict):
                 continue
 
-            target_id = update_payload.get("summary_id")
+            target_id = update_payload.get("themes")
             if not target_id:
-                logging.warning("Skipping update item missing 'summary_id'.")
+                logging.warning("Skipping update item missing 'themes'.")
                 continue
 
             # Find matching record in summary_list
             matched_item = next(
-                (item for item in summary_list if item.get("summary_id") == target_id),
+                (item for item in summary_list if item.get("themes") == target_id),
                 None
             )
 
             if matched_item:
-                # Update provided fields for matching summary_id
+                # Update provided fields for matching themes
                 for k, v in update_payload.items():
                     matched_item[k] = v
             else:
-                # If summary_id doesn't exist yet, append it as a new record
+                # If themes doesn't exist yet, append it as a new record
                 summary_list.append(update_payload)
 
     # 4. Automatically refresh timestamp
