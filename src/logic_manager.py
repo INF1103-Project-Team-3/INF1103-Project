@@ -221,26 +221,25 @@ if __name__ == "__main__":
     processed_feedbacks = [apply_feedback_rules(record) for record in records] #run through all the feedback and apply the rules to each record
     total_entries = len(processed_feedbacks)                                   
     counted_entries = len([r for r in processed_feedbacks if r["counted"]]) 
-    # for_review = review_feedbacks(processed_feedbacks) 
     aggregated_sentiment = aggregate_themes(processed_feedbacks)
-    
-    # with open("aggregated_output.json", "w") as f:
-    #     json.dump(aggregated_sentiment, f, indent=2)
-
     review_queue = rank_review_queue(processed_feedbacks) #filter out feedback that needs review
     write_json(OUTPUT_DIR / "aggregated_output.json", aggregated_sentiment)
     write_json(OUTPUT_DIR / "for_review.json", review_queue)
-    print(review_queue)
+    # print(review_queue)
     # review_queue = [r for r in processed_feedbacks if r["needs_review"]] 
-    # with open("for_review.json", "w") as f: #write the feedback that needs review to a json file
-    #     json.dump(review_queue, f, indent=2) 
+  
     print(f"Total: {total_entries}, Counted: {counted_entries}, Flagged for review: {len(review_queue)}")
-    # print(f"Total entries processed: {total_entries}")
-    # print(f"Entries counted (confidence >= {MIN_CONFIDENCE}): {counted_entries}")
+    assert total_entries == len(records),( #checks if the total number of entries matches the length of the records list, raises an assertion error if not
+    f"Total entries mismatch: total_entries={total_entries}, len(records)={len(records)}"
+    )
+    assert counted_entries <= total_entries, f"Counted entries ({counted_entries}) exceed total entries ({total_entries})" #checks if the counted entries are less than or equal to the total entries, raises an assertion error if not
+    ranks = [SEVERITY_RANK[r["severity"]] for r in review_queue]
+    assert ranks == sorted(ranks, reverse=True), "review queue not sorted critical-first" #checks if the review queue is sorted in descending order of severity, raises an assertion error if not
+    # within the same severity, themes must be grouped together in order
+    for earlier, later in zip(review_queue, review_queue[1:]): #checks if the themes are grouped together within the same severity, raises an assertion error if not
+        if earlier["severity"] == later["severity"]:
+            assert earlier["theme"] <= later["theme"], "themes not grouped within a severity"
+    print("All assertions passed.")
 
-
-
-#make a function to read json file, so dont need to import dictionary.
-#separate into smaller functions
 
 
