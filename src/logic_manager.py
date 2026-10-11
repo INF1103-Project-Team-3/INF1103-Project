@@ -34,8 +34,105 @@ ALLOWED_VALUES = {
 }
 ZERO_TO_ONE_FIELDS = ("confidence", "agreement")
  
- 
 
+# ---------------------------------------------------------------------------
+# Reading and writing JSON files
+# ---------------------------------------------------------------------------
+def read_json(path):
+    """Reads a JSON file and returns its contents (a dict or list)."""
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def write_json(path, data):
+    """Writes data to a JSON file, creating the parent folder if needed."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+def load_records(path=INPUT_FILE):
+    """Loads the AI's classified feedback from a JSON file. Accepts a plain
+    list of records, or a dict with the list under a "records" key. Only
+    the overall shape is checked here; each record is checked separately
+    by validate_record()."""
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Input file not found: {path}")
+    data = read_json(path)
+    if isinstance(data, dict) and "records" in data: #checks if the data is a dictionary and contains a "records" key, if so, it extracts the list of records from that key
+        data = data["records"]
+    if not isinstance(data, list) or not all(isinstance(r, dict) for r in data):
+        raise ValueError(f"{path.name} should contain a list of feedback records")
+    return data
+
+
+# ---------------------------------------------------------------------------
+# Validating the AI's output
+# ---------------------------------------------------------------------------
+def _matches_type(value, type_name):
+    """True if value is the kind of thing type_name describes."""
+    match type_name:
+        case "string":
+            return isinstance(value, str)
+        case "number":
+            # bool is a kind of int in Python, so True would otherwise pass
+            return isinstance(value, (int, float)) and not isinstance(value, bool)
+        case _:
+            raise ValueError(f"Unknown type name: {type_name}")
+
+def validate_record(record):
+    """Returns a list of problems with one record. An empty list means the
+    record is valid: every required field is present, has the right type,
+    uses an allowed value, and confidence/agreement are between 0 and 1."""
+    if not isinstance(record, dict):
+        return ["record is not a JSON object"]
+ 
+    problems = []
+    for field, type_name in REQUIRED_FIELDS.items():
+        if field not in record:
+            problems.append(f"missing field '{field}'")
+            continue
+        value = record[field]
+        if not _matches_type(value, type_name):
+            problems.append(
+                f"'{field}' should be a {type_name}, got {type(value).__name__}: {value!r}"
+            )
+        elif type_name == "string" and not value.strip():
+            problems.append(f"'{field}' is empty")
+        elif field in ALLOWED_VALUES and value not in ALLOWED_VALUES[field]:
+            problems.append(
+                f"'{field}' must be one of {ALLOWED_VALUES[field]}, got {value!r}"
+            )
+        elif field in ZERO_TO_ONE_FIELDS and not 0.0 <= value <= 1.0:
+            problems.append(f"'{field}' must be between 0.0 and 1.0, got {value}")
+    return problems
+
+
+def split_valid_records(records):
+    """Splits records into (valid, invalid). One bad record never stops the
+    rest. Each invalid entry keeps the original record and the reasons it
+    failed, so it can be inspected or sent back to the AI."""
+    valid, invalid = [], []
+    for index, record in enumerate(records):
+        problems = validate_record(record)
+        if problems:
+            invalid.append({
+                "index": index,
+                "feedback_id": record.get("feedback_id") if isinstance(record, dict) else None,
+                "problems": problems,
+                "record": record,
+            })
+        else:
+            valid.append(record)
+    return valid, invalid
+
+
+# ---------------------------------------------------------------------------
+# Theme normalisation
+# ---------------------------------------------------------------------------
+# Canonical theme -> alternative labels the AI might produce for it, written
+# in lowercase with spaces (see _clean_label). To support a new variant, add
+# it to the right list.
 THEME_ALIASES_BY_CANONICAL = {
     "Teaching Quality": [
         "teaching quality", "teaching", "teaching style", "teaching methods",
@@ -89,88 +186,19 @@ THEME_ALIASES_BY_CANONICAL = {
     ],
 }
 
-def read_json(path): #reads a json file
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
 
-def write_json(path, data): #writes a json file, creating the parent directory if it doesn't exist
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-
-def load_records(path=INPUT_FILE): #loads the AI's classified feedback from a JSON file. Accepts either a plain list of records, or a dict with the list under a "records" key.
-    path = Path(path)
-    if not path.exists():
-        raise FileNotFoundError(f"Input file not found: {path}")
-    data = read_json(path)
-    if isinstance(data, dict) and "records" in data: #checks if the data is a dictionary and contains a "records" key, if so, it extracts the list of records from that key
-        data = data["records"]
-    if not isinstance(data, list) or not all(isinstance(r, dict) for r in data):
-        raise ValueError(f"{path.name} should contain a list of feedback records")
-    return data
-
-def _matches_type(value, type_name):
-    """True if value is the kind of thing type_name describes."""
-    match type_name:
-        case "string":
-            return isinstance(value, str)
-        case "number":
-            # bool is a kind of int in Python, so True would otherwise pass
-            return isinstance(value, (int, float)) and not isinstance(value, bool)
-        case _:
-            raise ValueError(f"Unknown type name: {type_name}")
-
-def validate_record(record):
-    """Returns a list of problems with one record. An empty list means the
-    record is valid: every required field is present, has the right type,
-    uses an allowed value, and confidence/agreement are between 0 and 1."""
-    if not isinstance(record, dict):
-        return ["record is not a JSON object"]
- 
-    problems = []
-    for field, type_name in REQUIRED_FIELDS.items():
-        if field not in record:
-            problems.append(f"missing field '{field}'")
-            continue
-        value = record[field]
-        if not _matches_type(value, type_name):
-            problems.append(
-                f"'{field}' should be a {type_name}, got {type(value).__name__}: {value!r}"
-            )
-        elif type_name == "string" and not value.strip():
-            problems.append(f"'{field}' is empty")
-        elif field in ALLOWED_VALUES and value not in ALLOWED_VALUES[field]:
-            problems.append(
-                f"'{field}' must be one of {ALLOWED_VALUES[field]}, got {value!r}"
-            )
-        elif field in ZERO_TO_ONE_FIELDS and not 0.0 <= value <= 1.0:
-            problems.append(f"'{field}' must be between 0.0 and 1.0, got {value}")
-    return problems
-
-def split_valid_records(records):
-    """Splits records into (valid, invalid). One bad record never stops the
-    rest. Each invalid entry keeps the original record and the reasons it
-    failed, so it can be inspected or sent back to the AI."""
-    valid, invalid = [], []
-    for index, record in enumerate(records):
-        problems = validate_record(record)
-        if problems:
-            invalid.append({
-                "index": index,
-                "feedback_id": record.get("feedback_id") if isinstance(record, dict) else None,
-                "problems": problems,
-                "record": record,
-            })
-        else:
-            valid.append(record)
-    return valid, invalid
-
-def _clean_label(label: str) -> str: #Lowercases, turns hyphens/underscores/punctuation into spaces and collapses repeated spaces so 'Well-being', 'well_being' and'  WELL  being ' all become 'well being' before lookup.
+def _clean_label(label: str) -> str: 
+    """Lowercases, turns hyphens/underscores/punctuation into spaces and 
+    collapses repeated spaces so 'Well-being', 'well_being' and'  WELL  being ' 
+    all become 'well being' before lookup."""
     cleaned = "".join(ch if ch.isalnum() else " " for ch in label.lower())
     return " ".join(cleaned.split())
 
-def _build_alias_lookup(by_canonical: dict) -> dict: #flattens the grouped dictionary above into {alias: canonical}. Raises if one alias is listed under two themes, since the second one would otherwise silently overwrite the first and be very hard to spot.
+
+def _build_alias_lookup(by_canonical: dict) -> dict: 
+    """Flattens the grouped dictionary above into {alias: canonical}. Raises
+    if an alias is listed under two themes, since the second would silently
+    overwrite the first and be very hard to spot."""
     lookup = {}
     for canonical, aliases in by_canonical.items():
         for alias in [canonical] + aliases:
@@ -182,125 +210,106 @@ def _build_alias_lookup(by_canonical: dict) -> dict: #flattens the grouped dicti
             lookup[key] = canonical
     return lookup
 
+
 THEME_ALIASES = _build_alias_lookup(THEME_ALIASES_BY_CANONICAL)
 
-def normalise_theme(theme: str) -> str: #maps similar theme labels to a canonical name, so that the same underlying issue doesn't get split into separate buckets just because the AI phrased it differently. A label with no known alias is returned unchanged, so new themes still show up instead of being silently forced into a wrong bucket."
+
+def normalise_theme(theme: str) -> str: 
+    """Maps similar theme labels to a canonical name, so that the same underlying issue
+      doesn't get split into separate buckets just because the AI phrased it differently. 
+      A label with no known alias is returned unchanged, so new themes still show up 
+      instead of being silently forced into a wrong bucket."""
     return THEME_ALIASES.get(_clean_label(theme), theme.strip())
 
 
-def apply_feedback_rules(record): #checks if feedback is critical and if confidence is below threshold
+def apply_feedback_rules(record): 
+    """Normalises the theme and adds three fields: needs_review,
+    review_reason and counted. The record must already have passed
+    validate_record(), so every field is known to be present."""
     review = []
-    theme = normalise_theme(record.get("theme", "Unclear")) #normalises the theme of the feedback, if no theme is provided, it defaults to "Unclear"
-    severity = record.get("severity", "low") #set default severity to low if not provided
-    confidence = record.get("confidence", 0.0) #set default confidence to 0.0 if not provided
-    agreement = record.get("agreement", 1.0) #set default agreement to 1.0 if not provided
-
-    if severity == "critical": #checking if feedback is critical
+    if record["severity"] == "critical": #checking if feedback is critical
         review.append("Critical severity")
-    if confidence < MIN_CONFIDENCE: #checking if feedback is below confidence threshold
-        review.append(f"Confidence {confidence:.2f} is below threshold {MIN_CONFIDENCE}.")
-    if agreement < 1.0: #checking if feedback has low agreement
-        review.append(f"Agreement {agreement:.2f} - AI outputs did not fully agree.")
+    if record["confidence"] < MIN_CONFIDENCE: #checking if feedback is below confidence threshold
+        review.append(f"Confidence {record['confidence']:.2f} is below threshold {MIN_CONFIDENCE}.")
+    if record["agreement"] < 1.0: #checking if feedback has low agreement
+        review.append(f"Agreement {record['agreement']:.2f} - AI outputs did not fully agree.")
     return {
         **record,
-        "theme": theme, #update theme to default if missing or normalised if provided
-        "severity": severity, #update severity to default if missing
-        "confidence": confidence, #update confidence to default if missing
-        "agreement": agreement, #update agreement to default if missing
-        "counted": confidence >= MIN_CONFIDENCE and agreement >= 1.0, #feedback will be counted if confidence is above threshold 
-        "needs_review": len(review) > 0,  #feedback needs reviews if there are any review notes
-        "review_reason": review   
+        "theme": normalise_theme(record["theme"]),
+        # low-confidence or low-agreement feedback is reviewed, not counted
+        "counted": record["confidence"] >= MIN_CONFIDENCE and record["agreement"] >= 1.0,
+        "needs_review": len(review) > 0,
+        "review_reason": review,
     }
 
-def review_feedbacks(records): #this function is not currently used in the main block, but can be used in dashboard to generate a list of feedback that needs review
-    for_review = []
-    for record in records:
-        if record["needs_review"]: #check if feedback needs review
-            reasons = ", ".join(record["review_reason"]) #formatting the review reason
-            for_review.append(
-                f"Feedback ID {record['feedback_id']} needs review: {reasons}" #adding the feedback ID and reason to the for_review list
-            )
-    return for_review
 
-def rank_review_queue(records: list) -> list: #sort themes by urgency, then theme, then feedback_id. This is so that the most urgent feedback is at the top of the list, and feedback of the same theme is grouped together for easier review.
+def rank_review_queue(records: list) -> list: 
+    """Returns the records needing review in triage order: most severe first,
+    then grouped by theme, then by feedback_id so the order is stable."""
     queue = [r for r in records if r["needs_review"]]
     return sorted(
         queue,
         key=lambda r: (-SEVERITY_RANK[r["severity"]], r["theme"], r["feedback_id"]),
     )
 
-def theme_priority_score(theme: dict) -> int:  #combines severity mix, average sentiment, and frequency to give a 0-100 continuous priority score instead of needing to look at multiple metrics to determine which themes are most urgent. 
+
+def theme_priority_score(theme: dict) -> int:  
+    """combines severity mix (50 points), average sentiment (30 points), 
+    and frequency (20 points) to give a 0-100 continuous priority score 
+    instead of needing to look at multiple metrics to determine which themes 
+    are most urgent. Adjust the weights here to change what counts most."""
     severe_entries = theme["severity_counts"]["high"] + theme["severity_counts"]["critical"] #takes the number of high and critical severity feedbacks for that theme
     severity_ratio = severe_entries / theme["count"] if theme["count"] else 0
     negativity = max(0, -theme["avg_sentiment"])
     frequency_factor = min(theme["count"] / 10, 1.0)
- 
     score = (severity_ratio * 50) + (negativity * 30) + (frequency_factor * 20) #formula can be adjusted to change the weight of each factor, currently severity is weighted highest, then negativity, then frequency
     return round(score)
 
+
 def aggregate_themes(records):
-    themes = {} #intializing list to store different themes
-    counted = [r for r in records if r['counted']] #filter out low confidence feedback
-    sentiment_counts = { #initializing sentiment counts
-        "positive": 0,
-        "neutral": 0,
-        "negative": 0
-    }
-    severity_counts = { #initializing severity counts
-        "critical": 0,
-        "high": 0,
-        "medium": 0,
-        "low": 0
-    }
-    for record in counted: #loops through counted records only
-        sentiment = record["sentiment"]
-        severity = record["severity"]
-        
-        match sentiment: #total sentiment counter, score is 1 if positive, 0 if neutral, -1 if negative
-            case "positive":
-                sentiment_counts["positive"] += 1; score = 1 
-            case "neutral":
-                sentiment_counts["neutral"] += 1; score = 0
-            case "negative":
-                sentiment_counts["negative"] += 1; score = -1
-        match severity: #total severity counter
-            case "critical":
-                severity_counts["critical"] += 1
-            case "high":
-                severity_counts["high"] += 1
-            case "medium":
-                severity_counts["medium"] += 1
-            case "low":
-                severity_counts["low"] += 1
-        theme = themes.setdefault(normalise_theme(record["theme"]),{ #splitting up feedback by theme, so each theme has its own counters, general sentiment, and a list of all the feedback that falls under that theme
-            "theme": normalise_theme(record["theme"]),
+    """Groups the counted records by theme and returns the stats used for the
+    report. Expects records that went through apply_feedback_rules()."""
+    counted = [r for r in records if r["counted"]]
+    sentiment_counts = dict.fromkeys(SENTIMENT_SCORE, 0)
+    themes = {}
+
+    for record in counted:
+        sentiment_counts[record["sentiment"]] += 1
+        theme = themes.setdefault(record["theme"], {
+            "theme": record["theme"],
             "count": 0,
-            "severity_counts": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+            "severity_counts": dict.fromkeys(SEVERITY_RANK, 0),
             "sentiment_sum": 0,
             "feedbacks": [],
         })
         theme["count"] += 1
-        theme["severity_counts"][severity] += 1
-        theme["sentiment_sum"] += score
-        theme["feedbacks"].append({"severity": severity, "summary": record["summary"]})
-
+        theme["severity_counts"][record["severity"]] += 1
+        theme["sentiment_sum"] += SENTIMENT_SCORE[record["sentiment"]]
+        theme["feedbacks"].append({"severity": record["severity"], "summary": record["summary"]})
+ 
+    # second pass: the averages need each theme's final count
     theme_list = []
-    for theme in themes.values(): #loops through each theme and calculates the average sentiment score for that theme
-        theme["avg_sentiment"] = round(theme["sentiment_sum"] / theme["count"],2) #calculating the average sentiment score for each theme, rounded to 2 decimal places
+    for theme in themes.values():
+        theme["avg_sentiment"] = round(theme["sentiment_sum"] / theme["count"], 2)
         theme["priority_score"] = theme_priority_score(theme)
-        theme["examples"] = sorted(theme["feedbacks"], key=lambda x: SEVERITY_RANK[x["severity"]], reverse=True) #sorting the feedbacks by severity 
-        del theme["sentiment_sum"]  # Remove the temporary sentiment sum
-        del theme["feedbacks"]  # Remove the temporary feedbacks list
+        theme["examples"] = sorted(
+            theme["feedbacks"], key=lambda f: SEVERITY_RANK[f["severity"]], reverse=True
+        )
+        del theme["sentiment_sum"], theme["feedbacks"]
         theme_list.append(theme)
-    theme_list.sort(key=lambda t: t["count"], reverse=True) #most mentioned themes will be at the top of the list
+    theme_list.sort(key=lambda t: t["count"], reverse=True)  # most-mentioned first
+ 
     return {
         "total_entries": len(records),
         "counted_entries": len(counted),
         "sentiment_distribution": sentiment_counts,
         "themes": theme_list,
     }
-    # return sentiment_counts,severity_counts,themes
 
+
+# ---------------------------------------------------------------------------
+# Test runner: python src/logic_manager.py
+# ---------------------------------------------------------------------------
 def run_sanity_checks(processed_records, review_queue, expected_total):
     """Fails loudly if the results are inconsistent."""
     total = len(processed_records)
@@ -334,7 +343,7 @@ def main():
     review_queue = rank_review_queue(processed_feedbacks) #filter out feedback that needs review
     write_json(OUTPUT_DIR / "aggregated_output.json", aggregate_themes(processed_feedbacks)) #write the aggregated output to a json file
     write_json(OUTPUT_DIR / "for_review.json", review_queue)
-    
+
     counted = sum(r["counted"] for r in processed_feedbacks)
     print(f"Total: {len(processed_feedbacks)}, Counted: {counted}, "
             f"Flagged for review: {len(review_queue)}, Invalid: {len(invalid_records)}")
