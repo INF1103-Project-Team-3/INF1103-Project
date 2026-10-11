@@ -43,6 +43,96 @@ from typing import Any, Dict
 
 logging.basicConfig(level=logging.INFO)
 
+import json
+import logging
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+
+def _load_review_file(filepath: Path) -> Dict[str, Any]:
+    """Internal helper to load /data/for_review.json safely."""
+    if filepath.exists() and filepath.stat().st_size > 0:
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    if "records" not in data or not isinstance(data["records"], list):
+                        data["records"] = []
+                    return data
+                elif isinstance(data, list):
+                    return {"records": data}
+        except Exception as e:
+            logging.error("Failed to read '%s': %s", filepath, e)
+    return {"records": []}
+
+
+def _save_review_file(filepath: Path, data: Dict[str, Any]) -> bool:
+    """Internal helper to save /data/for_review.json safely."""
+    try:
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        logging.error("Failed to write to '%s': %s", filepath, e)
+        return False
+
+
+def update_review_entry(
+    feedback_id: str,
+    theme: Optional[str] = None,
+    severity: Optional[str] = None,
+    sentiment: Optional[str] = None,
+    filename: str = "for_review.json",
+    base_dir: str = "/data"
+) -> bool:
+    filepath = Path(base_dir) / filename
+    data = _load_review_file(filepath)
+    records = data.get("records", [])
+
+    found = False
+    for item in records:
+        if item.get("feedback_id") == feedback_id:
+            item["agreement"] = 1
+            item["confidence"] = 1
+
+            if theme is not None and theme.strip():
+                item["theme"] = theme.strip()
+            if severity is not None and severity.strip():
+                item["severity"] = severity.strip()
+            if sentiment is not None and sentiment.strip():
+                item["sentiment"] = sentiment.strip()
+
+            found = True
+            break
+
+    if not found:
+        logging.warning("Feedback ID '%s' not found in '%s'.", feedback_id, filepath)
+        return False
+
+    return _save_review_file(filepath, data)
+
+
+def delete_review_entry(
+    feedback_id: str,
+    filename: str = "for_review.json",
+    base_dir: str = "/data"
+) -> bool:
+    filepath = Path(base_dir) / filename
+    data = _load_review_file(filepath)
+    records = data.get("records", [])
+
+    initial_count = len(records)
+    data["records"] = [item for item in records if item.get("feedback_id") != feedback_id]
+
+    if len(data["records"]) == initial_count:
+        logging.warning("Feedback ID '%s' not found for deletion in '%s'.", feedback_id, filepath)
+        return False
+
+    return _save_review_file(filepath, data)
+
 def update_summary_fields(
     root_updates: Optional[Dict[str, Any]] = None,
     item_updates: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
