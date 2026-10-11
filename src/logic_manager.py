@@ -148,6 +148,23 @@ def validate_record(record):
             problems.append(f"'{field}' must be between 0.0 and 1.0, got {value}")
     return problems
 
+def split_valid_records(records):
+    """Splits records into (valid, invalid). One bad record never stops the
+    rest. Each invalid entry keeps the original record and the reasons it
+    failed, so it can be inspected or sent back to the AI."""
+    valid, invalid = [], []
+    for index, record in enumerate(records):
+        problems = validate_record(record)
+        if problems:
+            invalid.append({
+                "index": index,
+                "feedback_id": record.get("feedback_id") if isinstance(record, dict) else None,
+                "problems": problems,
+                "record": record,
+            })
+        else:
+            valid.append(record)
+    return valid, invalid
 
 def _clean_label(label: str) -> str: #Lowercases, turns hyphens/underscores/punctuation into spaces and collapses repeated spaces so 'Well-being', 'well_being' and'  WELL  being ' all become 'well being' before lookup.
     cleaned = "".join(ch if ch.isalnum() else " " for ch in label.lower())
@@ -286,9 +303,16 @@ def aggregate_themes(records):
 
 if __name__ == "__main__":
     records = load_records()
-    test_results = [validate_record(record) for record in records] #run through all the feedback and validate each record
-    print(f"Validation results: {test_results}")
-    processed_feedbacks = [apply_feedback_rules(record) for record in records] #run through all the feedback and apply the rules to each record
+    valid_records, invalid_records = split_valid_records(records)
+    write_json(OUTPUT_DIR / "invalid_records.json", invalid_records)
+    if invalid_records:
+        print(f"WARNING: {len(invalid_records)} of {len(records)} records failed "
+              f"validation and were skipped (see invalid_records.json):")
+        for item in invalid_records:
+            label = item["feedback_id"] or f"record #{item['index']}"
+            print(f"  {label}: {'; '.join(item['problems'])}")
+            
+    processed_feedbacks = [apply_feedback_rules(r) for r in valid_records] #run through all the feedback and apply the rules to each record
     total_entries = len(processed_feedbacks)                                   
     counted_entries = len([r for r in processed_feedbacks if r["counted"]]) 
     aggregated_sentiment = aggregate_themes(processed_feedbacks)
@@ -299,8 +323,8 @@ if __name__ == "__main__":
     # review_queue = [r for r in processed_feedbacks if r["needs_review"]] 
   
     print(f"Total: {total_entries}, Counted: {counted_entries}, Flagged for review: {len(review_queue)}")
-    assert total_entries == len(records),( #checks if the total number of entries matches the length of the records list, raises an assertion error if not
-    f"Total entries mismatch: total_entries={total_entries}, len(records)={len(records)}"
+    assert total_entries == len(valid_records),( #checks if the total number of entries matches the length of the records list, raises an assertion error if not
+    f"Total entries mismatch: total_entries={total_entries}, len(records)={len(valid_records)}"
     )
     assert counted_entries <= total_entries, f"Counted entries ({counted_entries}) exceed total entries ({total_entries})" #checks if the counted entries are less than or equal to the total entries, raises an assertion error if not
     ranks = [SEVERITY_RANK[r["severity"]] for r in review_queue]
