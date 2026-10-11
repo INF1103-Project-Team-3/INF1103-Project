@@ -316,7 +316,8 @@ def run_sanity_checks(processed_records, review_queue, expected_total):
         if earlier["severity"] == later["severity"]:
             assert earlier["theme"] <= later["theme"], "themes not grouped within a severity"
 
-if __name__ == "__main__":
+
+def main():
     records = load_records()
     valid_records, invalid_records = split_valid_records(records)
 
@@ -324,7 +325,7 @@ if __name__ == "__main__":
     write_json(OUTPUT_DIR / "invalid_records.json", invalid_records)
     if invalid_records:
         print(f"WARNING: {len(invalid_records)} of {len(records)} records failed "
-              f"validation and were skipped (see invalid_records.json):")
+                f"validation and were skipped (see invalid_records.json):")
         for item in invalid_records:
             label = item["feedback_id"] or f"record #{item['index']}"
             print(f"  {label}: {'; '.join(item['problems'])}")
@@ -333,12 +334,16 @@ if __name__ == "__main__":
     review_queue = rank_review_queue(processed_feedbacks) #filter out feedback that needs review
     write_json(OUTPUT_DIR / "aggregated_output.json", aggregate_themes(processed_feedbacks)) #write the aggregated output to a json file
     write_json(OUTPUT_DIR / "for_review.json", review_queue)
+    
     counted = sum(r["counted"] for r in processed_feedbacks)
     print(f"Total: {len(processed_feedbacks)}, Counted: {counted}, "
-          f"Flagged for review: {len(review_queue)}, Invalid: {len(invalid_records)}")
- 
+            f"Flagged for review: {len(review_queue)}, Invalid: {len(invalid_records)}")
+    
     run_sanity_checks(processed_feedbacks, review_queue, expected_total=len(valid_records))
     print("All assertions passed.")
+
+if __name__ == "__main__":
+    main()
   
     
 
