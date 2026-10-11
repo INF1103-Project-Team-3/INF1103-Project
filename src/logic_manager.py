@@ -1,11 +1,40 @@
 import json
 from pathlib import Path
-
+ 
+# ---------------------------------------------------------------------------
+# Settings
+# ---------------------------------------------------------------------------
 MIN_CONFIDENCE = 0.5
-SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3} #for sorting feedback by severity
+ 
+# Allowed values. The dict order is the display order (low -> critical).
+SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+SENTIMENT_SCORE = {"positive": 1, "neutral": 0, "negative": -1}
+ 
+# Paths are built from this file's location, so they work from any terminal
+# folder. logic_manager.py lives in src/, so two levels up is the repo root.
 REPO_ROOT = Path(__file__).resolve().parent.parent
-INPUT_FILE = REPO_ROOT / "config" / "test-output.json"   # AI output to read
-OUTPUT_DIR = REPO_ROOT / "output"    # scratch results (git-ignored)
+INPUT_FILE = REPO_ROOT / "config" / "test-output.json"
+OUTPUT_DIR = REPO_ROOT / "output"  # scratch results (git-ignored)
+ 
+# Every record from the AI must have these fields, with these types.
+REQUIRED_FIELDS = {
+    "feedback_id": "string",
+    "text": "string",
+    "timestamp": "string",
+    "theme": "string",
+    "sentiment": "string",
+    "severity": "string",
+    "summary": "string",
+    "confidence": "number",
+    "agreement": "number",
+}
+ALLOWED_VALUES = {
+    "sentiment": list(SENTIMENT_SCORE),
+    "severity": list(SEVERITY_RANK),
+}
+ZERO_TO_ONE_FIELDS = ("confidence", "agreement")
+ 
+ 
 
 THEME_ALIASES_BY_CANONICAL = {
     "Teaching Quality": [
@@ -80,6 +109,45 @@ def load_records(path=INPUT_FILE): #loads the AI's classified feedback from a JS
     if not isinstance(data, list) or not all(isinstance(r, dict) for r in data):
         raise ValueError(f"{path.name} should contain a list of feedback records")
     return data
+
+def _matches_type(value, type_name):
+    """True if value is the kind of thing type_name describes."""
+    match type_name:
+        case "string":
+            return isinstance(value, str)
+        case "number":
+            # bool is a kind of int in Python, so True would otherwise pass
+            return isinstance(value, (int, float)) and not isinstance(value, bool)
+        case _:
+            raise ValueError(f"Unknown type name: {type_name}")
+
+def validate_record(record):
+    """Returns a list of problems with one record. An empty list means the
+    record is valid: every required field is present, has the right type,
+    uses an allowed value, and confidence/agreement are between 0 and 1."""
+    if not isinstance(record, dict):
+        return ["record is not a JSON object"]
+ 
+    problems = []
+    for field, type_name in REQUIRED_FIELDS.items():
+        if field not in record:
+            problems.append(f"missing field '{field}'")
+            continue
+        value = record[field]
+        if not _matches_type(value, type_name):
+            problems.append(
+                f"'{field}' should be a {type_name}, got {type(value).__name__}: {value!r}"
+            )
+        elif type_name == "string" and not value.strip():
+            problems.append(f"'{field}' is empty")
+        elif field in ALLOWED_VALUES and value not in ALLOWED_VALUES[field]:
+            problems.append(
+                f"'{field}' must be one of {ALLOWED_VALUES[field]}, got {value!r}"
+            )
+        elif field in ZERO_TO_ONE_FIELDS and not 0.0 <= value <= 1.0:
+            problems.append(f"'{field}' must be between 0.0 and 1.0, got {value}")
+    return problems
+
 
 def _clean_label(label: str) -> str: #Lowercases, turns hyphens/underscores/punctuation into spaces and collapses repeated spaces so 'Well-being', 'well_being' and'  WELL  being ' all become 'well being' before lookup.
     cleaned = "".join(ch if ch.isalnum() else " " for ch in label.lower())
@@ -218,6 +286,8 @@ def aggregate_themes(records):
 
 if __name__ == "__main__":
     records = load_records()
+    test_results = [validate_record(record) for record in records] #run through all the feedback and validate each record
+    print(f"Validation results: {test_results}")
     processed_feedbacks = [apply_feedback_rules(record) for record in records] #run through all the feedback and apply the rules to each record
     total_entries = len(processed_feedbacks)                                   
     counted_entries = len([r for r in processed_feedbacks if r["counted"]]) 
