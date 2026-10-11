@@ -301,9 +301,26 @@ def aggregate_themes(records):
     }
     # return sentiment_counts,severity_counts,themes
 
+def run_sanity_checks(processed_records, review_queue, expected_total):
+    """Fails loudly if the results are inconsistent."""
+    total = len(processed_records)
+    counted = sum(r["counted"] for r in processed_records)
+    assert total == expected_total, (
+        f"Total entries mismatch: total_entries={total}, expected={expected_total}"
+    )
+    assert counted <= total, f"Counted entries ({counted}) exceed total entries ({total})"
+ 
+    ranks = [SEVERITY_RANK[r["severity"]] for r in review_queue]
+    assert ranks == sorted(ranks, reverse=True), "review queue not sorted critical-first"
+    for earlier, later in zip(review_queue, review_queue[1:]):
+        if earlier["severity"] == later["severity"]:
+            assert earlier["theme"] <= later["theme"], "themes not grouped within a severity"
+
 if __name__ == "__main__":
     records = load_records()
     valid_records, invalid_records = split_valid_records(records)
+
+    # always written, so the file never shows results from an older run
     write_json(OUTPUT_DIR / "invalid_records.json", invalid_records)
     if invalid_records:
         print(f"WARNING: {len(invalid_records)} of {len(records)} records failed "
@@ -313,27 +330,17 @@ if __name__ == "__main__":
             print(f"  {label}: {'; '.join(item['problems'])}")
             
     processed_feedbacks = [apply_feedback_rules(r) for r in valid_records] #run through all the feedback and apply the rules to each record
-    total_entries = len(processed_feedbacks)                                   
-    counted_entries = len([r for r in processed_feedbacks if r["counted"]]) 
-    aggregated_sentiment = aggregate_themes(processed_feedbacks)
     review_queue = rank_review_queue(processed_feedbacks) #filter out feedback that needs review
-    write_json(OUTPUT_DIR / "aggregated_output.json", aggregated_sentiment)
+    write_json(OUTPUT_DIR / "aggregated_output.json", aggregate_themes(processed_feedbacks)) #write the aggregated output to a json file
     write_json(OUTPUT_DIR / "for_review.json", review_queue)
-    # print(review_queue)
-    # review_queue = [r for r in processed_feedbacks if r["needs_review"]] 
-  
-    print(f"Total: {total_entries}, Counted: {counted_entries}, Flagged for review: {len(review_queue)}")
-    assert total_entries == len(valid_records),( #checks if the total number of entries matches the length of the records list, raises an assertion error if not
-    f"Total entries mismatch: total_entries={total_entries}, len(records)={len(valid_records)}"
-    )
-    assert counted_entries <= total_entries, f"Counted entries ({counted_entries}) exceed total entries ({total_entries})" #checks if the counted entries are less than or equal to the total entries, raises an assertion error if not
-    ranks = [SEVERITY_RANK[r["severity"]] for r in review_queue]
-    assert ranks == sorted(ranks, reverse=True), "review queue not sorted critical-first" #checks if the review queue is sorted in descending order of severity, raises an assertion error if not
-    # within the same severity, themes must be grouped together in order
-    for earlier, later in zip(review_queue, review_queue[1:]): #checks if the themes are grouped together within the same severity, raises an assertion error if not
-        if earlier["severity"] == later["severity"]:
-            assert earlier["theme"] <= later["theme"], "themes not grouped within a severity"
+    counted = sum(r["counted"] for r in processed_feedbacks)
+    print(f"Total: {len(processed_feedbacks)}, Counted: {counted}, "
+          f"Flagged for review: {len(review_queue)}, Invalid: {len(invalid_records)}")
+ 
+    run_sanity_checks(processed_feedbacks, review_queue, expected_total=len(valid_records))
     print("All assertions passed.")
+  
+    
 
 
 
