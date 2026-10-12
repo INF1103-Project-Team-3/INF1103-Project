@@ -1,11 +1,12 @@
 import json
+from datetime import datetime
 from pathlib import Path
  
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------
 MIN_CONFIDENCE = 0.5
- 
+
 # Allowed values. The dict order is the display order (low -> critical).
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 SENTIMENT_SCORE = {"positive": 1, "neutral": 0, "negative": -1}
@@ -50,7 +51,7 @@ def write_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
-def load_records(path=INPUT_FILE):
+def load_records(path: str | Path = INPUT_FILE) -> list:
     """Loads the AI's classified feedback from a JSON file. Accepts a plain
     list of records, or a dict with the list under a "records" key. Only
     the overall shape is checked here; each record is checked separately
@@ -59,9 +60,12 @@ def load_records(path=INPUT_FILE):
     if not path.exists():
         raise FileNotFoundError(f"Input file not found: {path}")
     data = read_json(path)
-    if isinstance(data, dict) and "records" in data: #checks if the data is a dictionary and contains a "records" key, if so, it extracts the list of records from that key
+    # the file may be {"records": [...]} instead of a plain list
+    if isinstance(data, dict) and "records" in data:
         data = data["records"]
-    if not isinstance(data, list) or not all(isinstance(r, dict) for r in data):
+    # individual records are checked later by validate_record(), so one bad
+    # entry doesn't stop the whole file from loading
+    if not isinstance(data, list):
         raise ValueError(f"{path.name} should contain a list of feedback records")
     return data
 
@@ -105,6 +109,13 @@ def validate_record(record):
             )
         elif field in ZERO_TO_ONE_FIELDS and not 0.0 <= value <= 1.0:
             problems.append(f"'{field}' must be between 0.0 and 1.0, got {value}")
+ 
+    timestamp = record.get("timestamp")
+    if isinstance(timestamp, str) and timestamp.strip():
+        try:
+            datetime.fromisoformat(timestamp)
+        except ValueError:
+            problems.append(f"'timestamp' is not a valid ISO date-time, got {timestamp!r}")
     return problems
 
 
@@ -113,8 +124,14 @@ def split_valid_records(records):
     rest. Each invalid entry keeps the original record and the reasons it
     failed, so it can be inspected or sent back to the AI."""
     valid, invalid = [], []
+    seen_ids = set()
     for index, record in enumerate(records):
         problems = validate_record(record)
+        if not problems:
+            # a repeated id would be counted twice; the first one is kept
+            if record["feedback_id"] in seen_ids:
+                problems.append(f"duplicate feedback_id '{record['feedback_id']}'")
+            seen_ids.add(record["feedback_id"])
         if problems:
             invalid.append({
                 "index": index,
