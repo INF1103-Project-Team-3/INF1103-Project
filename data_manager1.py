@@ -85,6 +85,48 @@ def _save_review_file(filepath: Path, data: Dict[str, Any]) -> bool:
         logging.error("Failed to write to '%s': %s", filepath, e)
         return False
 
+def _append_to_processed_feedback(
+    record: Dict[str, Any],
+    filename: str = "processed_feedback.json",
+    base_dir: str = "/data"
+) -> bool:
+    """Internal helper to safely append an updated record into processed_feedback.json and global memory."""
+    global records_store
+    
+    # Update global in-memory store
+    if "records_store" in globals():
+        records_store.append(record)
+
+    filepath = Path(base_dir) / filename
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+
+    existing_store: Dict[str, Any] = {"records": []}
+
+    # Load existing records if processed_feedback.json exists
+    if filepath.exists() and filepath.stat().st_size > 0:
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict) and "records" in data:
+                    existing_store = data
+                elif isinstance(data, list):
+                    existing_store = {"records": data}
+        except Exception as e:
+            logging.warning("Failed to read '%s': %s. Initializing fresh store.", filepath, e)
+
+    # Append updated record
+    existing_store.setdefault("records", []).append(record)
+
+    # Save back to processed_feedback.json
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(existing_store, f, indent=2, ensure_ascii=False)
+        logging.info("Updated record '%s' appended to '%s'.", record.get("feedback_id"), filepath)
+        return True
+    except Exception as e:
+        logging.error("Failed to append record to '%s': %s", filepath, e)
+        return False
+
 
 def update_review_entry(
     feedback_id: str,
@@ -94,11 +136,16 @@ def update_review_entry(
     filename: str = "for_review.json",
     base_dir: str = "/data"
 ) -> bool:
+    """
+    Updates an item in for_review.json by feedback_id, sets agreement/confidence to 1,
+    saves for_review.json, and appends the updated entry into processed_feedback.json.
+    """
     filepath = Path(base_dir) / filename
     data = _load_review_file(filepath)
     records = data.get("records", [])
 
-    found = False
+    updated_record: Optional[Dict[str, Any]] = None
+
     for item in records:
         if item.get("feedback_id") == feedback_id:
             item["agreement"] = 1
@@ -111,15 +158,21 @@ def update_review_entry(
             if sentiment is not None and sentiment.strip():
                 item["sentiment"] = sentiment.strip()
 
-            found = True
+            updated_record = dict(item)  # Snapshot copy of updated item
             break
 
-    if not found:
+    if not updated_record:
         logging.warning("Feedback ID '%s' not found in '%s'.", feedback_id, filepath)
         return False
 
-    return _save_review_file(filepath, data)
+    # 1. Save updated review entry back to for_review.json
+    saved_review = _save_review_file(filepath, data)
+    if not saved_review:
+        logging.error("Failed to save changes to '%s'. Skipping append to processed_feedback.json.", filepath)
+        return False
 
+    # 2. Append the updated record to processed_feedback.json
+    return _append_to_processed_feedback(updated_record, filename="processed_feedback.json", base_dir=base_dir)
 
 def delete_review_entry(
     feedback_id: str,
@@ -451,6 +504,7 @@ def aggregate_themes(
 
     # 4. Save to disk via persist helper
     return _persist_aggregated_output(filename=filename, base_dir=base_dir)
+
 def _persist_to_file(filename: str = "processed_feedback.json", base_dir: str = "/data") -> bool:
     """Internal helper to write the current global records_store to disk."""
     filepath = Path(base_dir) / filename
