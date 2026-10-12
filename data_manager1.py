@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 # ==========================================
 # MODULE STATE & CONFIGURATION
 # ==========================================
-JSON_STORAGE_PATH = Path(os.getenv("JSON_STORAGE_PATH", "/data/feedback_store.json"))
+JSON_STORAGE_PATH = Path(os.getenv("JSON_STORAGE_PATH", "/data/aggregated_output.json"))
 SUMMARY_STORAGE_PATH = Path(os.getenv("SUMMARY_STORAGE_PATH", "/data/summary.json"))
 
 # Global states to hold current information in memory
@@ -20,7 +20,7 @@ records_store: List[Dict[str, Any]] = []
 summary_store: Dict[str, Any] = {}
 
 
-def init_manager(storage_path: str = "/data/feedback_store.json") -> None:
+def init_manager(storage_path: str = "/data/aggregated_output.json") -> None:
     """Initializes paths and populates memory state from disk."""
     global JSON_STORAGE_PATH, SUMMARY_STORAGE_PATH
     
@@ -178,14 +178,14 @@ def update_summary_fields(
             if not isinstance(update_payload, dict):
                 continue
 
-            target_id = update_payload.get("themes")
+            target_id = update_payload.get("theme")
             if not target_id:
-                logging.warning("Skipping update item missing 'themes'.")
+                logging.warning("Skipping update item missing 'theme'.")
                 continue
 
             # Find matching record in summary_list
             matched_item = next(
-                (item for item in summary_list if item.get("themes") == target_id),
+                (item for item in summary_list if item.get("theme") == target_id),
                 None
             )
 
@@ -264,53 +264,66 @@ def save_to_feedback_before_ai(
     return True
 
 def receive_ai_input(raw_ai_text: str) -> Union[Dict[str, Any], List[Any]]:
-    """Receives raw JSON text from the AI Manager and logs it sequentially."""
+    """
+    Receives raw JSON text from the AI Manager, strips markdown code blocks,
+    and appends the parsed payload into classified_output.json.
+    """
+    # 1. Clean markdown code blocks if present
     cleaned_text = raw_ai_text.strip()
     if cleaned_text.startswith("```json"):
         cleaned_text = cleaned_text.replace("```json", "", 1).rstrip("`").strip()
     elif cleaned_text.startswith("```"):
         cleaned_text = cleaned_text.replace("```", "", 1).rstrip("`").strip()
 
+    # 2. Parse raw string into valid JSON
     try:
         parsed_data = json.loads(cleaned_text)
     except json.JSONDecodeError as e:
         logging.error("Text structural validation failed on AI output: %s", e)
         raise ValueError(f"[Data Manager Error] AI text is not valid JSON: {e}")
 
-    folder = JSON_STORAGE_PATH.parent
-    next_index = 1
+    # 3. Target directory (uses environment variable DATA_DIR, defaults to ./data)
+    base_dir = os.getenv("DATA_DIR", "./data")
+    file_path = Path(base_dir) / "classified_output.json"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if folder.exists():
-        existing_files = folder.glob("ai_output_*.json")
-        existing_numbers = []
+    # 4. Load existing records or initialize empty structure
+    existing_store: Dict[str, Any] = {"records": []}
 
-        for file in existing_files:
-            try:
-                num_part = file.stem.split("_")[-1]
-                existing_numbers.append(int(num_part))
-            except (ValueError, IndexError):
-                continue
+    if file_path.exists() and file_path.stat().st_size > 0:
+        try:
+            with open(file_path, "r", encoding="utf-8") as file:
+                data = json.load(file)
+                if isinstance(data, dict) and "records" in data:
+                    existing_store = data
+                elif isinstance(data, list):
+                    existing_store = {"records": data}
+        except Exception as e:
+            logging.warning("Could not read '%s' (%s). Initializing fresh store.", file_path, e)
 
-        if existing_numbers:
-            next_index = max(existing_numbers) + 1
+    # 5. Append new AI payload (handles single dict or list of dicts)
+    records = existing_store.get("records", [])
+    if isinstance(parsed_data, list):
+        records.extend(parsed_data)
+    else:
+        records.append(parsed_data)
 
-    filename = f"ai_output_{next_index}.json"
-    file_path = folder / filename
+    existing_store["records"] = records
 
+    # 6. Write back to file
     try:
         with open(file_path, "w", encoding="utf-8") as file:
-            json.dump(parsed_data, file, indent=4, ensure_ascii=False)
-        logging.info("AI operational stream successfully logged to disk -> %s", file_path)
+            json.dump(existing_store, file, indent=4, ensure_ascii=False)
+        logging.info("AI operational stream successfully appended to disk -> %s", file_path.resolve())
     except IOError as e:
         logging.warning("Disk write interrupted but operational stream intact: %s", e)
 
     return parsed_data
 
-
 def save_feedback_dict(feedback_dict: Dict[str, Any]) -> bool:
     """
     Receives a single feedback dictionary or a list of feedback dictionaries,
-    appends them to global memory, and persists them into /data/feedback_store.json.
+    appends them to global memory, and persists them into /data/aggregated_output.json.
     """
     global records_store
 
@@ -327,14 +340,14 @@ def save_feedback_dict(feedback_dict: Dict[str, Any]) -> bool:
         logging.error("Invalid data type passed. Expected dict or list of dicts.")
         return False
 
-    # 3. Persist updated memory state to disk (/data/feedback_store.json)
+    # 3. Persist updated memory state to disk (/data/aggregated_output.json)
     success = _persist_to_file()
     if success:
         logging.info("Feedback dictionary successfully converted to JSON and stored.")
     return success
 
 def _persist_to_file() -> bool:
-    """Saves current global feedback records into feedback_store.json."""
+    """Saves current global feedback records into aggregated_output.json."""
     try:
         payload = {
             "records": records_store
@@ -359,7 +372,7 @@ def load_feedback_records() -> List[Dict[str, Any]]:
 
             # Handle Dict Root: {"records": [...]}
             if isinstance(data, dict):
-                records_store = data.get("records", []) or data.get("feedback_store", [])
+                records_store = data.get("records", []) or data.get("aggregated_output", [])
             # Handle List Root: [...]
             elif isinstance(data, list):
                 records_store = data
@@ -491,8 +504,8 @@ def search_records(query_text: str) -> List[Dict[str, Any]]:
 #     # ===================================================================
     
 #     # 1. Initialize your DataManager path config pointing to your target folder path
-#     # If you run this inside Docker, change it back to "/data/feedback_store.json"
-#     init_manager(storage_path="./data/feedback_store.json")
+#     # If you run this inside Docker, change it back to "/data/aggregated_output.json"
+#     init_manager(storage_path="./data/aggregated_output.json")
 
 #     # 2. Simulate raw markdown text received from your AI Manager call
 #     simulated_ai_output = """
@@ -531,11 +544,11 @@ def search_records(query_text: str) -> List[Dict[str, Any]]:
 # ==========================================
 
 if __name__ == "__main__":
-    init_manager("/data/feedback_store.json")
+    init_manager("/data/aggregated_output.json")
 
     # Don't hard-exit if records_store is empty so you can still add records!
     if not records_store:
-        print("\n[NOTICE] No records found in /data/feedback_store.json. You can start adding new entries!")
+        print("\n[NOTICE] No records found in /data/aggregated_output.json. You can start adding new entries!")
     else:
         print(f"\nSuccessfully loaded {len(records_store)} feedback items from storage.")
 
@@ -603,7 +616,7 @@ if __name__ == "__main__":
 
             success = save_feedback_dict(new_feedback_dict)
             if success:
-                print(f"Successfully added and saved feedback into /data/feedback_store.json!")
+                print(f"Successfully added and saved feedback into /data/aggregated_output.json!")
                 print(f"Current Record Count: {len(records_store)}")
             else:
                 print("Failed to save feedback.")
