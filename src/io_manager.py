@@ -20,16 +20,14 @@ MAX_TEXT_LENGTH = 2000
 PAYLOAD_MIME = "application/json"
 PAYLOAD_EXT = ".json"
 
-DATA_DIRECTORY = "data"                       # where the output files are saved
+DATA_DIRECTORY = "data"                      # where the output files are saved
 TEST_INPUT_FILE = "test-input.json"          # single entries are saved here
 AGGREGATED_FILE = "aggregated_output.json"   # theme table data
-SUMMARY_FILE = "summary-output.json"         # overall + suggested actions data
 REVIEW_FILE = "for_review.json"              # for review files
 
 # Display formatting for the dashboard.
 WIDTH = 68
 COLUMN_THEME = 22
-PRIORITY_THRESHOLD = 3      # A theme is PRIORITY if it has any high/critical entry
 
 # Review queue display.
 REVIEW_LABEL_WIDTH = 16     # "low_confidence" column
@@ -216,7 +214,7 @@ def print_rows(title, rows):
  
 def validate_and_report(rows):
     """Validate rows from a JSON file or the converted CSV and print what
-    passed or failed.
+    passed or failed (only rejected rows are listed).
 
     Returns the accepted rows as a payload, or None if none were valid.
     """
@@ -229,7 +227,6 @@ def validate_and_report(rows):
             accepted.append(entry)
 
     print_block(f"Validated {len(accepted)} of {len(rows)} row(s).")
-    print_rows("Accepted rows:", accepted)
     print_rows("Rejected rows:", [f"Row {i}: {error}" for i, error in rejected])
 
     return entries_to_payload(accepted) if accepted else None
@@ -344,23 +341,12 @@ def clean(text):
                 .replace("\u2014", "-"))
 
 
-def load_dashboard_data(path):
-    """Load a JSON file; return None if missing or unreadable."""
-    if not os.path.exists(path):
-        print_block(f"{path} not found.")
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, OSError):
-        print_block(f"Could not read {path}.")
-        return None
-
-
-def print_dashboard_header(agg, summary, review_count):
+def print_dashboard_header(agg, summary, review_count, both_count=0):
     """Print the title line with entry counts, then the overall summary: one bullet per sentence."""
     print_block(f"FEEDBACK DASHBOARD    entries: {agg['total_entries']}   "
                 f"counted: {agg['counted_entries']}   for review: {review_count}")
+    if both_count:
+        print_out(f"  {both_count} critical entries are in both: counted and for review")
     print_out("=" * WIDTH)
 
     overall = clean(summary.get("overall_summary", ""))
@@ -372,25 +358,23 @@ def print_dashboard_header(agg, summary, review_count):
 
 
 def build_theme_rows(agg):
-    """Return (theme, urgent_count, is_priority) rows: priority first, then by count."""
+    """Return (theme, urgent_count) rows in the same order as the JSON file."""
     rows = []
     for t in agg["themes"]:
         sev = t["severity_counts"]
         urgent = sev["critical"] + sev["high"]
-        is_priority = sev["critical"] > 0 or urgent >= PRIORITY_THRESHOLD
-        rows.append((t, urgent, is_priority))
-    rows.sort(key=lambda r: (not r[2], -r[0]["count"]))
+        rows.append((t, urgent))
     return rows
 
 
 def print_theme_table(rows):
     """Print the theme table from rows made by build_theme_rows."""
     print_block("THEMES")
-    print_out(f"{'THEME':<{COLUMN_THEME}}{'COUNT':>5}  {'AVG SENT':>8}  {'HIGH+CRIT':>9}  PRIORITY")
+    print_out(f"{'THEME':<{COLUMN_THEME}}{'COUNT':>5}  {'AVG SENT':>8}  {'HIGH+CRIT':>9}  {'PRIORITY':>8}")
     print_out("-" * WIDTH)
-    for t, urgent, is_priority in rows:
+    for t, urgent in rows:
         print_out(f"{t['theme']:<{COLUMN_THEME}}{t['count']:>5}  {t['avg_sentiment']:>8.2f}  "
-                  f"{urgent:>9}  {'YES' if is_priority else 'no'}")
+                  f"{urgent:>9}  {t['priority_score']:>8}")
 
 
 def print_suggested_actions(summary, rows):
@@ -403,7 +387,7 @@ def print_suggested_actions(summary, rows):
 
     print_block("SUGGESTED ACTIONS")
     print_out("-" * WIDTH)
-    for t, _, _ in rows:
+    for t, _ in rows:
         if t["theme"] in actions:
             print_out(textwrap.fill(clean(actions[t["theme"]]), width=WIDTH,
                                     initial_indent=f"{t['theme']:<{COLUMN_THEME}}",
@@ -414,13 +398,18 @@ def display_dashboard():
     """Load the output files and print the dashboard, then the review queue."""
     pending = load_review_queue()
 
-    agg = load_dashboard_data(data_path(AGGREGATED_FILE))
-    if agg is not None:
-        summary = load_dashboard_data(data_path(SUMMARY_FILE)) or {}
+    agg = data_manager1.load_aggregated_output(filename=AGGREGATED_FILE,
+                                               base_dir=DATA_DIRECTORY)
+    if agg.get("themes"):
+        summary = data_manager1.load_summary()
         rows = build_theme_rows(agg)
-        print_dashboard_header(agg, summary, len(pending))
+        both = sum(1 for r in pending
+                   if r.get("counted") and review_label(r) == "critical")
+        print_dashboard_header(agg, summary, len(pending), both)
         print_theme_table(rows)
         print_suggested_actions(summary, rows)
+    else:
+        print_block("No aggregated data yet.")
 
     print_review_queue(pending)
     offer_review(pending)
@@ -536,7 +525,7 @@ def prompt_review_action():
     return prompt_until_valid("  [u]pdate, [d]elete, [s]kip (quit to stop): ", check)
 
 
-def _field_check(options):
+def field_check(options):
     """Validator for one update field. Blank is allowed: keeps the current value."""
     def check(text):
         text = text.strip()
@@ -560,7 +549,7 @@ def review_update(record):
                            ("severity", SEVERITY_LEVELS),
                            ("sentiment", SENTIMENTS)):
         value = prompt_until_valid(f"  New {field} [{record.get(field, '')}]: ",
-                                   _field_check(options))
+                                   field_check(options))
         if value is None:   # quit
             print_block("Update cancelled.")
             return
@@ -661,7 +650,7 @@ def run_admin_import():
     """
     print_block()
     while True:
-        name = _prompt(f"CSV or JSON file in '{DATA_DIRECTORY}' (or 'quit' to cancel): ")
+        name = _prompt(f"Enter path of CSV or JSON file (or 'quit' to cancel): ")
         if name is None:
             print_block("Cancelled.")
             return None
@@ -728,3 +717,4 @@ def main():
  
 if __name__ == "__main__":
     main()
+
