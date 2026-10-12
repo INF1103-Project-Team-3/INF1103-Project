@@ -22,7 +22,8 @@ PAYLOAD_EXT = ".json"
 
 DATA_DIRECTORY = "data"                      # where the output files are saved
 TEST_INPUT_FILE = "test-input.json"          # single entries are saved here
-AGGREGATED_FILE = "aggregated_output.json"   # theme table data
+AGGREGATED_FILE = "processed_feedback.json"  # theme table data
+SUMMARY_FILE = "data/summary.json"  
 REVIEW_FILE = "for_review.json"              # for review files
 
 # Display formatting for the dashboard.
@@ -700,6 +701,37 @@ def run_role_flow(role):
     print_block("--- Feedback ---")
     return run_single_entry()
 
+# ---------------------------------------------------------------------------
+# Printing notices
+# ---------------------------------------------------------------------------
+
+def print_no_unclassified_notice():
+    print_block("""
+    ➔ NOTICE: No unclassified records detected in cache.
+    Nothing new to process. Exiting runtime.
+    """)
+
+def print_connection_notice():
+    print_block(f"""
+    ==========================================================================
+    CONNECTING TO API & RUNNING
+    ==========================================================================
+    """)
+
+def print_compilation_notice():
+    print_block(f"""
+    ==========================================================================
+    COMPILING RESULTS AND AGGREGATING THEMES
+    ==========================================================================
+    """)
+
+def print_ai_request_notice():
+    print_block("===========Requesting summary from AI===============")
+
+def print_goodbye():
+    print_block("Thank you for using Feedback Manager. Goodbye.")
+
+
 
 def main():
     """Run the session. Returns the payload or None."""
@@ -711,7 +743,6 @@ def main():
         return None
  
     payload = run_role_flow(role)
-    print_block("Thank you for using Feedback Manager. Goodbye.")
     return payload
  
  
