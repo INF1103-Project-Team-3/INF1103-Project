@@ -141,31 +141,41 @@ def update_summary_fields(
 ) -> bool:
     """
     Updates root-level fields and/or specific objects in summary_list within summary.json.
+    Creates the file with a default template if it does not exist.
 
     :param root_updates: Dict of root keys to update (e.g. {"status": "healthy", "overall_summary": "New summary"})
     :param item_updates: Dict or List[Dict] with target themes and fields to update 
-                        (e.g. {"themes": "theme_001", "summary": "Updated text", "topic": "Docker"})
+                        (e.g. {"theme": "Docker Setup", "summary": "Updated text"})
     :param filename: Name of the JSON file (defaults to "summary.json")
     :param base_dir: Path to storage directory (defaults to "/data")
     """
     filepath = Path(base_dir) / filename
 
-    # 1. Load existing data from file
+    # 1. Load existing data OR initialize a fresh dictionary if file does not exist
     data: Dict[str, Any] = {}
     if filepath.exists() and filepath.stat().st_size > 0:
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except Exception as e:
-            logging.error("Failed to read '%s': %s", filepath, e)
-            return False
+            logging.error("Failed to read '%s': %s. Re-initializing new file.", filepath, e)
+            data = {}
+
+    # Initial default structure if the file was just created
+    if not data:
+        data = {
+            "total_records": 0,
+            "status": "healthy",
+            "summary_list": [],
+            "overall_summary": "Initial summary created."
+        }
 
     # 2. Update Top-Level Root Fields
     if root_updates and isinstance(root_updates, dict):
         for key, value in root_updates.items():
             data[key] = value
 
-    # 3. Update Item(s) inside summary_list by summary_id
+    # 3. Update Item(s) inside summary_list by theme
     if item_updates:
         updates_list = [item_updates] if isinstance(item_updates, dict) else item_updates
 
@@ -190,27 +200,32 @@ def update_summary_fields(
             )
 
             if matched_item:
-                # Update provided fields for matching themes
+                # Update provided fields for matching theme
                 for k, v in update_payload.items():
                     matched_item[k] = v
             else:
-                # If themes doesn't exist yet, append it as a new record
+                # If theme doesn't exist yet, append it as a new record
                 summary_list.append(update_payload)
+
+    # Automatically keep total_records in sync with summary_list length
+    if "summary_list" in data and isinstance(data["summary_list"], list):
+        data["total_records"] = len(data["summary_list"])
 
     # 4. Automatically refresh timestamp
     data["last_updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
 
-    # 5. Save updated dictionary back to summary.json
+    # 5. Save/Create file on disk
     try:
         filepath.parent.mkdir(parents=True, exist_ok=True)
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        logging.info("Successfully updated fields in '%s'.", filepath)
+        logging.info("Successfully saved and updated fields in '%s'.", filepath)
         return True
     except Exception as e:
         logging.error("Failed to write to '%s': %s", filepath, e)
         return False
 
+    
 def load_or_create_feedback_before_ai(
     filename: str = "feedback_before_ai.json", 
     base_dir: str = "/data"
