@@ -18,6 +18,12 @@ SUMMARY_STORAGE_PATH = Path(os.getenv("SUMMARY_STORAGE_PATH", "/data/summary.jso
 # Global states to hold current information in memory
 records_store: List[Dict[str, Any]] = [] 
 summary_store: Dict[str, Any] = {}
+aggregated_store: Dict[str, Any] = {
+    "total_records_processed": 0,
+    "total_unique_themes": 0,
+    "last_aggregated": "",
+    "aggregated_themes": []
+}
 
 
 def init_manager(storage_path: str = "/data/aggregated_output.json") -> None:
@@ -335,16 +341,164 @@ def receive_ai_input(raw_ai_text: str) -> Union[Dict[str, Any], List[Any]]:
 
     return parsed_data
 
-def save_feedback_dict(feedback_dict: Dict[str, Any]) -> bool:
+import json
+import logging
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Union
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# Global memory store
+records_store: List[Dict[str, Any]] = []
+
+def load_aggregated_output(filename: str = "aggregated_output.json", base_dir: str = "/data") -> Dict[str, Any]:
+    """LOAD HELPER: Reads disk state into aggregated_store memory."""
+    global aggregated_store
+    filepath = Path(base_dir) / filename
+
+    if filepath.exists() and filepath.stat().st_size > 0:
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict) and "aggregated_themes" in data:
+                    aggregated_store = data
+                    return aggregated_store
+        except Exception as e:
+            logging.error("Failed to read '%s': %s", filepath, e)
+
+    aggregated_store = {
+        "total_records_processed": 0,
+        "total_unique_themes": 0,
+        "last_aggregated": "",
+        "aggregated_themes": []
+    }
+    return aggregated_store
+
+
+def _persist_aggregated_output(filename: str = "aggregated_output.json", base_dir: str = "/data") -> bool:
+    """PERSIST HELPER: Writes aggregated_store memory to disk safely."""
+    global aggregated_store
+    filepath = Path(base_dir) / filename
+    try:
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(aggregated_store, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        logging.error("Failed to write aggregated output to '%s': %s", filepath, e)
+        return False
+
+
+def aggregate_themes(
+    feedback_dict: Union[Dict[str, Any], List[Dict[str, Any]]],
+    filename: str = "aggregated_output.json",
+    base_dir: str = "/data"
+) -> bool:
+    """MAIN FUNCTION: Aggregates theme metrics and saves to disk."""
+    global aggregated_store
+
+    # 1. Load existing disk state if memory is uninitialized
+    if not aggregated_store.get("aggregated_themes") and Path(f"{base_dir}/{filename}").exists():
+        load_aggregated_output(filename=filename, base_dir=base_dir)
+
+    # 2. Process incoming data
+    incoming_items = [feedback_dict] if isinstance(feedback_dict, dict) else feedback_dict
+    existing_themes = aggregated_store.get("aggregated_themes", [])
+
+    for item in incoming_items:
+        if not isinstance(item, dict):
+            continue
+
+        theme = item.get("theme") or item.get("topic") or "General"
+        sentiment = (item.get("sentiment") or "neutral").lower()
+        severity = (item.get("severity") or "low").lower()
+        fb_id = item.get("feedback_id")
+
+        matched_theme = next((t for t in existing_themes if t.get("theme") == theme), None)
+
+        if matched_theme:
+            matched_theme["total_count"] += 1
+            if sentiment in matched_theme["sentiments"]:
+                matched_theme["sentiments"][sentiment] += 1
+            if severity in matched_theme["severities"]:
+                matched_theme["severities"][severity] += 1
+            if fb_id and fb_id not in matched_theme["sample_feedback_ids"]:
+                matched_theme["sample_feedback_ids"].append(fb_id)
+        else:
+            new_theme_record = {
+                "theme": theme,
+                "total_count": 1,
+                "sentiments": {
+                    "positive": 1 if sentiment == "positive" else 0,
+                    "neutral": 1 if sentiment == "neutral" else 0,
+                    "negative": 1 if sentiment == "negative" else 0
+                },
+                "severities": {
+                    "low": 1 if severity == "low" else 0,
+                    "medium": 1 if severity == "medium" else 0,
+                    "high": 1 if severity == "high" else 0
+                },
+                "sample_feedback_ids": [fb_id] if fb_id else []
+            }
+            existing_themes.append(new_theme_record)
+
+    # 3. Update top-level counts and timestamps
+    aggregated_store["aggregated_themes"] = existing_themes
+    aggregated_store["total_records_processed"] += len(incoming_items)
+    aggregated_store["total_unique_themes"] = len(existing_themes)
+    aggregated_store["last_aggregated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    # 4. Save to disk via persist helper
+    return _persist_aggregated_output(filename=filename, base_dir=base_dir)
+def _persist_to_file(filename: str = "processed_feedback.json", base_dir: str = "/data") -> bool:
+    """Internal helper to write the current global records_store to disk."""
+    filepath = Path(base_dir) / filename
+    try:
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump({"records": records_store}, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        logging.error("Failed to write records to '%s': %s", filepath, e)
+        return False
+
+
+def load_feedback_records(filename: str = "processed_feedback.json", base_dir: str = "/data") -> List[Dict[str, Any]]:
+    """Loads existing records from processed_feedback.json into global memory."""
+    global records_store
+    filepath = Path(base_dir) / filename
+
+    if filepath.exists() and filepath.stat().st_size > 0:
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict) and "records" in data:
+                    records_store = data["records"]
+                elif isinstance(data, list):
+                    records_store = data
+                return records_store
+        except Exception as e:
+            logging.error("Failed to read '%s': %s", filepath, e)
+
+    records_store = []
+    return records_store
+
+
+def save_feedback_dict(
+    feedback_dict: Union[Dict[str, Any], List[Dict[str, Any]]],
+    filename: str = "processed_feedback.json",
+    base_dir: str = "/data"
+) -> bool:
     """
     Receives a single feedback dictionary or a list of feedback dictionaries,
-    appends them to global memory, and persists them into /data/aggregated_output.json.
+    appends them to global memory, and persists them into /data/processed_feedback.json.
     """
     global records_store
 
     # 1. Ensure records_store is populated before appending
     if not records_store:
-        load_feedback_records()
+        load_feedback_records(filename=filename, base_dir=base_dir)
 
     # 2. Append incoming feedback (handles both a single dict or a list of dicts)
     if isinstance(feedback_dict, dict):
@@ -355,53 +509,11 @@ def save_feedback_dict(feedback_dict: Dict[str, Any]) -> bool:
         logging.error("Invalid data type passed. Expected dict or list of dicts.")
         return False
 
-    # 3. Persist updated memory state to disk (/data/aggregated_output.json)
-    success = _persist_to_file()
+    # 3. Persist updated memory state to disk (/data/processed_feedback.json)
+    success = _persist_to_file(filename=filename, base_dir=base_dir)
     if success:
-        logging.info("Feedback dictionary successfully converted to JSON and stored.")
+        logging.info("Feedback dictionary successfully stored in '%s'.", Path(base_dir) / filename)
     return success
-
-def _persist_to_file() -> bool:
-    """Saves current global feedback records into aggregated_output.json."""
-    try:
-        payload = {
-            "records": records_store
-        }
-        with open(JSON_STORAGE_PATH, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
-        return True
-    except Exception as e:
-        logging.error("Failed to write to '%s': %s", JSON_STORAGE_PATH, e)
-        return False
-
-def load_feedback_records() -> List[Dict[str, Any]]:
-    """Loads feedback records array from JSON store into global memory."""
-    global records_store
-    if not JSON_STORAGE_PATH.exists():
-        records_store = []
-        return []
-
-    try:
-        with open(JSON_STORAGE_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-            # Handle Dict Root: {"records": [...]}
-            if isinstance(data, dict):
-                records_store = data.get("records", []) or data.get("aggregated_output", [])
-            # Handle List Root: [...]
-            elif isinstance(data, list):
-                records_store = data
-            else:
-                records_store = []
-
-        logging.info("Loaded %d record(s) from '%s'", len(records_store), JSON_STORAGE_PATH)
-
-    except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        logging.error("Corrupt JSON at '%s': %s. Resetting memory.", JSON_STORAGE_PATH, e)
-        records_store = []
-
-    return records_store
-
 def save_feedback_record(record: Dict[str, Any]) -> bool:
     """Appends a new feedback record to global state and saves."""
     records_store.append(record)
