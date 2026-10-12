@@ -3,10 +3,12 @@ from datetime import datetime
 import json
 import logging
 import os
+from pathlib import Path
 import re
 import uuid
 import textwrap
 import pwinput  # third-party: pip install pwinput
+import data_manager1
 
 logger = logging.getLogger(__name__)
 
@@ -18,14 +20,22 @@ MAX_TEXT_LENGTH = 2000
 PAYLOAD_MIME = "application/json"
 PAYLOAD_EXT = ".json"
 
+DATA_DIRECTORY = "data"                       # where the output files are saved
 TEST_INPUT_FILE = "test-input.json"          # single entries are saved here
 AGGREGATED_FILE = "aggregated_output.json"   # theme table data
 SUMMARY_FILE = "summary-output.json"         # overall + suggested actions data
+REVIEW_FILE = "for_review.json"              # for review files
 
 # Display formatting for the dashboard.
 WIDTH = 68
 COLUMN_THEME = 22
 PRIORITY_THRESHOLD = 3      # A theme is PRIORITY if it has any high/critical entry
+
+# Review queue display.
+REVIEW_LABEL_WIDTH = 16     # "low_confidence" column
+REVIEW_SUMMARY_WIDTH = 36   # summary is shortened to this many characters
+SEVERITY_LEVELS = ("low", "medium", "high", "critical")
+SENTIMENTS = ("negative", "neutral", "positive")
 
 # Hardcoded password.
 ADMIN_PASSWORD = "123456"
@@ -98,7 +108,7 @@ def prompt_until_valid(message, validator, hidden=False):
 def authenticate_admin():
     """Ask for the admin password (masked). Returns True only if it matches.
 
-    Quitting (typing 'q' or 'quit') returns False. 
+    Quitting returns False. 
     Wrong guesses keep prompting until a valid value is entered
     """
     def check(password):
@@ -229,6 +239,12 @@ def validate_and_report(rows):
 # File reading / conversion
 # ---------------------------------------------------------------------------
 
+def data_path(filename):
+    """Full path of a file inside DATA_DIRECTORY.
+    """
+    return os.path.join(DATA_DIRECTORY, filename)
+
+
 def read_json(path):
     """Load a JSON file that holds a list of rows. """
     try:
@@ -250,6 +266,7 @@ def write_json(path, data):
     Returns True on success, False if the file can't be written.
     """
     try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
     except OSError as exc:
@@ -291,11 +308,12 @@ def convert_csv_to_json(csv_path, json_path):
 # File imports are passed as an in-memory JSON file.
  
  
-def save_entry(entry, path=TEST_INPUT_FILE):
+def save_entry(entry, path=None):
     """Add one validated entry to the JSON list in path.
 
     Creates the file if it doesn't exist yet. Returns True on success.
     """
+    path = path or data_path(TEST_INPUT_FILE)
     entries = read_json(path) if os.path.exists(path) else []
     entries.append(entry)
     return write_json(path, entries)
@@ -339,11 +357,10 @@ def load_dashboard_data(path):
         return None
 
 
-def print_dashboard_header(agg, summary):
-    """Print the title line with entry counts, then the overall summary
-    (one bullet per sentence)."""
+def print_dashboard_header(agg, summary, review_count):
+    """Print the title line with entry counts, then the overall summary: one bullet per sentence."""
     print_block(f"FEEDBACK DASHBOARD    entries: {agg['total_entries']}   "
-                f"counted: {agg['counted_entries']}  ")
+                f"counted: {agg['counted_entries']}   for review: {review_count}")
     print_out("=" * WIDTH)
 
     overall = clean(summary.get("overall_summary", ""))
@@ -394,16 +411,204 @@ def print_suggested_actions(summary, rows):
 
 
 def display_dashboard():
-    """Load the output files and print the dashboard."""
-    agg = load_dashboard_data(AGGREGATED_FILE)
-    if agg is None:
-        return
-    summary = load_dashboard_data(SUMMARY_FILE) or {}
+    """Load the output files and print the dashboard, then the review queue."""
+    pending = load_review_queue()
 
-    rows = build_theme_rows(agg)
-    print_dashboard_header(agg, summary)
-    print_theme_table(rows)
-    print_suggested_actions(summary, rows)
+    agg = load_dashboard_data(data_path(AGGREGATED_FILE))
+    if agg is not None:
+        summary = load_dashboard_data(data_path(SUMMARY_FILE)) or {}
+        rows = build_theme_rows(agg)
+        print_dashboard_header(agg, summary, len(pending))
+        print_theme_table(rows)
+        print_suggested_actions(summary, rows)
+
+    print_review_queue(pending)
+    offer_review(pending)
+
+# ---------------------------------------------------------------------------
+# Search
+# ---------------------------------------------------------------------------
+
+def print_search_results(results):
+    """Print each matching record: ID and tags on one line, text wrapped below."""
+    print_block(f"Found {len(results)} matching record(s):")
+    print_out("-" * WIDTH)
+    for record in results:
+        tags = " | ".join(
+            str(record[key]) for key in ("theme", "sentiment", "severity")
+            if record.get(key) not in (None, "")
+        )
+        print_out(f"{record.get('feedback_id', '?')}   {tags}")
+        text = clean(str(record.get("text") or record.get("feedback") or ""))
+        print_out(textwrap.fill(text, width=WIDTH,
+                                initial_indent="  ", subsequent_indent="  "))
+        print_out()
+
+
+def run_admin_search():
+    """Admin flow: Search stored feedback. Prompts until something
+    matches or the admin quits."""
+    print_block()
+    while True:
+        query = _prompt("Enter Feedback ID (or 'quit' to cancel): ")
+        if query is None:
+            print_block("Cancelled.")
+            return None
+
+        results = data_manager1.search_records(query)
+        if results:
+            print_search_results(results)
+            return None
+        print_out(f"  No feedback found matching '{query}'. Try different ID.")
+
+
+# ---------------------------------------------------------------------------
+# Review queue
+# ---------------------------------------------------------------------------
+
+def load_review_queue():
+    """Records in for_review.json that still need a review.
+
+    update_review_entry sets agreement and confidence to 1 and leaves the
+    record in the file, so a record with both at 1 counts as reviewed and is
+    hidden. Deleted records are already gone from the file.
+    """
+    data = data_manager1._load_review_file(Path(DATA_DIRECTORY) / REVIEW_FILE)
+    return [
+        r for r in data.get("records", [])
+        if isinstance(r, dict)
+        and not (r.get("agreement") == 1 and r.get("confidence") == 1)
+    ]
+
+
+def review_label(record):
+    """Short reason a record was flagged, read from its review_reason."""
+    reasons = str(record.get("review_reason", "")).lower()
+    if "critical" in reasons:
+        return "critical"
+    if "confidence" in reasons:
+        return "low_confidence"
+    if "agreement" in reasons:
+        return "low_agreement"
+    return "review"
+
+
+def print_review_queue(pending):
+    """Print one line per record waiting for review."""
+    print_block("REVIEW QUEUE")
+    print_out("-" * WIDTH)
+    if not pending:
+        print_out("Nothing waiting for review.")
+        return
+    for r in pending:
+        summary = textwrap.shorten(clean(str(r.get("summary", ""))),
+                                   width=REVIEW_SUMMARY_WIDTH, placeholder="...")
+        print_out(f"{str(r.get('feedback_id', '?')):<8}"
+                  f"{review_label(r):<{REVIEW_LABEL_WIDTH}}"
+                  f"{str(r.get('theme', '-')):<{COLUMN_THEME}}{summary}")
+
+
+def print_review_entry(record, position, total):
+    """Show one flagged record in full."""
+    print_block(f"Review {position} of {total}   ID: {record.get('feedback_id', '?')}")
+    print_out("-" * WIDTH)
+    print_out(textwrap.fill(clean(str(record.get("text", ""))), width=WIDTH,
+                            initial_indent="  ", subsequent_indent="  "))
+    print_out()
+    for field in ("theme", "sentiment", "severity", "confidence", "agreement"):
+        print_out(f"  {field.capitalize():<11}: {record.get(field, '-')}")
+    reasons = record.get("review_reason") or []
+    if isinstance(reasons, str):
+        reasons = [reasons]
+    if reasons:
+        print_out(f"  {'Flagged':<11}: {'; '.join(map(str, reasons))}")
+
+
+def prompt_review_action():
+    """Ask what to do with this record. Returns u, d, s, or None if they quit."""
+    def check(choice):
+        choice = choice.lower()
+        if choice in ("u", "d", "s"):
+            return choice, ""
+        return None, "enter u (update), d (delete) or s (skip)"
+
+    print_out()
+    return prompt_until_valid("  [u]pdate, [d]elete, [s]kip (quit to stop): ", check)
+
+
+def _field_check(options):
+    """Validator for one update field. Blank is allowed: keeps the current value."""
+    def check(text):
+        text = text.strip()
+        if options is None or not text:
+            return text, ""
+        if text.lower() in options:
+            return text.lower(), ""
+        return None, f"choose one of: {', '.join(options)}"
+    return check
+
+
+def review_update(record):
+    """Ask for new theme/severity/sentiment. Enter keeps the current value.
+
+    Keeping all three approves the record as it is. Either way it leaves
+    the review queue.
+    """
+    print_block("Press Enter to keep a value. Keeping all three approves the record as is.")
+    changes = {}
+    for field, options in (("theme", None),
+                           ("severity", SEVERITY_LEVELS),
+                           ("sentiment", SENTIMENTS)):
+        value = prompt_until_valid(f"  New {field} [{record.get(field, '')}]: ",
+                                   _field_check(options))
+        if value is None:   # quit
+            print_block("Update cancelled.")
+            return
+        changes[field] = value
+
+    if data_manager1.update_review_entry(record.get("feedback_id"),
+                                         filename=REVIEW_FILE, base_dir=DATA_DIRECTORY,
+                                         **changes):
+        print_block("Updated. It has been removed from the review queue.")
+    else:
+        print_block("Could not update this entry.")
+
+
+def review_delete(record):
+    """Confirm, then delete the record from the review file."""
+    answer = _prompt("  Delete this feedback permanently? (y/n): ")
+    if (answer or "").lower() not in ("y", "yes"):
+        print_block("Delete cancelled.")
+        return
+    if data_manager1.delete_review_entry(record.get("feedback_id"),
+                                         filename=REVIEW_FILE, base_dir=DATA_DIRECTORY):
+        print_block("Deleted.")
+    else:
+        print_block("Could not delete this entry.")
+
+
+def run_review_queue(pending):
+    """Walk through the pending records: update, delete or skip each one."""
+    for position, record in enumerate(pending, start=1):
+        print_review_entry(record, position, len(pending))
+        action = prompt_review_action()
+        if action is None:
+            break
+        if action == "u":
+            review_update(record)
+        elif action == "d":
+            review_delete(record)
+
+    print_block(f"Review finished. {len(load_review_queue())} still in the queue.")
+
+
+def offer_review(pending):
+    """After the queue is shown, ask whether to start reviewing."""
+    if not pending:
+        return
+    answer = _prompt("Review them now? (y/n): ")
+    if (answer or "").lower() in ("y", "yes"):
+        run_review_queue(pending)
 
 
 # ---------------------------------------------------------------------------
@@ -436,7 +641,7 @@ def run_single_entry(is_admin=False):
         return None
 
     if not save_entry(entry):
-        print_block(f"Could not save to '{TEST_INPUT_FILE}'.")
+        print_block(f"Could not save to '{data_path(TEST_INPUT_FILE)}'.")
         return None
  
     if is_admin:
@@ -456,10 +661,11 @@ def run_admin_import():
     """
     print_block()
     while True:
-        path = _prompt("Path to a CSV or JSON file, or 'quit' to cancel: ")
-        if path is None:
+        name = _prompt(f"CSV or JSON file in '{DATA_DIRECTORY}' (or 'quit' to cancel): ")
+        if name is None:
             print_block("Cancelled.")
             return None
+        path = data_path(name)
 
         extension = os.path.splitext(path)[1].lower()
         if extension == ".json":
@@ -468,8 +674,8 @@ def run_admin_import():
                 break
             print_out(f"  Invalid: could not read '{path}' as JSON (check the path and format).")
         elif extension == ".csv":
-            # name.csv -> name.json, in the same folder
-            json_path = os.path.splitext(path)[0] + ".json"
+            # name.csv -> name.json, saved in the data folder
+            json_path = data_path(os.path.splitext(os.path.basename(path))[0] + ".json")
             if convert_csv_to_json(path, json_path):
                 print_block(f"Converted to '{json_path}'.")
                 rows = read_json(json_path)
@@ -494,8 +700,8 @@ def run_admin_flow():
         return run_admin_import()
     elif action == "dashboard":
         return display_dashboard()
-    else:  # "search"
-        return 
+    elif action == "search":
+        return run_admin_search()
 
 
 def run_role_flow(role):
