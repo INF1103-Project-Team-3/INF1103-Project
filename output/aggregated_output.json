@@ -8,36 +8,6 @@
   },
   "themes": [
     {
-      "theme": "Facilities",
-      "count": 4,
-      "severity_counts": {
-        "low": 1,
-        "medium": 2,
-        "high": 0,
-        "critical": 1
-      },
-      "avg_sentiment": -0.5,
-      "priority_score": 36,
-      "examples": [
-        {
-          "severity": "critical",
-          "summary": "Loose stairwell railing near makerspace poses safety hazard that could cause injury."
-        },
-        {
-          "severity": "medium",
-          "summary": "Printing credits deplete each trimester, forcing student to pay out-of-pocket for required hard copies."
-        },
-        {
-          "severity": "medium",
-          "summary": "Vending machine on level 3 eats coins, causing student to lose about $4 this month."
-        },
-        {
-          "severity": "low",
-          "summary": "Student praises new lab benches for providing more space during practical sessions."
-        }
-      ]
-    },
-    {
       "theme": "Assessment",
       "count": 4,
       "severity_counts": {
@@ -48,6 +18,7 @@
       },
       "avg_sentiment": -1.0,
       "priority_score": 50,
+      "low_sample": false,
       "examples": [
         {
           "severity": "high",
@@ -68,6 +39,37 @@
       ]
     },
     {
+      "theme": "Facilities",
+      "count": 4,
+      "severity_counts": {
+        "low": 1,
+        "medium": 2,
+        "high": 0,
+        "critical": 1
+      },
+      "avg_sentiment": -0.5,
+      "priority_score": 36,
+      "low_sample": false,
+      "examples": [
+        {
+          "severity": "critical",
+          "summary": "Loose stairwell railing near makerspace poses safety hazard that could cause injury."
+        },
+        {
+          "severity": "medium",
+          "summary": "Printing credits deplete each trimester, forcing student to pay out-of-pocket for required hard copies."
+        },
+        {
+          "severity": "medium",
+          "summary": "Vending machine on level 3 eats coins, causing student to lose about $4 this month."
+        },
+        {
+          "severity": "low",
+          "summary": "Student praises new lab benches for providing more space during practical sessions."
+        }
+      ]
+    },
+    {
       "theme": "Social Environment",
       "count": 3,
       "severity_counts": {
@@ -78,6 +80,7 @@
       },
       "avg_sentiment": -1.0,
       "priority_score": 86,
+      "low_sample": false,
       "examples": [
         {
           "severity": "critical",
@@ -94,28 +97,6 @@
       ]
     },
     {
-      "theme": "Teaching Quality",
-      "count": 2,
-      "severity_counts": {
-        "low": 1,
-        "medium": 1,
-        "high": 0,
-        "critical": 0
-      },
-      "avg_sentiment": 0.0,
-      "priority_score": 4,
-      "examples": [
-        {
-          "severity": "medium",
-          "summary": "Lecturer's slides move too fast, preventing the student from taking proper notes."
-        },
-        {
-          "severity": "low",
-          "summary": "Student praises best trimester, capstone briefing well organized and lecturers engaged with projects."
-        }
-      ]
-    },
-    {
       "theme": "Well-being",
       "count": 2,
       "severity_counts": {
@@ -126,6 +107,7 @@
       },
       "avg_sentiment": -1.0,
       "priority_score": 84,
+      "low_sample": true,
       "examples": [
         {
           "severity": "critical",
@@ -148,6 +130,7 @@
       },
       "avg_sentiment": -0.5,
       "priority_score": 44,
+      "low_sample": true,
       "examples": [
         {
           "severity": "high",
@@ -156,6 +139,29 @@
         {
           "severity": "low",
           "summary": "Student suggests automatic timetable clash detection before module registration."
+        }
+      ]
+    },
+    {
+      "theme": "Teaching Quality",
+      "count": 2,
+      "severity_counts": {
+        "low": 1,
+        "medium": 1,
+        "high": 0,
+        "critical": 0
+      },
+      "avg_sentiment": 0.0,
+      "priority_score": 4,
+      "low_sample": true,
+      "examples": [
+        {
+          "severity": "medium",
+          "summary": "Lecturer's slides move too fast, preventing the student from taking proper notes."
+        },
+        {
+          "severity": "low",
+          "summary": "Student praises best trimester, capstone briefing well organized and lecturers engaged with projects."
         }
       ]
     },
@@ -170,6 +176,7 @@
       },
       "avg_sentiment": 0.0,
       "priority_score": 4,
+      "low_sample": true,
       "examples": [
         {
           "severity": "low",
@@ -192,6 +199,7 @@
       },
       "avg_sentiment": -1.0,
       "priority_score": 82,
+      "low_sample": true,
       "examples": [
         {
           "severity": "high",

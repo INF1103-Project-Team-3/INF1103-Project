@@ -6,6 +6,7 @@ from pathlib import Path
 # Settings
 # ---------------------------------------------------------------------------
 MIN_CONFIDENCE = 0.5
+MIN_THEME_SAMPLE = 3  # themes with fewer counted entries get low_sample=True
 
 # Allowed values. The dict order is the display order (low -> critical).
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
@@ -309,12 +310,14 @@ def aggregate_themes(records):
     for theme in themes.values():
         theme["avg_sentiment"] = round(theme["sentiment_sum"] / theme["count"], 2)
         theme["priority_score"] = theme_priority_score(theme)
+        theme["low_sample"] = theme["count"] < MIN_THEME_SAMPLE  # score rests on few entries
         theme["examples"] = sorted(
             theme["feedbacks"], key=lambda f: SEVERITY_RANK[f["severity"]], reverse=True
         )
         del theme["sentiment_sum"], theme["feedbacks"]
         theme_list.append(theme)
-    theme_list.sort(key=lambda t: t["count"], reverse=True)  # most-mentioned first
+    # most-mentioned first; ties broken by priority, then name, so the order is stable
+    theme_list.sort(key=lambda t: (-t["count"], -t["priority_score"], t["theme"]))
  
     return {
         "total_entries": len(records),
@@ -327,14 +330,19 @@ def aggregate_themes(records):
 # ---------------------------------------------------------------------------
 # Test runner: python src/logic_manager.py
 # ---------------------------------------------------------------------------
-def run_sanity_checks(processed_records, review_queue, expected_total):
+def run_sanity_checks(records, invalid_records, processed_records, review_queue, stats):
     """Fails loudly if the results are inconsistent."""
-    total = len(processed_records)
     counted = sum(r["counted"] for r in processed_records)
-    assert total == expected_total, (
-        f"Total entries mismatch: total_entries={total}, expected={expected_total}"
+ 
+    assert len(processed_records) + len(invalid_records) == len(records), (
+        f"records went missing: {len(processed_records)} valid + "
+        f"{len(invalid_records)} invalid != {len(records)} loaded"
     )
-    assert counted <= total, f"Counted entries ({counted}) exceed total entries ({total})"
+    assert counted <= len(processed_records), (
+        f"Counted entries ({counted}) exceed valid entries ({len(processed_records)})"
+    )
+    assert sum(t["count"] for t in stats["themes"]) == counted, "theme counts don't add up"
+    assert sum(stats["sentiment_distribution"].values()) == counted, "sentiment counts don't add up"
  
     ranks = [SEVERITY_RANK[r["severity"]] for r in review_queue]
     assert ranks == sorted(ranks, reverse=True), "review queue not sorted critical-first"
@@ -346,26 +354,26 @@ def run_sanity_checks(processed_records, review_queue, expected_total):
 def main():
     records = load_records()
     valid_records, invalid_records = split_valid_records(records)
-
+ 
     # always written, so the file never shows results from an older run
     write_json(OUTPUT_DIR / "invalid_records.json", invalid_records)
     if invalid_records:
         print(f"WARNING: {len(invalid_records)} of {len(records)} records failed "
-                f"validation and were skipped (see invalid_records.json):")
+              f"validation and were skipped (see invalid_records.json):")
         for item in invalid_records:
             label = item["feedback_id"] or f"record #{item['index']}"
             print(f"  {label}: {'; '.join(item['problems'])}")
-            
-    processed_feedbacks = [apply_feedback_rules(r) for r in valid_records] #run through all the feedback and apply the rules to each record
-    review_queue = rank_review_queue(processed_feedbacks) #filter out feedback that needs review
-    write_json(OUTPUT_DIR / "aggregated_output.json", aggregate_themes(processed_feedbacks)) #write the aggregated output to a json file
+ 
+    processed_records = [apply_feedback_rules(r) for r in valid_records]
+    review_queue = rank_review_queue(processed_records)
+    stats = aggregate_themes(processed_records)
+    write_json(OUTPUT_DIR / "aggregated_output.json", stats)
     write_json(OUTPUT_DIR / "for_review.json", review_queue)
-
-    counted = sum(r["counted"] for r in processed_feedbacks)
-    print(f"Total: {len(processed_feedbacks)}, Counted: {counted}, "
-            f"Flagged for review: {len(review_queue)}, Invalid: {len(invalid_records)}")
-    
-    run_sanity_checks(processed_feedbacks, review_queue, expected_total=len(valid_records))
+ 
+    print(f"Total: {len(processed_records)}, Counted: {stats['counted_entries']}, "
+          f"Flagged for review: {len(review_queue)}, Invalid: {len(invalid_records)}")
+ 
+    run_sanity_checks(records, invalid_records, processed_records, review_queue, stats)
     print("All assertions passed.")
 
 if __name__ == "__main__":
