@@ -22,8 +22,8 @@ PAYLOAD_EXT = ".json"
 
 DATA_DIRECTORY = "data"                      # where the output files are saved
 TEST_INPUT_FILE = "test-input.json"          # single entries are saved here
-AGGREGATED_FILE = "processed_feedback.json"  # theme table data
-SUMMARY_FILE = "data/summary.json"  
+AGGREGATED_FILE = "aggregated_output.json"  # theme table data
+SUMMARY_FILE = "summary.json"  
 REVIEW_FILE = "for_review.json"              # for review files
 
 # Display formatting for the dashboard.
@@ -347,7 +347,7 @@ def print_dashboard_header(agg, summary, review_count, both_count=0):
     print_block(f"FEEDBACK DASHBOARD    entries: {agg['total_entries']}   "
                 f"counted: {agg['counted_entries']}   for review: {review_count}")
     if both_count:
-        print_out(f"  {both_count} critical entries are in both: counted and for review")
+        print_out(f"{both_count} critical entries are in both: counted and for review")
     print_out("=" * WIDTH)
 
     overall = clean(summary.get("overall_summary", ""))
@@ -402,6 +402,7 @@ def display_dashboard():
     agg = data_manager1.load_aggregated_output(filename=AGGREGATED_FILE,
                                                base_dir=DATA_DIRECTORY)
     if agg.get("themes"):
+        data_manager1.SUMMARY_STORAGE_PATH = Path(data_path(SUMMARY_FILE))
         summary = data_manager1.load_summary()
         rows = build_theme_rows(agg)
         both = sum(1 for r in pending
@@ -440,7 +441,7 @@ def run_admin_search():
     matches or the admin quits."""
     print_block()
     while True:
-        query = _prompt("Enter Feedback ID (or 'quit' to cancel): ")
+        query = _prompt("Enter Feedback terms (or 'quit' to cancel): ")
         if query is None:
             print_block("Cancelled.")
             return None
@@ -449,7 +450,7 @@ def run_admin_search():
         if results:
             print_search_results(results)
             return None
-        print_out(f"  No feedback found matching '{query}'. Try different ID.")
+        print_out(f"  No feedback found matching '{query}'. Try different terms.")
 
 
 # ---------------------------------------------------------------------------
@@ -730,7 +731,6 @@ def print_ai_request_notice():
 
 def print_goodbye():
     print_block("Thank you for using Feedback Manager. Goodbye.")
-
 
 
 def main():
