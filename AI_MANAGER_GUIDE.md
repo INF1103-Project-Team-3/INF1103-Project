@@ -7,7 +7,7 @@ ___
 ___
 
 - **Dependencies**: Python 3.10 or later and `requests`; the caller also needs `python-dotenv` to load the key.
-- **Key file**: create `config/.env` (git-ignored, never commit it) containing `GROQ_API_KEY=<your key>` and `GROQ_KEY_LABEL=main`. The label is any name for that key (e.g. `main`, `backup`), used only to track each key's daily token use.
+- **Key file**: create `managers/config/.env` (git-ignored, never commit it) containing `GROQ_API_KEY=<your key>` and `GROQ_KEY_LABEL=main`. The label is any name for that key (e.g. `main`, `backup`), used only to track each key's daily token use.
 - **Location**: keep `ai_manager.py` next to `config/`; it finds its files relative to itself.
 
 | File in `config/` | Purpose |
