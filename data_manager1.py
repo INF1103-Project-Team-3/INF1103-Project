@@ -699,31 +699,31 @@ def search_records(query_text: str) -> List[Dict[str, Any]]:
 
     return results
 
-    def save_dict_to_json(data_dict: Dict[str, Any], filepath: str = "/data/summary.json") -> bool:
-        """
-        Receives a dictionary and saves/updates it to a JSON file.
-        Creates the directory and file if they do not exist.
-        """
-        path = Path(filepath)
-        path.parent.mkdir(parents=True, exist_ok=True)  # Auto-create folders if missing
+def save_dict_to_json(data_dict: Dict[str, Any], filepath: str = "/data/summary.json") -> bool:
+    """
+    Receives a dictionary and saves/updates it to a JSON file.
+    Creates the directory and file if they do not exist.
+    """
+    path = Path(filepath)
+    path.parent.mkdir(parents=True, exist_ok=True)  # Auto-create folders if missing
 
-        # Load existing data if file exists, otherwise start with empty dict
-        existing_data = {}
-        if path.exists() and path.stat().st_size > 0:
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    existing_data = json.load(f)
-            except json.JSONDecodeError:
-                existing_data = {}
+    # Load existing data if file exists, otherwise start with empty dict
+    existing_data = {}
+    if path.exists() and path.stat().st_size > 0:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                existing_data = json.load(f)
+        except json.JSONDecodeError:
+            existing_data = {}
 
-        # Merge new dictionary fields into existing data
-        existing_data.update(data_dict)
+    # Merge new dictionary fields into existing data
+    existing_data.update(data_dict)
 
-        # Write merged dictionary back to JSON
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(existing_data, f, indent=2, ensure_ascii=False)
+    # Write merged dictionary back to JSON
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(existing_data, f, indent=2, ensure_ascii=False)
 
-        return True
+    return True
 
 
 # # =====================================================================
