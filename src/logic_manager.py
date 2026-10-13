@@ -44,12 +44,34 @@ def read_json(path):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
+
 def write_json(path, data):
     """Writes data to a JSON file, creating the parent folder if needed."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+def append_json(path, new_items):
+    """Adds new_items (a list) to the end of the list stored in a JSON file,
+    keeping everything already there. A missing or empty file starts a new
+    list. A file that exists but can't be read as a list raises an error
+    instead of being overwritten, so the history is never lost. The file is
+    replaced in one step, so a crash part-way through can't corrupt it."""
+    path = Path(path)
+    history = []
+    if path.exists() and path.stat().st_size > 0:
+        try:
+            history = read_json(path)
+        except json.JSONDecodeError as error:
+            raise ValueError(f"{path.name} is not valid JSON, so it was left unchanged: {error}")
+        if not isinstance(history, list):
+            raise ValueError(f"{path.name} should contain a list, so it was left unchanged")
+    temp_path = path.with_name(path.name + ".tmp")
+    write_json(temp_path, history + list(new_items))
+    temp_path.replace(path)
+
 
 def load_records(path: str | Path = INPUT_FILE) -> list:
     """Loads the AI's classified feedback from a JSON file. Accepts a plain
@@ -366,7 +388,12 @@ def main():
     review_queue = rank_review_queue(processed_records)
     stats = aggregate_themes(processed_records)
     write_json(OUTPUT_DIR / "aggregated_output.json", stats)
-    write_json(OUTPUT_DIR / "for_review.json", review_queue)
+     # for_review.json keeps every run; each record is stamped so runs can be told apart
+    run_at = datetime.now().isoformat(timespec="seconds")
+    append_json(OUTPUT_DIR / "for_review.json", [
+        {**record, "run_at": run_at, "source_file": INPUT_FILE.name}
+        for record in review_queue
+    ])
  
     print(f"Total: {len(processed_records)}, Counted: {stats['counted_entries']}, "
           f"Flagged for review: {len(review_queue)}, Invalid: {len(invalid_records)}")
