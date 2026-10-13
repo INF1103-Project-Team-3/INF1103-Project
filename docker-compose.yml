@@ -1,17 +1,12 @@
-version: '3.8'
-
 services:
   app:
     build: .
+    image: feedbacklens
     volumes:
-      # Mounts your local Project folder to the container's /Project folder
+      # Mount the repo root, so the container uses your local files:
+      # code changes apply without rebuilding, the API key is read from
+      # managers/config/.env, and all results are saved to data/ in the repo
       - .:/Project
-      # Mounts your local data folder to /data inside the container
-      - ./data:/data
-      # Caches your pip packages
-      - pip_packages:/usr/local/lib/python3.11/site-packages
+    # Keep the terminal interactive so you can type at the prompts
     stdin_open: true
     tty: true
-
-volumes:
-  pip_packages:

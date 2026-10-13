@@ -1,0 +1,12 @@
+# Never bake the API key into the image; it is read from the mounted folder at runtime
+.env
+**/.env
+
+# Not needed inside the image
+.git
+.github
+**/__pycache__
+**/*.pyc
+*.code-workspace
+archive/
+managers/config/token-usage-log.json

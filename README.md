@@ -81,7 +81,7 @@ docker compose run --rm app   # starts FeedbackLens
 
 Use `run` (not `up`) so the terminal stays interactive and you can type at the prompts. `--rm` removes the container when you exit.
 
-The container runs `python managers/main.py` on Python 3.11. Your local project folder is mounted at `/Project` and your `data/` folder at `/data`, so code changes apply without rebuilding and all results stay in `data/` on your machine between runs.
+The container runs `python managers/main.py` from the repo root on Python 3.11. Your repo folder is mounted into the container, so code changes apply without rebuilding and everything the app saves stays in `data/` on your machine between runs.
 
 ---
 
@@ -129,7 +129,7 @@ All commands run inside the container:
 
 ```bash
 # unit tests
-docker compose run --rm app sh -c "pip install pytest && pytest tests/"
+docker compose run --rm app pytest tests/
 
 # logic pipeline on sample data (no API key needed)
 docker compose run --rm app python submission/execution_script.py
