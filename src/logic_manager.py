@@ -6,7 +6,6 @@ from pathlib import Path
 # Settings
 # ---------------------------------------------------------------------------
 MIN_CONFIDENCE = 0.5
-MIN_THEME_SAMPLE = 3  # themes with fewer counted entries get low_sample=True
 
 # Allowed values. The dict order is the display order (low -> critical).
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
@@ -310,7 +309,6 @@ def aggregate_themes(records):
     for theme in themes.values():
         theme["avg_sentiment"] = round(theme["sentiment_sum"] / theme["count"], 2)
         theme["priority_score"] = theme_priority_score(theme)
-        theme["low_sample"] = theme["count"] < MIN_THEME_SAMPLE  # score rests on few entries
         theme["examples"] = sorted(
             theme["feedbacks"], key=lambda f: SEVERITY_RANK[f["severity"]], reverse=True
         )

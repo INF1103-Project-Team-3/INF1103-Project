@@ -18,7 +18,6 @@
       },
       "avg_sentiment": -1.0,
       "priority_score": 50,
-      "low_sample": false,
       "examples": [
         {
           "severity": "high",
@@ -49,7 +48,6 @@
       },
       "avg_sentiment": -0.5,
       "priority_score": 36,
-      "low_sample": false,
       "examples": [
         {
           "severity": "critical",
@@ -80,7 +78,6 @@
       },
       "avg_sentiment": -1.0,
       "priority_score": 86,
-      "low_sample": false,
       "examples": [
         {
           "severity": "critical",
@@ -107,7 +104,6 @@
       },
       "avg_sentiment": -1.0,
       "priority_score": 84,
-      "low_sample": true,
       "examples": [
         {
           "severity": "critical",
@@ -130,7 +126,6 @@
       },
       "avg_sentiment": -0.5,
       "priority_score": 44,
-      "low_sample": true,
       "examples": [
         {
           "severity": "high",
@@ -153,7 +148,6 @@
       },
       "avg_sentiment": 0.0,
       "priority_score": 4,
-      "low_sample": true,
       "examples": [
         {
           "severity": "medium",
@@ -176,7 +170,6 @@
       },
       "avg_sentiment": 0.0,
       "priority_score": 4,
-      "low_sample": true,
       "examples": [
         {
           "severity": "low",
@@ -199,7 +192,6 @@
       },
       "avg_sentiment": -1.0,
       "priority_score": 82,
-      "low_sample": true,
       "examples": [
         {
           "severity": "high",
