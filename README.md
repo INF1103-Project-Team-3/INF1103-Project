@@ -40,7 +40,6 @@ The program is procedural Python (no classes), stores everything in flat JSON fi
 │       ├── test-data-ans-key.json                   # hand labels for accuracy checks
 │       └── .env                                     # your API key (git-ignored, create it yourself)
 ├── data/                    # runtime data used by the app
-├── output/                  # results from running logic_manager on its own
 ├── submission/
 │   ├── execution_script.py  # runs the logic pipeline on sample data, no API needed
 │   └── sample_ai_output.py  # shared fake AI records, including edge cases
