@@ -1,0 +1,20 @@
+{
+  "total_records": 3,
+  "status": "healthy",
+  "summary_list": [
+    {
+      "theme": "Teaching Quality",
+      "suggested_action": "Inform the course team of the comment on short lectures and suggest reviewing lecture length to better cover content."
+    },
+    {
+      "theme": "Social Environment",
+      "suggested_action": "Pass the threatening‑message report to campus security and student welfare for immediate investigation and ensure the student receives protective support."
+    },
+    {
+      "theme": "Administration",
+      "suggested_action": "Report the timetable portal timeout issue to IT services and request performance monitoring and a more reliable fallback system."
+    }
+  ],
+  "overall_summary": "This summary covers 3 of 4 entries received. One Social Environment entry is critical: a student receives threatening messages from a groupmate and feels unsafe on campus. Administration, with one entry, has a medium‑severity problem: the module timetable portal frequently times out, requiring multiple weekly retries. Teaching Quality, the remaining theme, includes a low‑severity comment that lectures are too short.",
+  "last_updated": "2026-10-13 13:06:00"
+}
