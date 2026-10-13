@@ -1,11 +1,15 @@
 import json
+<<<<<<< HEAD
 from datetime import datetime
+=======
+>>>>>>> origin/main
 from pathlib import Path
  
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------
 MIN_CONFIDENCE = 0.5
+<<<<<<< HEAD
 
 # Trend comparison: a theme's priority must move by at least this many points
 # between runs to count as Escalating or Easing; smaller moves are Steady.
@@ -13,6 +17,9 @@ TREND_THRESHOLD = 5
 # Display order for themes in the trend output.
 TREND_STATUS_ORDER = ["Escalating", "New", "Easing", "Steady", "Not reported"]
 
+=======
+ 
+>>>>>>> origin/main
 # Allowed values. The dict order is the display order (low -> critical).
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 SENTIMENT_SCORE = {"positive": 1, "neutral": 0, "negative": -1}
@@ -49,6 +56,7 @@ def read_json(path):
     """Reads a JSON file and returns its contents (a dict or list)."""
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+<<<<<<< HEAD
 
 
 def write_json(path, data):
@@ -125,6 +133,32 @@ def load_records(path: str | Path = INPUT_FILE) -> list:
     return data
 
 
+=======
+
+def write_json(path, data):
+    """Writes data to a JSON file, creating the parent folder if needed."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+def load_records(path=INPUT_FILE):
+    """Loads the AI's classified feedback from a JSON file. Accepts a plain
+    list of records, or a dict with the list under a "records" key. Only
+    the overall shape is checked here; each record is checked separately
+    by validate_record()."""
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Input file not found: {path}")
+    data = read_json(path)
+    if isinstance(data, dict) and "records" in data: #checks if the data is a dictionary and contains a "records" key, if so, it extracts the list of records from that key
+        data = data["records"]
+    if not isinstance(data, list) or not all(isinstance(r, dict) for r in data):
+        raise ValueError(f"{path.name} should contain a list of feedback records")
+    return data
+
+
+>>>>>>> origin/main
 # ---------------------------------------------------------------------------
 # Validating the AI's output
 # ---------------------------------------------------------------------------
@@ -164,6 +198,7 @@ def validate_record(record):
             )
         elif field in ZERO_TO_ONE_FIELDS and not 0.0 <= value <= 1.0:
             problems.append(f"'{field}' must be between 0.0 and 1.0, got {value}")
+<<<<<<< HEAD
  
     timestamp = record.get("timestamp")
     if isinstance(timestamp, str) and timestamp.strip():
@@ -171,6 +206,8 @@ def validate_record(record):
             datetime.fromisoformat(timestamp)
         except ValueError:
             problems.append(f"'timestamp' is not a valid ISO date-time, got {timestamp!r}")
+=======
+>>>>>>> origin/main
     return problems
 
 
@@ -179,6 +216,7 @@ def split_valid_records(records):
     rest. Each invalid entry keeps the original record and the reasons it
     failed, so it can be inspected or sent back to the AI."""
     valid, invalid = [], []
+<<<<<<< HEAD
     seen_ids = set()
     for index, record in enumerate(records):
         problems = validate_record(record)
@@ -187,6 +225,10 @@ def split_valid_records(records):
             if record["feedback_id"] in seen_ids:
                 problems.append(f"duplicate feedback_id '{record['feedback_id']}'")
             seen_ids.add(record["feedback_id"])
+=======
+    for index, record in enumerate(records):
+        problems = validate_record(record)
+>>>>>>> origin/main
         if problems:
             invalid.append({
                 "index": index,
@@ -315,6 +357,7 @@ def apply_feedback_rules(record):
     }
 
 
+<<<<<<< HEAD
 def review_sort_key(record: dict) -> tuple:
     """Triage order: most severe first, then grouped by theme, then by
     feedback_id so the order is stable."""
@@ -329,13 +372,32 @@ def rank_review_queue(records: list) -> list:
 def theme_priority_score(theme: dict) -> int:  
     """combines severity mix (45 points), average sentiment (20 points), 
     and frequency (35 points) to give a 0-100 continuous priority score 
+=======
+def rank_review_queue(records: list) -> list: 
+    """Returns the records needing review in triage order: most severe first,
+    then grouped by theme, then by feedback_id so the order is stable."""
+    queue = [r for r in records if r["needs_review"]]
+    return sorted(
+        queue,
+        key=lambda r: (-SEVERITY_RANK[r["severity"]], r["theme"], r["feedback_id"]),
+    )
+
+
+def theme_priority_score(theme: dict) -> int:  
+    """combines severity mix (50 points), average sentiment (30 points), 
+    and frequency (20 points) to give a 0-100 continuous priority score 
+>>>>>>> origin/main
     instead of needing to look at multiple metrics to determine which themes 
     are most urgent. Adjust the weights here to change what counts most."""
     severe_entries = theme["severity_counts"]["high"] + theme["severity_counts"]["critical"] #takes the number of high and critical severity feedbacks for that theme
     severity_ratio = severe_entries / theme["count"] if theme["count"] else 0
     negativity = max(0, -theme["avg_sentiment"])
     frequency_factor = min(theme["count"] / 10, 1.0)
+<<<<<<< HEAD
     score = (severity_ratio * 45) + (negativity * 20) + (frequency_factor * 35) #formula can be adjusted to change the weight of each factor, currently severity is weighted highest, then frequency, then negativity.
+=======
+    score = (severity_ratio * 50) + (negativity * 30) + (frequency_factor * 20) #formula can be adjusted to change the weight of each factor, currently severity is weighted highest, then negativity, then frequency
+>>>>>>> origin/main
     return round(score)
 
 
@@ -370,8 +432,12 @@ def aggregate_themes(records):
         )
         del theme["sentiment_sum"], theme["feedbacks"]
         theme_list.append(theme)
+<<<<<<< HEAD
     # most-mentioned first; ties broken by priority, then name, so the order is stable
     theme_list.sort(key=lambda t: (-t["count"], -t["priority_score"], t["theme"]))
+=======
+    theme_list.sort(key=lambda t: t["count"], reverse=True)  # most-mentioned first
+>>>>>>> origin/main
  
     return {
         "total_entries": len(records),
@@ -382,6 +448,7 @@ def aggregate_themes(records):
 
 
 # ---------------------------------------------------------------------------
+<<<<<<< HEAD
 # Trend comparison (this run vs the previous run)
 # ---------------------------------------------------------------------------
 def _signed(number: int, unit: str = "") -> str:
@@ -514,6 +581,19 @@ def run_sanity_checks(records, invalid_records, processed_records, review_queue,
         assert sum(trend["headline"]["status_counts"].values()) == len(trend["themes"]), (
             "trend status counts don't add up"
         )
+=======
+# Test runner: python src/logic_manager.py
+# ---------------------------------------------------------------------------
+def run_sanity_checks(processed_records, review_queue, expected_total):
+    """Fails loudly if the results are inconsistent."""
+    total = len(processed_records)
+    counted = sum(r["counted"] for r in processed_records)
+    assert total == expected_total, (
+        f"Total entries mismatch: total_entries={total}, expected={expected_total}"
+    )
+    assert counted <= total, f"Counted entries ({counted}) exceed total entries ({total})"
+ 
+>>>>>>> origin/main
     ranks = [SEVERITY_RANK[r["severity"]] for r in review_queue]
     assert ranks == sorted(ranks, reverse=True), "review queue not sorted critical-first"
     for earlier, later in zip(review_queue, review_queue[1:]):
@@ -524,11 +604,16 @@ def run_sanity_checks(records, invalid_records, processed_records, review_queue,
 def main():
     records = load_records()
     valid_records, invalid_records = split_valid_records(records)
+<<<<<<< HEAD
  
+=======
+
+>>>>>>> origin/main
     # always written, so the file never shows results from an older run
     write_json(OUTPUT_DIR / "invalid_records.json", invalid_records)
     if invalid_records:
         print(f"WARNING: {len(invalid_records)} of {len(records)} records failed "
+<<<<<<< HEAD
               f"validation and were skipped (see invalid_records.json):")
         for item in invalid_records:
             label = item["feedback_id"] or f"record #{item['index']}"
@@ -567,6 +652,23 @@ def main():
         print(trend["message"])
 
     run_sanity_checks(records, invalid_records, processed_records, review_queue, stats, trend)
+=======
+                f"validation and were skipped (see invalid_records.json):")
+        for item in invalid_records:
+            label = item["feedback_id"] or f"record #{item['index']}"
+            print(f"  {label}: {'; '.join(item['problems'])}")
+            
+    processed_feedbacks = [apply_feedback_rules(r) for r in valid_records] #run through all the feedback and apply the rules to each record
+    review_queue = rank_review_queue(processed_feedbacks) #filter out feedback that needs review
+    write_json(OUTPUT_DIR / "aggregated_output.json", aggregate_themes(processed_feedbacks)) #write the aggregated output to a json file
+    write_json(OUTPUT_DIR / "for_review.json", review_queue)
+
+    counted = sum(r["counted"] for r in processed_feedbacks)
+    print(f"Total: {len(processed_feedbacks)}, Counted: {counted}, "
+            f"Flagged for review: {len(review_queue)}, Invalid: {len(invalid_records)}")
+    
+    run_sanity_checks(processed_feedbacks, review_queue, expected_total=len(valid_records))
+>>>>>>> origin/main
     print("All assertions passed.")
 
 if __name__ == "__main__":
