@@ -1,20 +1,24 @@
 {
-  "total_records": 3,
+  "total_records": 4,
   "status": "healthy",
   "summary_list": [
     {
-      "theme": "Assessment",
-      "suggested_action": "Notify the module team to lock the rubric before release and inform students promptly of any changes; provide a clear addendum for the deadline."
-    },
-    {
       "theme": "Internship Placement",
-      "suggested_action": "Escalate the placement mismatch to the career office, request alignment with course objectives, and arrange alternative tasks that develop relevant skills."
+      "suggested_action": "Raise the placement mismatch to the career services team to review task relevance and reassign the student to a role matching the course curriculum."
     },
     {
       "theme": "Teaching Quality",
-      "suggested_action": "Ask the tutor to streamline the session by removing duplicated examples and focus on new material to use tutorial time efficiently."
+      "suggested_action": "Ask the tutor to streamline the tutorial by avoiding unnecessary repetition of already‑covered examples, focusing on new content."
+    },
+    {
+      "theme": "Assessment",
+      "suggested_action": "Alert the module coordinator to publish the updated rubric promptly and inform all students of the change, ensuring alignment with assessment criteria."
+    },
+    {
+      "theme": "Facilities",
+      "suggested_action": "Discuss with the printing services team to increase trimester credit allocation or provide a low‑cost top‑up option for students needing hard‑copy reports."
     }
   ],
-  "overall_summary": "This summary covers 3 of 6 feedback entries received. Two high‑severity issues were reported: Assessment – rubric changed days before deadline, and Internship Placement – tasks limited to photocopying and data entry unrelated to the course. The only other concern, Teaching Quality (low severity), notes a tutorial that repeats the same example, wasting session time.",
-  "last_updated": "2026-10-14 04:23:38"
+  "overall_summary": "This summary covers 4 of 6 feedback entries received. Assessment has a high‑severity issue: rubric changed last minute without notice (high). Internship Placement also has a high‑severity problem: placement tasks unrelated to the course, limited to photocopying and data entry (high). Facilities shows a medium‑severity concern: printing credits run out quickly each trimester, forcing out‑of‑pocket costs. Teaching Quality includes a low‑severity comment: tutorial repeats an example unnecessarily, wasting session time.",
+  "last_updated": "2026-10-14 06:24:40"
 }
