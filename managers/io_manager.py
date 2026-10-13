@@ -267,6 +267,16 @@ def read_csv(path):
         return []
 
 
+def read_json_rows(path):
+    """Load a JSON file of rows. Returns [] if it can't be read, so the
+    caller can reprompt instead of crashing."""
+    try:
+        return data_manager._read_list_strict(Path(path))
+    except (ValueError, OSError) as exc:
+        logger.warning("Could not read JSON %s: %s", path, exc)
+        return []
+
+
 def convert_csv_to_json(csv_path, json_path):
     """Convert a CSV file into a JSON file (a list of objects).
 
@@ -728,7 +738,7 @@ def run_admin_import():
 
         extension = os.path.splitext(path)[1].lower()
         if extension == ".json":
-            rows = data_manager._read_list_strict(Path(path))
+            rows = read_json_rows(path)
             if rows:  # empty list counts as a failed load, so will reprompt
                 break
             print_out(f"  Invalid: could not read '{path}' as JSON (check the path and format).")
@@ -737,7 +747,7 @@ def run_admin_import():
             json_path = data_path(os.path.splitext(os.path.basename(path))[0] + ".json")
             if convert_csv_to_json(path, json_path):
                 print_block(f"Converted to '{json_path}'.")
-                rows = data_manager._read_list_strict(Path(json_path))
+                rows = read_json_rows(json_path)
                 break
             print_out(f"  Invalid: could not convert '{path}' (check the path and format).")
         else:
