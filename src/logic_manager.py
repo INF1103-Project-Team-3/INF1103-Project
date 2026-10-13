@@ -7,6 +7,12 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 MIN_CONFIDENCE = 0.5
 
+# Trend comparison: a theme's priority must move by at least this many points
+# between runs to count as Escalating or Easing; smaller moves are Steady.
+TREND_THRESHOLD = 5
+# Display order for themes in the trend output.
+TREND_STATUS_ORDER = ["Escalating", "New", "Easing", "Steady", "Not reported"]
+
 # Allowed values. The dict order is the display order (low -> critical).
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 SENTIMENT_SCORE = {"positive": 1, "neutral": 0, "negative": -1}
@@ -375,6 +381,116 @@ def aggregate_themes(records):
     }
 
 
+# ---------------------------------------------------------------------------
+# Trend comparison (this run vs the previous run)
+# ---------------------------------------------------------------------------
+def _signed(number: int, unit: str = "") -> str:
+    """'+14', '-8' or '0', with an optional unit after the number."""
+    return "0" if number == 0 else f"{number:+d}{unit}"
+
+
+def _compare(previous, current, unit: str = "", change_unit: str = "") -> dict:
+    """Builds {"previous", "current", "change", "text"} for one number, where
+    text is ready to print, e.g. '36 -> 50 (+14)'. A missing side (None) is
+    shown as '-' and has no change."""
+    if previous is None or current is None:
+        return {
+            "previous": previous,
+            "current": current,
+            "change": None,
+            "text": (f"{previous}{unit}" if previous is not None else "-")
+                    + " -> " + (f"{current}{unit}" if current is not None else "-"),
+        }
+    change = current - previous
+    return {
+        "previous": previous,
+        "current": current,
+        "change": change,
+        "text": f"{previous}{unit} -> {current}{unit} ({_signed(change, change_unit)})",
+    }
+
+
+def _negative_share(stats: dict) -> int:
+    """Whole-number percentage of counted entries with negative sentiment."""
+    counted = stats["counted_entries"]
+    return round(100 * stats["sentiment_distribution"]["negative"] / counted) if counted else 0
+
+
+def _theme_status(previous_theme, current_theme) -> str:
+    """Escalating / Easing / Steady / New / Not reported, decided only by how
+    far the theme's priority score moved (see TREND_THRESHOLD)."""
+    if previous_theme is None:
+        return "New"
+    if current_theme is None:
+        return "Not reported"
+    change = current_theme["priority_score"] - previous_theme["priority_score"]
+    if change >= TREND_THRESHOLD:
+        return "Escalating"
+    if change <= -TREND_THRESHOLD:
+        return "Easing"
+    return "Steady"
+
+
+def compare_runs(current_stats: dict, previous_entry: dict | None) -> dict:
+    """Compares this run's stats with the previous run's and returns
+    display-ready results, so the dashboard only has to print them.
+
+    previous_entry is the newest entry in aggregated_history.json
+    ({"run_at", "source_file", "stats"}), or None on the first run. When
+    there is nothing to compare, "has_previous" is False, "message" explains
+    why, and the other keys are empty."""
+    if previous_entry is None:
+        return {
+            "has_previous": False,
+            "message": "First run - nothing to compare yet.",
+            "previous_run": None,
+            "headline": {},
+            "themes": [],
+            "needs_attention": [],
+            "getting_better": [],
+        }
+
+    previous_stats = previous_entry["stats"]
+    current_themes = {t["theme"]: t for t in current_stats["themes"]}
+    previous_themes = {t["theme"]: t for t in previous_stats["themes"]}
+
+    rows = []
+    for name in current_themes.keys() | previous_themes.keys():
+        current, previous = current_themes.get(name), previous_themes.get(name)
+        rows.append({
+            "theme": name,
+            "status": _theme_status(previous, current),
+            "count": _compare(previous["count"] if previous else 0,
+                              current["count"] if current else 0),
+            "priority": _compare(previous["priority_score"] if previous else None,
+                                 current["priority_score"] if current else None),
+        })
+    rows.sort(key=lambda r: (TREND_STATUS_ORDER.index(r["status"]),
+                             -(r["priority"]["current"] or 0), r["theme"]))
+
+    return {
+        "has_previous": True,
+        "message": None,
+        "previous_run": {
+            "run_at": previous_entry.get("run_at"),
+            "source_file": previous_entry.get("source_file"),
+        },
+        "headline": {
+            "total_entries": _compare(previous_stats["total_entries"],
+                                      current_stats["total_entries"]),
+            "counted_entries": _compare(previous_stats["counted_entries"],
+                                        current_stats["counted_entries"]),
+            "negative_share": _compare(_negative_share(previous_stats),
+                                       _negative_share(current_stats),
+                                       unit="%", change_unit=" pts"),
+            "status_counts": {status: sum(r["status"] == status for r in rows)
+                              for status in TREND_STATUS_ORDER},
+        },
+        "themes": rows,
+        "needs_attention": [r["theme"] for r in rows if r["status"] in ("Escalating", "New")],
+        "getting_better": [r["theme"] for r in rows if r["status"] == "Easing"],
+    }
+    
 # ---------------------------------------------------------------------------
 # Test runner: python src/logic_manager.py
 # ---------------------------------------------------------------------------
