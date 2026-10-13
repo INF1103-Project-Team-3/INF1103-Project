@@ -1,0 +1,29 @@
+{
+  "records": [
+    {
+      "feedback_id": "fb_30fdf721",
+      "text": "lectures are too short",
+      "timestamp": "2026-10-13T13:01:51"
+    },
+    {
+      "feedback_id": "fb_004",
+      "text": "Someone in my project group keeps sending me threatening messages and I don't feel safe coming to campus.",
+      "timestamp": "2026-09-16T09:12:00"
+    },
+    {
+      "feedback_id": "fb_005",
+      "text": "The portal to check module timetables keeps timing out, I've had to retry five times this week.",
+      "timestamp": "2026-09-16T14:20:00"
+    },
+    {
+      "feedback_id": "fb_006",
+      "text": "Everything feels like too much lately and the deadlines keep piling up, I don't know how I'll get through this semester.",
+      "timestamp": "2026-09-17T08:03:00"
+    },
+    {
+      "feedback_id": "fb_30fdf721",
+      "text": "lectures are too short",
+      "timestamp": "2026-10-13T13:01:51"
+    }
+  ]
+}
