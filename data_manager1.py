@@ -583,6 +583,97 @@ def save_summary(summary_data: Dict[str, Any]) -> bool:
 
     # Delegate file writing strictly to helper function
     return _persist_summary_to_file()
+
+# ==========================================
+# LOGIC MANAGER STORES (D3, D7, D8, D9)
+# ==========================================
+def _read_list_strict(filepath: Path) -> List[Any]:
+    """Reads a file that holds a list of items, either a plain list or
+    {"records": [...]}. A missing or empty file gives []. Anything else that
+    can't be read raises ValueError and the file is left untouched, so
+    history is never silently overwritten."""
+    if not filepath.exists() or filepath.stat().st_size == 0:
+        return []
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        raise ValueError(f"{filepath.name} is not valid JSON, so it was left unchanged: {e}")
+    if isinstance(data, dict) and isinstance(data.get("records"), list):
+        return data["records"]
+    if isinstance(data, list):
+        return data
+    raise ValueError(f"{filepath.name} should contain a list, so it was left unchanged")
+
+
+def _write_json_atomic(filepath: Path, data: Any) -> bool:
+    """Writes to a .tmp file, then replaces the original in one step, so a
+    crash part-way through can't leave a half-written file."""
+    temp_path = filepath.with_name(filepath.name + ".tmp")
+    try:
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        temp_path.replace(filepath)
+        return True
+    except OSError as e:
+        logging.error("Failed to write '%s': %s", filepath, e)
+        return False
+
+
+def load_records(filename: str = "classified_output.json", base_dir: str = "/data") -> List[Dict[str, Any]]:
+    """Loads the AI's classified records for logic_manager. Accepts a plain
+    list or {"records": [...]}. Raises FileNotFoundError / ValueError."""
+    filepath = Path(base_dir) / filename
+    if not filepath.exists():
+        raise FileNotFoundError(f"Input file not found: {filepath}")
+    return _read_list_strict(filepath)
+
+
+def save_invalid_records(invalid_records: List[Dict[str, Any]],
+                         filename: str = "invalid_records.json", base_dir: str = "/data") -> bool:
+    """D9: records that failed validation. Overwritten every run."""
+    return _write_json_atomic(Path(base_dir) / filename, invalid_records)
+
+
+def append_for_review(items: List[Dict[str, Any]], sort_key: Any = None, unique_by: Any = None,
+                      filename: str = "for_review.json", base_dir: str = "/data") -> bool:
+    """D3: adds items to for_review.json, newest first. If unique_by gives the
+    same id twice, only the first (newest) is kept; sort_key re-sorts the
+    combined list. Stored as {"records": [...]} like the other review helpers."""
+    filepath = Path(base_dir) / filename
+    combined = list(items) + _read_list_strict(filepath)
+    if unique_by:
+        seen = set()
+        unique = []
+        for item in combined:
+            item_id = unique_by(item)
+            if item_id not in seen:
+                seen.add(item_id)
+                unique.append(item)
+        combined = unique
+    if sort_key:
+        combined.sort(key=sort_key)
+    return _write_json_atomic(filepath, {"records": combined})
+
+
+def load_history(filename: str = "aggregated_history.json", base_dir: str = "/data") -> List[Dict[str, Any]]:
+    """D7: every past run's {run_at, source_file, stats}, newest first."""
+    return _read_list_strict(Path(base_dir) / filename)
+
+
+def append_history(entry: Dict[str, Any],
+                   filename: str = "aggregated_history.json", base_dir: str = "/data") -> bool:
+    """D7: adds one run to the front of the history."""
+    filepath = Path(base_dir) / filename
+    return _write_json_atomic(filepath, [entry] + _read_list_strict(filepath))
+
+
+def save_trend(trend: Dict[str, Any],
+               filename: str = "trend_output.json", base_dir: str = "/data") -> bool:
+    """D8: this run's trend result. Overwritten every run."""
+    return _write_json_atomic(Path(base_dir) / filename, trend)
+
     
 def search_records(query_text: str) -> List[Dict[str, Any]]:
     """Searches feedback records matching query terms."""
