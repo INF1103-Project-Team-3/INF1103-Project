@@ -1,6 +1,6 @@
 from datetime import datetime
 import json
-from src import io_manager 
+import io_manager
 
 # Test print_out()
 def test_print_out(capsys):

@@ -1,0 +1,20 @@
+{
+  "records": [
+    {
+      "feedback_id": "fb_004",
+      "text": "Someone in my project group keeps sending me threatening messages and I don't feel safe coming to campus.",
+      "timestamp": "2026-09-16T09:12:00",
+      "theme": "123456789",
+      "sentiment": "negative",
+      "severity": "critical",
+      "summary": "Student receives threatening messages from a groupmate and feels unsafe on campus.",
+      "confidence": 1,
+      "agreement": 1,
+      "counted": true,
+      "needs_review": true,
+      "review_reason": [
+        "Critical severity"
+      ]
+    }
+  ]
+}
