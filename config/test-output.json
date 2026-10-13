@@ -263,17 +263,7 @@
     "confidence": 0.78,
     "agreement": 0.67
   },
-  {
-    "feedback_id": "fb_026",
-    "text": "The stairwell railing near the makerspace has been loose for weeks, someone's going to get hurt on it eventually.",
-    "timestamp": "2026-09-21T16:10:00",
-    "theme": "Facilities",
-    "sentiment": "negative",
-    "severity": "critical",
-    "summary": "Loose stairwell railing near makerspace poses safety hazard that could cause injury.",
-    "confidence": 0.94,
-    "agreement": 1.0
-  },
+
   {
     "feedback_id": "fb_027",
     "text": "The vending machine on level 3 keeps eating coins, I've lost about four dollars total this month.",

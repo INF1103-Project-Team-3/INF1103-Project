@@ -53,12 +53,18 @@ def write_json(path, data):
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
-def append_json(path, new_items):
-    """Adds new_items (a list) to the end of the list stored in a JSON file,
-    keeping everything already there. A missing or empty file starts a new
-    list. A file that exists but can't be read as a list raises an error
-    instead of being overwritten, so the history is never lost. The file is
-    replaced in one step, so a crash part-way through can't corrupt it."""
+def append_json(path, new_items, sort_key=None, unique_by=None):
+    """Adds new_items (a list) to the list stored in a JSON file, keeping
+    everything already there. New items are placed first, then:
+      - unique_by (a function returning an item's id): if the same id
+        appears more than once, only the first (newest) is kept, so
+        re-running a file replaces its earlier entries instead of
+        duplicating them
+      - sort_key: the combined list is re-sorted with it
+    A missing or empty file starts a new list. A file that exists but
+    can't be read as a list raises an error instead of being overwritten,
+    so the history is never lost. The file is replaced in one step, so a
+    crash part-way through can't corrupt it."""
     path = Path(path)
     history = []
     if path.exists() and path.stat().st_size > 0:
@@ -68,8 +74,20 @@ def append_json(path, new_items):
             raise ValueError(f"{path.name} is not valid JSON, so it was left unchanged: {error}")
         if not isinstance(history, list):
             raise ValueError(f"{path.name} should contain a list, so it was left unchanged")
+    combined = list(new_items) + history
+    if unique_by:
+        seen = set()
+        unique = []
+        for item in combined:
+            item_id = unique_by(item)
+            if item_id not in seen:
+                seen.add(item_id)
+                unique.append(item)
+        combined = unique
+    if sort_key:
+        combined.sort(key=sort_key)
     temp_path = path.with_name(path.name + ".tmp")
-    write_json(temp_path, history + list(new_items))
+    write_json(temp_path, combined)
     temp_path.replace(path)
 
 
@@ -282,14 +300,15 @@ def apply_feedback_rules(record):
     }
 
 
-def rank_review_queue(records: list) -> list: 
-    """Returns the records needing review in triage order: most severe first,
-    then grouped by theme, then by feedback_id so the order is stable."""
+def review_sort_key(record: dict) -> tuple:
+    """Triage order: most severe first, then grouped by theme, then by
+    feedback_id so the order is stable."""
+    return (-SEVERITY_RANK[record["severity"]], record["theme"], record["feedback_id"])
+
+
+def rank_review_queue(records: list) -> list:
     queue = [r for r in records if r["needs_review"]]
-    return sorted(
-        queue,
-        key=lambda r: (-SEVERITY_RANK[r["severity"]], r["theme"], r["feedback_id"]),
-    )
+    return sorted(queue, key=review_sort_key)
 
 
 def theme_priority_score(theme: dict) -> int:  
@@ -393,7 +412,7 @@ def main():
     append_json(OUTPUT_DIR / "for_review.json", [
         {**record, "run_at": run_at, "source_file": INPUT_FILE.name}
         for record in review_queue
-    ])
+    ], sort_key=review_sort_key, unique_by=lambda record: record["feedback_id"])
  
     print(f"Total: {len(processed_records)}, Counted: {stats['counted_entries']}, "
           f"Flagged for review: {len(review_queue)}, Invalid: {len(invalid_records)}")
