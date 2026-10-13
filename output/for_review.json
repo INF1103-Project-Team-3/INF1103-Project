@@ -18,6 +18,42 @@
     "source_file": "test-output.json"
   },
   {
+    "feedback_id": "fb_002",
+    "text": "The new lab benches are great, so much more space to work with during practicals.",
+    "timestamp": "2026-09-15T11:05:00",
+    "theme": "Facilities",
+    "sentiment": "positive",
+    "severity": "critical",
+    "summary": "Student praises new lab benches for providing more space during practical sessions.",
+    "confidence": 0.96,
+    "agreement": 1.0,
+    "counted": true,
+    "needs_review": true,
+    "review_reason": [
+      "Critical severity"
+    ],
+    "run_at": "2026-10-13T11:36:58",
+    "source_file": "test-output.json"
+  },
+  {
+    "feedback_id": "fb_014",
+    "text": "Printing credits run out so fast every trimester, I end up paying out of pocket just to submit hard copy reports.",
+    "timestamp": "2026-09-19T17:30:00",
+    "theme": "Facilities",
+    "sentiment": "negative",
+    "severity": "critical",
+    "summary": "Printing credits deplete each trimester, forcing student to pay out-of-pocket for required hard copies.",
+    "confidence": 0.88,
+    "agreement": 1.0,
+    "counted": true,
+    "needs_review": true,
+    "review_reason": [
+      "Critical severity"
+    ],
+    "run_at": "2026-10-13T11:36:58",
+    "source_file": "test-output.json"
+  },
+  {
     "feedback_id": "fb_026",
     "text": "The stairwell railing near the makerspace has been loose for weeks, someone's going to get hurt on it eventually.",
     "timestamp": "2026-09-21T16:10:00",
@@ -32,7 +68,25 @@
     "review_reason": [
       "Critical severity"
     ],
-    "run_at": "2026-10-13T11:32:32",
+    "run_at": "2026-10-13T15:38:10",
+    "source_file": "test-output.json"
+  },
+  {
+    "feedback_id": "fb_027",
+    "text": "The vending machine on level 3 keeps eating coins, I've lost about four dollars total this month.",
+    "timestamp": "2026-09-22T08:40:00",
+    "theme": "Facilities",
+    "sentiment": "negative",
+    "severity": "critical",
+    "summary": "Vending machine on level 3 eats coins, causing student to lose about $4 this month.",
+    "confidence": 0.92,
+    "agreement": 1.0,
+    "counted": true,
+    "needs_review": true,
+    "review_reason": [
+      "Critical severity"
+    ],
+    "run_at": "2026-10-13T11:36:58",
     "source_file": "test-output.json"
   },
   {
@@ -54,6 +108,42 @@
     "source_file": "test-output.json"
   },
   {
+    "feedback_id": "fb_032",
+    "text": "My IWSP company hasn't given me any actual project work for the past three weeks, I've just been sitting around waiting for something to do.",
+    "timestamp": "2026-09-22T13:15:00",
+    "theme": "Internship Placement",
+    "sentiment": "negative",
+    "severity": "critical",
+    "summary": "Student hasn't received any project work from IWSP company for three weeks, leaving them idle.",
+    "confidence": 0.88,
+    "agreement": 1.0,
+    "counted": true,
+    "needs_review": true,
+    "review_reason": [
+      "Critical severity"
+    ],
+    "run_at": "2026-10-13T11:39:53",
+    "source_file": "test-output.json"
+  },
+  {
+    "feedback_id": "fb_033",
+    "text": "My IWSP company hasn't given me any actual project work for the past three weeks, I've just been sitting around waiting for something to do.",
+    "timestamp": "2026-09-22T13:15:00",
+    "theme": "Internship Placement",
+    "sentiment": "negative",
+    "severity": "critical",
+    "summary": "Student hasn't received any project work from IWSP company for three weeks, leaving them idle.",
+    "confidence": 0.88,
+    "agreement": 1.0,
+    "counted": true,
+    "needs_review": true,
+    "review_reason": [
+      "Critical severity"
+    ],
+    "run_at": "2026-10-13T11:39:53",
+    "source_file": "test-output.json"
+  },
+  {
     "feedback_id": "fb_004",
     "text": "Someone in my project group keeps sending me threatening messages and I don't feel safe coming to campus.",
     "timestamp": "2026-09-16T09:12:00",
@@ -68,7 +158,7 @@
     "review_reason": [
       "Critical severity"
     ],
-    "run_at": "2026-10-13T11:32:32",
+    "run_at": "2026-10-13T15:38:10",
     "source_file": "test-output.json"
   },
   {
@@ -86,7 +176,7 @@
     "review_reason": [
       "Critical severity"
     ],
-    "run_at": "2026-10-13T11:32:32",
+    "run_at": "2026-10-13T15:38:10",
     "source_file": "test-output.json"
   },
   {
@@ -104,7 +194,7 @@
     "review_reason": [
       "Critical severity"
     ],
-    "run_at": "2026-10-13T11:32:32",
+    "run_at": "2026-10-13T15:38:10",
     "source_file": "test-output.json"
   },
   {
@@ -158,7 +248,7 @@
     "review_reason": [
       "Critical severity"
     ],
-    "run_at": "2026-10-13T11:32:32",
+    "run_at": "2026-10-13T15:38:10",
     "source_file": "test-output.json"
   },
   {
@@ -176,7 +266,7 @@
     "review_reason": [
       "Agreement 0.67 - AI outputs did not fully agree."
     ],
-    "run_at": "2026-10-13T11:32:32",
+    "run_at": "2026-10-13T15:38:10",
     "source_file": "test-output.json"
   },
   {
@@ -194,7 +284,7 @@
     "review_reason": [
       "Agreement 0.33 - AI outputs did not fully agree."
     ],
-    "run_at": "2026-10-13T11:32:32",
+    "run_at": "2026-10-13T15:38:10",
     "source_file": "test-output.json"
   },
   {
@@ -212,7 +302,7 @@
     "review_reason": [
       "Agreement 0.67 - AI outputs did not fully agree."
     ],
-    "run_at": "2026-10-13T11:32:32",
+    "run_at": "2026-10-13T15:38:10",
     "source_file": "test-output.json"
   },
   {
@@ -230,7 +320,7 @@
     "review_reason": [
       "Agreement 0.67 - AI outputs did not fully agree."
     ],
-    "run_at": "2026-10-13T11:32:32",
+    "run_at": "2026-10-13T15:38:10",
     "source_file": "test-output.json"
   },
   {
@@ -248,7 +338,7 @@
     "review_reason": [
       "Agreement 0.67 - AI outputs did not fully agree."
     ],
-    "run_at": "2026-10-13T11:32:32",
+    "run_at": "2026-10-13T15:38:10",
     "source_file": "test-output.json"
   },
   {
@@ -266,7 +356,7 @@
     "review_reason": [
       "Agreement 0.67 - AI outputs did not fully agree."
     ],
-    "run_at": "2026-10-13T11:32:32",
+    "run_at": "2026-10-13T15:38:10",
     "source_file": "test-output.json"
   },
   {
@@ -284,7 +374,7 @@
     "review_reason": [
       "Agreement 0.67 - AI outputs did not fully agree."
     ],
-    "run_at": "2026-10-13T11:32:32",
+    "run_at": "2026-10-13T15:38:10",
     "source_file": "test-output.json"
   },
   {
@@ -302,7 +392,7 @@
     "review_reason": [
       "Agreement 0.67 - AI outputs did not fully agree."
     ],
-    "run_at": "2026-10-13T11:32:32",
+    "run_at": "2026-10-13T15:38:10",
     "source_file": "test-output.json"
   },
   {
@@ -320,7 +410,7 @@
     "review_reason": [
       "Confidence 0.00 is below threshold 0.5."
     ],
-    "run_at": "2026-10-13T11:32:32",
+    "run_at": "2026-10-13T15:38:10",
     "source_file": "test-output.json"
   },
   {
@@ -338,7 +428,7 @@
     "review_reason": [
       "Confidence 0.40 is below threshold 0.5."
     ],
-    "run_at": "2026-10-13T11:32:32",
+    "run_at": "2026-10-13T15:38:10",
     "source_file": "test-output.json"
   }
 ]

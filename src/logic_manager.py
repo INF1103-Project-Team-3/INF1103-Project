@@ -327,15 +327,15 @@ def rank_review_queue(records: list) -> list:
 
 
 def theme_priority_score(theme: dict) -> int:  
-    """combines severity mix (50 points), average sentiment (30 points), 
-    and frequency (20 points) to give a 0-100 continuous priority score 
+    """combines severity mix (45 points), average sentiment (20 points), 
+    and frequency (35 points) to give a 0-100 continuous priority score 
     instead of needing to look at multiple metrics to determine which themes 
     are most urgent. Adjust the weights here to change what counts most."""
     severe_entries = theme["severity_counts"]["high"] + theme["severity_counts"]["critical"] #takes the number of high and critical severity feedbacks for that theme
     severity_ratio = severe_entries / theme["count"] if theme["count"] else 0
     negativity = max(0, -theme["avg_sentiment"])
     frequency_factor = min(theme["count"] / 10, 1.0)
-    score = (severity_ratio * 50) + (negativity * 30) + (frequency_factor * 20) #formula can be adjusted to change the weight of each factor, currently severity is weighted highest, then negativity, then frequency
+    score = (severity_ratio * 45) + (negativity * 20) + (frequency_factor * 35) #formula can be adjusted to change the weight of each factor, currently severity is weighted highest, then frequency, then negativity.
     return round(score)
 
 
@@ -410,7 +410,7 @@ def _compare(previous, current, unit: str = "", change_unit: str = "") -> dict:
     }
 
 
-def _negative_share(stats: dict) -> int:
+def _negative_percent(stats: dict) -> int:
     """Whole-number percentage of counted entries with negative sentiment."""
     counted = stats["counted_entries"]
     return round(100 * stats["sentiment_distribution"]["negative"] / counted) if counted else 0
@@ -480,9 +480,9 @@ def compare_runs(current_stats: dict, previous_entry: dict | None) -> dict:
                                       current_stats["total_entries"]),
             "counted_entries": _compare(previous_stats["counted_entries"],
                                         current_stats["counted_entries"]),
-            "negative_share": _compare(_negative_share(previous_stats),
-                                       _negative_share(current_stats),
-                                       unit="%", change_unit=" pts"),
+            "negative_percent": _compare(_negative_percent(previous_stats),
+                                         _negative_percent(current_stats),
+                                         unit="%", change_unit=" pts"),
             "status_counts": {status: sum(r["status"] == status for r in rows)
                               for status in TREND_STATUS_ORDER},
         },
@@ -490,11 +490,12 @@ def compare_runs(current_stats: dict, previous_entry: dict | None) -> dict:
         "needs_attention": [r["theme"] for r in rows if r["status"] in ("Escalating", "New")],
         "getting_better": [r["theme"] for r in rows if r["status"] == "Easing"],
     }
-    
+
+
 # ---------------------------------------------------------------------------
 # Test runner: python src/logic_manager.py
 # ---------------------------------------------------------------------------
-def run_sanity_checks(records, invalid_records, processed_records, review_queue, stats):
+def run_sanity_checks(records, invalid_records, processed_records, review_queue, stats, trend):
     """Fails loudly if the results are inconsistent."""
     counted = sum(r["counted"] for r in processed_records)
  
@@ -507,7 +508,12 @@ def run_sanity_checks(records, invalid_records, processed_records, review_queue,
     )
     assert sum(t["count"] for t in stats["themes"]) == counted, "theme counts don't add up"
     assert sum(stats["sentiment_distribution"].values()) == counted, "sentiment counts don't add up"
- 
+    if trend["has_previous"]:
+        trend_themes = {r["theme"] for r in trend["themes"]}
+        assert {t["theme"] for t in stats["themes"]} <= trend_themes, "trend is missing a current theme"
+        assert sum(trend["headline"]["status_counts"].values()) == len(trend["themes"]), (
+            "trend status counts don't add up"
+        )
     ranks = [SEVERITY_RANK[r["severity"]] for r in review_queue]
     assert ranks == sorted(ranks, reverse=True), "review queue not sorted critical-first"
     for earlier, later in zip(review_queue, review_queue[1:]):
@@ -532,17 +538,35 @@ def main():
     review_queue = rank_review_queue(processed_records)
     stats = aggregate_themes(processed_records)
     write_json(OUTPUT_DIR / "aggregated_output.json", stats)
-     # for_review.json keeps every run; each record is stamped so runs can be told apart
     run_at = datetime.now().isoformat(timespec="seconds")
+
+    # for_review.json keeps every run; each record is stamped so runs can be told apart
     append_json(OUTPUT_DIR / "for_review.json", [
         {**record, "run_at": run_at, "source_file": INPUT_FILE.name}
         for record in review_queue
     ], sort_key=review_sort_key, unique_by=lambda record: record["feedback_id"])
- 
+
+    # aggregated_history.json keeps every run's stats, newest first. The trend
+    # is worked out BEFORE this run is added, so the newest entry is the previous run.
+    history_path = OUTPUT_DIR / "aggregated_history.json"
+    history = read_json_list(history_path)
+    trend = compare_runs(stats, history[0] if history else None)
+    write_json(OUTPUT_DIR / "trend_output.json", trend)
+    append_json(history_path, [{"run_at": run_at, "source_file": INPUT_FILE.name, "stats": stats}])
+
     print(f"Total: {len(processed_records)}, Counted: {stats['counted_entries']}, "
           f"Flagged for review: {len(review_queue)}, Invalid: {len(invalid_records)}")
- 
-    run_sanity_checks(records, invalid_records, processed_records, review_queue, stats)
+    if trend["has_previous"]:
+        print(f"Trend vs previous run ({trend['previous_run']['run_at']}):")
+        print(f"  Entries: {trend['headline']['total_entries']['text']}, "
+              f"negative: {trend['headline']['negative_percent']['text']},")
+        for row in trend["themes"]:
+            print(f"  {row['theme']:<22}{row['status']:<13}"
+                  f"count {row['count']['text']:<16}priority {row['priority']['text']}")
+    else:
+        print(trend["message"])
+
+    run_sanity_checks(records, invalid_records, processed_records, review_queue, stats, trend)
     print("All assertions passed.")
 
 if __name__ == "__main__":

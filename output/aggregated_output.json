@@ -17,7 +17,7 @@
         "critical": 0
       },
       "avg_sentiment": -1.0,
-      "priority_score": 50,
+      "priority_score": 45,
       "examples": [
         {
           "severity": "high",
@@ -47,7 +47,7 @@
         "critical": 1
       },
       "avg_sentiment": -0.5,
-      "priority_score": 36,
+      "priority_score": 35,
       "examples": [
         {
           "severity": "critical",
@@ -77,7 +77,7 @@
         "critical": 3
       },
       "avg_sentiment": -1.0,
-      "priority_score": 86,
+      "priority_score": 76,
       "examples": [
         {
           "severity": "critical",
@@ -103,7 +103,7 @@
         "critical": 1
       },
       "avg_sentiment": -1.0,
-      "priority_score": 84,
+      "priority_score": 72,
       "examples": [
         {
           "severity": "critical",
@@ -125,7 +125,7 @@
         "critical": 0
       },
       "avg_sentiment": -0.5,
-      "priority_score": 44,
+      "priority_score": 40,
       "examples": [
         {
           "severity": "high",
@@ -147,7 +147,7 @@
         "critical": 0
       },
       "avg_sentiment": 0.0,
-      "priority_score": 4,
+      "priority_score": 7,
       "examples": [
         {
           "severity": "medium",
@@ -169,7 +169,7 @@
         "critical": 0
       },
       "avg_sentiment": 0.0,
-      "priority_score": 4,
+      "priority_score": 7,
       "examples": [
         {
           "severity": "low",
@@ -191,7 +191,7 @@
         "critical": 0
       },
       "avg_sentiment": -1.0,
-      "priority_score": 82,
+      "priority_score": 68,
       "examples": [
         {
           "severity": "high",
