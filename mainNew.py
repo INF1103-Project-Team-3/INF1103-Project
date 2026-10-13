@@ -31,7 +31,7 @@ if __name__ == "__main__":
     io_payload = io_manager.main()    
 
     # Prevent ERROR MESSAGES WHEN USING OPTION 1 and 2
-    if io_payload is None or io_payload == "search" or io_payload == "exit":
+    if io_payload is None or io_payload == "exit":
         print("Workflow terminated or read-only action completed safely. Exiting.")
         sys.exit(0)
 
@@ -123,6 +123,9 @@ if __name__ == "__main__":
     # 2. Re-run the aggregate themes over the FULL set of records (past + present)
     logic_output = logic_manager.aggregate_themes(all_records)
 
+
+    # Save aggregated_output.json here
+    data_manager1.aggregate_themes(logic_output)
 ############################################
 
 
