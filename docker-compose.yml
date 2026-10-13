@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    image: inf1103-project
+    volumes:
+      # Both sides now match your host PC folder name
+      - ./INF1103-Project-main:/INF1103-Project-main
+      - pip_packages:/usr/local/lib/python3.11/site-packages
+    stdin_open: true
+    tty: true
+
+volumes:
+  pip_packages:
+
+
+
