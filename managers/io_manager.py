@@ -25,7 +25,7 @@ TEST_INPUT_FILE = "test-input.json"          # single entries are saved here
 AGGREGATED_FILE = "aggregated_output.json"   # theme table data
 SUMMARY_FILE = "summary.json"                # summary of the aggregated data
 REVIEW_FILE = "for_review.json"              # for review files
-TREND_FILE = "trends_output.json"             # trend data
+TREND_FILE = "trend_output.json"             # trend data
 
 # Display formatting for the dashboard.
 WIDTH = 82
@@ -255,36 +255,6 @@ def data_path(filename):
     return os.path.join(DATA_DIRECTORY, filename)
 
 
-# def read_json(path):
-#     """Load a JSON file that holds a list of rows. """
-#     try:
-#         with open(path, encoding="utf-8") as f:
-#             data = json.load(f)
-#     except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
-#         logger.warning("Could not read JSON %s: %s", path, exc)
-#         return []
-#     # The top level must be a list; a single object or string isn't a batch.
-#     if not isinstance(data, list):
-#         logger.warning("JSON %s must contain a list of entries", path)
-#         return []
-#     return data
-
-
-# def write_json(path, data):
-#     """Write data to path as JSON, creating the file if it doesn't exist.
-
-#     Returns True on success, False if the file can't be written.
-#     """
-#     try:
-#         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-#         with open(path, "w", encoding="utf-8") as f:
-#             json.dump(data, f, indent=2, ensure_ascii=False)
-#     except OSError as exc:
-#         logger.warning("Could not write JSON %s: %s", path, exc)
-#         return False
-#     return True
-
-
 def read_csv(path):
     """Load a CSV file as a list of dicts (first row = column names).
     """
@@ -294,6 +264,16 @@ def read_csv(path):
             return list(csv.DictReader(f))
     except (OSError, UnicodeDecodeError, csv.Error) as exc:
         logger.warning("Could not read CSV %s: %s", path, exc)
+        return []
+
+
+def read_json_rows(path):
+    """Load a JSON file of rows. Returns [] if it can't be read, so the
+    caller can reprompt instead of crashing."""
+    try:
+        return data_manager._read_list_strict(Path(path))
+    except (ValueError, OSError) as exc:
+        logger.warning("Could not read JSON %s: %s", path, exc)
         return []
 
 
@@ -308,10 +288,9 @@ def convert_csv_to_json(csv_path, json_path):
         return False
 
     # If a row has more cells than the header, they sit under a None key (saved as "null"). validate_entry ignores them.
-    return data_manager._write_json_atomic(json_path, rows)
-#---------------------------------------------------------------------------
+    return data_manager._write_json_atomic(Path(json_path), rows)
 
- 
+#---------------------------------------------------------------------------
 # Payloads
 # ---------------------------------------------------------------------------
 # Single entries are saved to test-input.json (see save_entry).
@@ -758,7 +737,7 @@ def run_admin_import():
 
         extension = os.path.splitext(path)[1].lower()
         if extension == ".json":
-            rows = data_manager._read_list_strict(Path(path))
+            rows = read_json_rows(path)
             if rows:  # empty list counts as a failed load, so will reprompt
                 break
             print_out(f"  Invalid: could not read '{path}' as JSON (check the path and format).")
@@ -767,7 +746,7 @@ def run_admin_import():
             json_path = data_path(os.path.splitext(os.path.basename(path))[0] + ".json")
             if convert_csv_to_json(path, json_path):
                 print_block(f"Converted to '{json_path}'.")
-                rows = data_manager._read_list_strict(Path(json_path))
+                rows = read_json_rows(json_path)
                 break
             print_out(f"  Invalid: could not convert '{path}' (check the path and format).")
         else:
