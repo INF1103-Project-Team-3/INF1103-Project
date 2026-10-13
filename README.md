@@ -135,7 +135,7 @@ docker compose run --rm app sh -c "pip install pytest && pytest tests/"
 docker compose run --rm app python submission/execution_script.py
 
 # logic_manager on the 30 saved AI outputs, including trend vs the previous run
-docker compose run --rm app python managers/logic_manager.py   # writes to output/
+docker compose run --rm app python managers/logic_manager.py   # writes to data/
 ```
 
 CI runs on every pull request to `main` and checks that all Python files compile.
