@@ -25,7 +25,7 @@ TEST_INPUT_FILE = "test-input.json"          # single entries are saved here
 AGGREGATED_FILE = "aggregated_output.json"   # theme table data
 SUMMARY_FILE = "summary.json"                # summary of the aggregated data
 REVIEW_FILE = "for_review.json"              # for review files
-TREND_FILE = "trends_output.json"             # trend data
+TREND_FILE = "trend_output.json"             # trend data
 
 # Display formatting for the dashboard.
 WIDTH = 82
@@ -279,9 +279,8 @@ def convert_csv_to_json(csv_path, json_path):
 
     # If a row has more cells than the header, they sit under a None key (saved as "null"). validate_entry ignores them.
     return data_manager._write_json_atomic(Path(json_path), rows)
-#---------------------------------------------------------------------------
 
- 
+#---------------------------------------------------------------------------
 # Payloads
 # ---------------------------------------------------------------------------
 # Single entries are saved to test-input.json (see save_entry).
