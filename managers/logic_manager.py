@@ -20,7 +20,7 @@ SENTIMENT_SCORE = {"positive": 1, "neutral": 0, "negative": -1}
 # Paths are built from this file's location, so they work from any terminal
 # folder. logic_manager.py lives in src/, so two levels up is the repo root.
 REPO_ROOT = Path(__file__).resolve().parent.parent
-INPUT_FILE = REPO_ROOT / "managers" / "config" / "test-output.json"
+INPUT_FILE = REPO_ROOT / "tests" / "ai_manager_samples" / "test-output.json"
 OUTPUT_DIR = REPO_ROOT / "output"  # scratch results (git-ignored)
  
 # Every record from the AI must have these fields, with these types.

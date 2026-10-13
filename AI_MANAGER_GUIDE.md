@@ -15,11 +15,14 @@ ___
 | `system_prompt.txt`, `themes.json` | The call 1 prompt and the 8 canonical themes. Tuned and tested: do not edit without re-testing. |
 | `summary_prompt.txt` | The call 2 prompt. Tuned and tested: do not edit without re-testing. |
 | `aggregated_output.json` | Example `logic_manager.aggregate_themes` stats for those 30 entries: the shape `summarise` expects. |
+| `token-usage-log.json` | Created automatically; local daily-token ledger (git-ignored). |
+
+| File in `tests/ai_manager_samples/` | Purpose |
+|---|---|
 | `summary-output.json` | Real `summarise` output for `aggregated_output.json`. Build and test against it (e.g. storage, the dashboard) without calling the API. |
 | `test-input.json` | 30 sample input entries. |
 | `test-output.json` | Real `classify_entry` output for the 30 entries in `test-input.json`. Build and test your module against it without calling the API. |
 | `test-data-ans-key.json` | Hand labels, for cross-checking accuracy only. |
-| `token-usage-log.json` | Created automatically; local daily-token ledger (git-ignored). |
 
 ### **Usage**
 ___
@@ -83,7 +86,7 @@ ___
 
 **Input**: the stats dict from `logic_manager.aggregate_themes`: `total_entries`, `counted_entries`, `sentiment_distribution` and `themes` (each with `theme`, `count`, `severity_counts`, `avg_sentiment` and `examples` of `{severity, summary}`). See `config/aggregated_output.json`.
 
-**Output** (see `config/summary-output.json` for a real example):
+**Output** (see `tests/ai_manager_samples/summary-output.json` for a real example):
 
 | Field | Values | How to read it |
 |---|---|---|
