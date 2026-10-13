@@ -18,10 +18,11 @@ SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 SENTIMENT_SCORE = {"positive": 1, "neutral": 0, "negative": -1}
  
 # Paths are built from this file's location, so they work from any terminal
-# folder. logic_manager.py lives in src/, so two levels up is the repo root.
+# folder. logic_manager.py lives in managers/, so the parent of its folder is
+# the repo root.
 REPO_ROOT = Path(__file__).resolve().parent.parent
 INPUT_FILE = REPO_ROOT / "managers" / "config" / "test-output.json"
-OUTPUT_DIR = REPO_ROOT / "output"  # scratch results (git-ignored)
+OUTPUT_DIR = REPO_ROOT / "data"  # the same data/ folder data_manager uses
  
 # Every record from the AI must have these fields, with these types.
 REQUIRED_FIELDS = {
@@ -60,10 +61,11 @@ def write_json(path, data):
 
 
 def read_json_list(path):
-    """Reads a JSON file that holds a list. A missing or empty file gives an
-    empty list. A file that exists but isn't valid JSON, or isn't a list,
-    raises an error instead of being treated as empty, so history is never
-    silently lost."""
+    """Reads a JSON file that holds a list, either a plain list or
+    {"records": [...]} (the shape data_manager uses for for_review.json). A
+    missing or empty file gives an empty list. A file that exists but isn't
+    valid JSON, or isn't a list, raises an error instead of being treated as
+    empty, so history is never silently lost."""
     path = Path(path)
     if not path.exists() or path.stat().st_size == 0:
         return []
@@ -71,12 +73,14 @@ def read_json_list(path):
         data = read_json(path)
     except json.JSONDecodeError as error:
         raise ValueError(f"{path.name} is not valid JSON, so it was left unchanged: {error}")
+    if isinstance(data, dict) and isinstance(data.get("records"), list):
+        return data["records"]
     if not isinstance(data, list):
         raise ValueError(f"{path.name} should contain a list, so it was left unchanged")
     return data
 
 
-def append_json(path, new_items, sort_key=None, unique_by=None):
+def append_json(path, new_items, sort_key=None, unique_by=None, records_key=None):
     """Adds new_items (a list) to the list stored in a JSON file, keeping
     everything already there. New items are placed first, then:
       - unique_by (a function returning an item's id): if the same id
@@ -84,6 +88,8 @@ def append_json(path, new_items, sort_key=None, unique_by=None):
         re-running a file replaces its earlier entries instead of
         duplicating them
       - sort_key: the combined list is re-sorted with it
+      - records_key: if given (e.g. "records"), the list is saved as
+        {records_key: [...]} instead of a plain list
     A missing or empty file starts a new list. A file that exists but
     can't be read as a list raises an error instead of being overwritten,
     so the history is never lost. The file is replaced in one step, so a
@@ -102,7 +108,7 @@ def append_json(path, new_items, sort_key=None, unique_by=None):
     if sort_key:
         combined.sort(key=sort_key)
     temp_path = path.with_name(path.name + ".tmp")
-    write_json(temp_path, combined)
+    write_json(temp_path, {records_key: combined} if records_key else combined)
     temp_path.replace(path)
 
 
@@ -138,6 +144,7 @@ def _matches_type(value, type_name):
             return isinstance(value, (int, float)) and not isinstance(value, bool)
         case _:
             raise ValueError(f"Unknown type name: {type_name}")
+
 
 def validate_record(record):
     """Returns a list of problems with one record. An empty list means the
@@ -493,7 +500,7 @@ def compare_runs(current_stats: dict, previous_entry: dict | None) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Test runner: python src/logic_manager.py
+# Test runner: python managers/logic_manager.py
 # ---------------------------------------------------------------------------
 def run_sanity_checks(records, invalid_records, processed_records, review_queue, stats, trend):
     """Fails loudly if the results are inconsistent."""
@@ -544,7 +551,8 @@ def main():
     append_json(OUTPUT_DIR / "for_review.json", [
         {**record, "run_at": run_at, "source_file": INPUT_FILE.name}
         for record in review_queue
-    ], sort_key=review_sort_key, unique_by=lambda record: record["feedback_id"])
+    ], sort_key=review_sort_key, unique_by=lambda record: record["feedback_id"],
+        records_key="records")
 
     # aggregated_history.json keeps every run's stats, newest first. The trend
     # is worked out BEFORE this run is added, so the newest entry is the previous run.
@@ -559,7 +567,7 @@ def main():
     if trend["has_previous"]:
         print(f"Trend vs previous run ({trend['previous_run']['run_at']}):")
         print(f"  Entries: {trend['headline']['total_entries']['text']}, "
-              f"negative: {trend['headline']['negative_percent']['text']},")
+              f"negative: {trend['headline']['negative_percent']['text']}")
         for row in trend["themes"]:
             print(f"  {row['theme']:<22}{row['status']:<13}"
                   f"count {row['count']['text']:<16}priority {row['priority']['text']}")
@@ -571,8 +579,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-  
-    
-
-
-
