@@ -1,0 +1,165 @@
+{
+  "total_entries": 25,
+  "counted_entries": 14,
+  "sentiment_distribution": {
+    "positive": 1,
+    "neutral": 1,
+    "negative": 12
+  },
+  "themes": [
+    {
+      "theme": "Assessment",
+      "count": 3,
+      "severity_counts": {
+        "low": 0,
+        "medium": 2,
+        "high": 1,
+        "critical": 0
+      },
+      "avg_sentiment": -1.0,
+      "priority_score": 46,
+      "examples": [
+        {
+          "severity": "high",
+          "summary": "Rubric changed three days before deadline without notice, causing students to prepare for wrong criteria."
+        },
+        {
+          "severity": "medium",
+          "summary": "Student frustrated that group work is unfairly graded, doing all work yet receiving same grade."
+        },
+        {
+          "severity": "medium",
+          "summary": "Student is uncertain about how the group contribution component is marked."
+        }
+      ]
+    },
+    {
+      "theme": "Facilities",
+      "count": 3,
+      "severity_counts": {
+        "low": 0,
+        "medium": 2,
+        "high": 0,
+        "critical": 1
+      },
+      "avg_sentiment": -1.0,
+      "priority_score": 46,
+      "examples": [
+        {
+          "severity": "critical",
+          "summary": "Loose stairwell railing near makerspace poses safety hazard that could cause injury."
+        },
+        {
+          "severity": "medium",
+          "summary": "Printing credits deplete each trimester, forcing student to pay out-of-pocket for required hard copies."
+        },
+        {
+          "severity": "medium",
+          "summary": "Vending machine on level 3 eats coins, causing student to lose about $4 this month."
+        }
+      ]
+    },
+    {
+      "theme": "Social Environment",
+      "count": 2,
+      "severity_counts": {
+        "low": 0,
+        "medium": 0,
+        "high": 0,
+        "critical": 2
+      },
+      "avg_sentiment": -1.0,
+      "priority_score": 72,
+      "examples": [
+        {
+          "severity": "critical",
+          "summary": "Professor repeatedly humiliates student by commenting on accent publicly."
+        },
+        {
+          "severity": "critical",
+          "summary": "Student feels unsafe as another student waits outside lecture hall weekly."
+        }
+      ]
+    },
+    {
+      "theme": "Well-being",
+      "count": 2,
+      "severity_counts": {
+        "low": 0,
+        "medium": 0,
+        "high": 1,
+        "critical": 1
+      },
+      "avg_sentiment": -1.0,
+      "priority_score": 72,
+      "examples": [
+        {
+          "severity": "critical",
+          "summary": "Student feels overwhelming distress and sees no point continuing, uncertain whom to confide in."
+        },
+        {
+          "severity": "high",
+          "summary": "Student feels overwhelmed by increasing deadlines and doubts managing the semester."
+        }
+      ]
+    },
+    {
+      "theme": "Administration",
+      "count": 2,
+      "severity_counts": {
+        "low": 1,
+        "medium": 0,
+        "high": 1,
+        "critical": 0
+      },
+      "avg_sentiment": -0.5,
+      "priority_score": 40,
+      "examples": [
+        {
+          "severity": "high",
+          "summary": "Improved lab booking system crashes when booking close to deadline, hindering slot reservation."
+        },
+        {
+          "severity": "low",
+          "summary": "Student suggests automatic timetable clash detection before module registration."
+        }
+      ]
+    },
+    {
+      "theme": "Internship Placement",
+      "count": 1,
+      "severity_counts": {
+        "low": 0,
+        "medium": 0,
+        "high": 1,
+        "critical": 0
+      },
+      "avg_sentiment": -1.0,
+      "priority_score": 68,
+      "examples": [
+        {
+          "severity": "high",
+          "summary": "Student hasn't received any project work from IWSP company for three weeks, leaving them idle."
+        }
+      ]
+    },
+    {
+      "theme": "Teaching Quality",
+      "count": 1,
+      "severity_counts": {
+        "low": 1,
+        "medium": 0,
+        "high": 0,
+        "critical": 0
+      },
+      "avg_sentiment": 1.0,
+      "priority_score": 4,
+      "examples": [
+        {
+          "severity": "low",
+          "summary": "Student praises best trimester, capstone briefing well organized and lecturers engaged with projects."
+        }
+      ]
+    }
+  ]
+}
