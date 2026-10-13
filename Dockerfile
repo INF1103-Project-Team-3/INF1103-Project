@@ -1,30 +1,17 @@
-# FROM python:3.11-slim
-
-# # Force Python logs to output immediately without buffering
-# ENV PYTHONUNBUFFERED=1
-
-# # 1. Set working directory strictly to /data
-# WORKDIR /data
-
-# # 2. Copy data_manager.py directly into /data
-# COPY data_manager.py feedback_store.json .
-
-# # 3. Execute script from /data
-# CMD ["python", "/data/data_manager.py"]
-
 FROM python:3.11-slim
 
-# Force Python logs to stream directly to terminal output
-ENV PYTHONUNBUFFERED=1
+# Set the working directory inside the container
+WORKDIR /Project
 
-# 1. Set application code directory to /app
-WORKDIR /app
+# Copy requirements from the local Project subfolder
+COPY requirements/requirements.txt ./requirements/
 
-# 2. Pre-create mount point for persistent dataset volume
-RUN mkdir -p /data
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements/requirements.txt
 
-# 3. Copy python script into /app
-COPY data_manager1.py /app/data_manager1.py
+# Copy the contents of your local Project folder into the container's working directory
+COPY . .
 
-# 4. Execute script from /app pointing to /data volume
-CMD ["python", "/app/data_manager1.py", "/data/feedback_store.json"]
+# Run your main script
+CMD ["python", "managers/main.py"]
+

@@ -1,0 +1,37 @@
+{
+  "overall_summary": "This summary covers 20 of 30 entries received. Critical issues: a loose stairwell railing (Facilities); threatening messages from a groupmate (Social Environment); professor publicly humiliating a student’s accent (Social Environment); a student feeling unsafe as another waits outside a lecture hall (Social Environment); and a student experiencing overwhelming distress with no support (Well‑being). High‑severity problems include a last‑minute rubric change (Assessment), overwhelming deadline load (Well‑being), a lab‑booking system crash near deadlines (Administration), and no internship project work for three weeks (Internship Placement). Other frequent concerns are printing‑credit shortages and a vending‑machine coin loss (Facilities) and unclear marking criteria and unfair group grading (Assessment). Positive remarks note the new lab benches and a well‑organized capstone briefing.",
+  "theme_actions": [
+    {
+      "theme": "Facilities",
+      "suggested_action": "Pass the loose stairwell railing report to estates/maintenance for immediate safety fix, and schedule regular inspections of stairways."
+    },
+    {
+      "theme": "Assessment",
+      "suggested_action": "Review assessment rubrics to prevent last‑minute changes, ensure marking criteria are published before deadlines, and clarify group contribution grading to guarantee fairness."
+    },
+    {
+      "theme": "Social Environment",
+      "suggested_action": "Pass all three critical reports to campus safety and student welfare for immediate follow‑up, and establish a clear process for handling harassment, threats, and unsafe monitoring."
+    },
+    {
+      "theme": "Teaching Quality",
+      "suggested_action": "Adjust lecture slide pacing to allow note‑taking and continue the well‑organized capstone briefings that students praise."
+    },
+    {
+      "theme": "Well-being",
+      "suggested_action": "Pass the distress report to student counselling for urgent support, and provide clearer guidance on managing workload deadlines to reduce high‑stress levels."
+    },
+    {
+      "theme": "Administration",
+      "suggested_action": "Fix the lab‑booking system crash before deadline periods, and evaluate implementing automatic timetable clash detection as suggested."
+    },
+    {
+      "theme": "Unclear",
+      "suggested_action": "No actionable feedback; continue monitoring for more specific input."
+    },
+    {
+      "theme": "Internship Placement",
+      "suggested_action": "Contact the IWSP company to secure project work promptly and inform the student of the expected timeline."
+    }
+  ]
+}

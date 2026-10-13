@@ -1,0 +1,65 @@
+{
+  "total_entries": 4,
+  "counted_entries": 3,
+  "sentiment_distribution": {
+    "positive": 0,
+    "neutral": 0,
+    "negative": 3
+  },
+  "themes": [
+    {
+      "theme": "Social Environment",
+      "count": 1,
+      "severity_counts": {
+        "low": 0,
+        "medium": 0,
+        "high": 0,
+        "critical": 1
+      },
+      "avg_sentiment": -1.0,
+      "priority_score": 82,
+      "examples": [
+        {
+          "severity": "critical",
+          "summary": "Student receives threatening messages from a groupmate and feels unsafe on campus."
+        }
+      ]
+    },
+    {
+      "theme": "Administration",
+      "count": 1,
+      "severity_counts": {
+        "low": 0,
+        "medium": 1,
+        "high": 0,
+        "critical": 0
+      },
+      "avg_sentiment": -1.0,
+      "priority_score": 32,
+      "examples": [
+        {
+          "severity": "medium",
+          "summary": "Portal for module timetables frequently times out, forcing multiple retries each week."
+        }
+      ]
+    },
+    {
+      "theme": "Teaching Quality",
+      "count": 1,
+      "severity_counts": {
+        "low": 1,
+        "medium": 0,
+        "high": 0,
+        "critical": 0
+      },
+      "avg_sentiment": -1.0,
+      "priority_score": 32,
+      "examples": [
+        {
+          "severity": "low",
+          "summary": "Student finds lectures too short."
+        }
+      ]
+    }
+  ]
+}

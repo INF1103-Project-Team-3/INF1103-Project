@@ -1,11 +1,17 @@
 version: '3.8'
 
 services:
-  data_manager:
+  app:
     build: .
     volumes:
-      # Map local host ./data directory strictly to /data inside container
+      # Mounts your local Project folder to the container's /Project folder
+      - .:/Project
+      # Mounts your local data folder to /data inside the container
       - ./data:/data
-    stdin_open: true  # Enables interactive terminal input (-i)
-    tty: true         # Enables pseudo-TTY (-t)
-    command: python /app/data_manager1.py /data/feedback_store.json
+      # Caches your pip packages
+      - pip_packages:/usr/local/lib/python3.11/site-packages
+    stdin_open: true
+    tty: true
+
+volumes:
+  pip_packages:

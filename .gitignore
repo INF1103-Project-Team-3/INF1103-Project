@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+INF1103-Project.code-workspace
+HANDOVER.md
+archive/
+managers/config/token-usage-log.json
+Project Part 1 - LLM Design Kickoff.md
+claude-project-export.zip
+key.txt
