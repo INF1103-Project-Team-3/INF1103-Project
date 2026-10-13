@@ -7,6 +7,7 @@ import data_manager
 # Settings
 # ---------------------------------------------------------------------------
 MIN_CONFIDENCE = 0.5
+UNCLEAR_THEME = "Unclear"   # entries with this theme go to the review queue, not the dashboard
 
 # Trend comparison: a theme's priority must move by at least this many points
 # between runs to count as Escalating or Easing; smaller moves are Steady.
@@ -211,6 +212,7 @@ def apply_feedback_rules(record):
     """Normalises the theme and adds three fields: needs_review,
     review_reason and counted. The record must already have passed
     validate_record(), so every field is known to be present."""
+    theme = normalise_theme(record["theme"])    # e.g. "other" becomes "Unclear"
     review = []
     if record["severity"] == "critical": #checking if feedback is critical
         review.append("Critical severity")
@@ -218,11 +220,14 @@ def apply_feedback_rules(record):
         review.append(f"Confidence {record['confidence']:.2f} is below threshold {MIN_CONFIDENCE}.")
     if record["agreement"] < 1.0: #checking if feedback has low agreement
         review.append(f"Agreement {record['agreement']:.2f} - AI outputs did not fully agree.")
+    if theme == UNCLEAR_THEME: #checking if the AI could not assign a theme
+        review.append("Unclear theme - needs a theme assigned.")
     return {
         **record,
-        "theme": normalise_theme(record["theme"]),
-        # low-confidence or low-agreement feedback is reviewed, not counted
-        "counted": record["confidence"] >= MIN_CONFIDENCE and record["agreement"] >= 1.0,
+        "theme": theme,
+        # low-confidence, low-agreement or unclear-theme feedback is reviewed, not counted
+        "counted": (record["confidence"] >= MIN_CONFIDENCE and record["agreement"] >= 1.0
+                    and theme != UNCLEAR_THEME),
         "needs_review": len(review) > 0,
         "review_reason": review,
     }
@@ -439,7 +444,7 @@ def run_sanity_checks(records, invalid_records, processed_records, review_queue,
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEST_INPUT_DIR = REPO_ROOT / "tests" / "ai_manager_samples"
 TEST_INPUT_FILE = "test-output.json"
-TEST_OUTPUT_DIR = REPO_ROOT / "data"
+TEST_OUTPUT_DIR = REPO_ROOT / "tests" / "logic_output"
 
 
 def main():
