@@ -3,18 +3,18 @@
   "status": "healthy",
   "summary_list": [
     {
+      "theme": "Assessment",
+      "suggested_action": "Notify the module team to lock the rubric before release and inform students promptly of any changes; provide a clear addendum for the deadline."
+    },
+    {
+      "theme": "Internship Placement",
+      "suggested_action": "Escalate the placement mismatch to the career office, request alignment with course objectives, and arrange alternative tasks that develop relevant skills."
+    },
+    {
       "theme": "Teaching Quality",
-      "suggested_action": "Inform the course team of the comment on short lectures and suggest reviewing lecture length to better cover content."
-    },
-    {
-      "theme": "Social Environment",
-      "suggested_action": "Pass the threatening‑message report to campus security and student welfare for immediate investigation and ensure the student receives protective support."
-    },
-    {
-      "theme": "Administration",
-      "suggested_action": "Report the timetable portal timeout issue to IT services and request performance monitoring and a more reliable fallback system."
+      "suggested_action": "Ask the tutor to streamline the session by removing duplicated examples and focus on new material to use tutorial time efficiently."
     }
   ],
-  "overall_summary": "This summary covers 3 of 4 entries received. One Social Environment entry is critical: a student receives threatening messages from a groupmate and feels unsafe on campus. Administration, with one entry, has a medium‑severity problem: the module timetable portal frequently times out, requiring multiple weekly retries. Teaching Quality, the remaining theme, includes a low‑severity comment that lectures are too short.",
-  "last_updated": "2026-10-13 13:06:00"
+  "overall_summary": "This summary covers 3 of 6 feedback entries received. Two high‑severity issues were reported: Assessment – rubric changed days before deadline, and Internship Placement – tasks limited to photocopying and data entry unrelated to the course. The only other concern, Teaching Quality (low severity), notes a tutorial that repeats the same example, wasting session time.",
+  "last_updated": "2026-10-14 04:23:38"
 }

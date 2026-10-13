@@ -437,7 +437,7 @@ def run_sanity_checks(records, invalid_records, processed_records, review_queue,
 # Settings for the test runner only. The real pipeline calls the data_manager
 # functions with their default folders instead.
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TEST_INPUT_DIR = REPO_ROOT / "managers" / "config"
+TEST_INPUT_DIR = REPO_ROOT / "tests" / "ai_manager_samples"
 TEST_INPUT_FILE = "test-output.json"
 TEST_OUTPUT_DIR = REPO_ROOT / "data"
 
