@@ -29,6 +29,20 @@ aggregated_store: Dict[str, Any] = {
     "themes": []
 }
 
+def load_trends_output(filename: str = "trends_output.json", base_dir: str = "/data") -> Dict[str, Any]:
+    """Load Trends Output:  For reading JSON files into memory."""
+    filepath = Path(base_dir) / filename
+
+    if filepath.exists() and filepath.stat().st_size > 0:
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logging.error("Failed to read '%s': %s", filepath, e)
+
+    # Default fallback structure when the file is missing, empty, or unreadable
+    return {}
+
 def init_manager(storage_path: str = "/data/aggregated_output.json") -> None:
     """Initializes paths and populates memory state from disk."""
     global JSON_STORAGE_PATH, SUMMARY_STORAGE_PATH
