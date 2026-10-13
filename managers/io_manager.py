@@ -255,36 +255,6 @@ def data_path(filename):
     return os.path.join(DATA_DIRECTORY, filename)
 
 
-# def read_json(path):
-#     """Load a JSON file that holds a list of rows. """
-#     try:
-#         with open(path, encoding="utf-8") as f:
-#             data = json.load(f)
-#     except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
-#         logger.warning("Could not read JSON %s: %s", path, exc)
-#         return []
-#     # The top level must be a list; a single object or string isn't a batch.
-#     if not isinstance(data, list):
-#         logger.warning("JSON %s must contain a list of entries", path)
-#         return []
-#     return data
-
-
-# def write_json(path, data):
-#     """Write data to path as JSON, creating the file if it doesn't exist.
-
-#     Returns True on success, False if the file can't be written.
-#     """
-#     try:
-#         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-#         with open(path, "w", encoding="utf-8") as f:
-#             json.dump(data, f, indent=2, ensure_ascii=False)
-#     except OSError as exc:
-#         logger.warning("Could not write JSON %s: %s", path, exc)
-#         return False
-#     return True
-
-
 def read_csv(path):
     """Load a CSV file as a list of dicts (first row = column names).
     """
@@ -308,7 +278,7 @@ def convert_csv_to_json(csv_path, json_path):
         return False
 
     # If a row has more cells than the header, they sit under a None key (saved as "null"). validate_entry ignores them.
-    return data_manager._write_json_atomic(json_path, rows)
+    return data_manager._write_json_atomic(Path(json_path), rows)
 #---------------------------------------------------------------------------
 
  
