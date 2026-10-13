@@ -1,14 +1,14 @@
 [
   {
-    "run_at": "2026-10-14T04:23:04",
-    "source_file": "feedback_20261014_042150.json",
+    "run_at": "2026-10-14T06:23:52",
+    "source_file": "single entry",
     "stats": {
       "total_entries": 6,
-      "counted_entries": 3,
+      "counted_entries": 4,
       "sentiment_distribution": {
         "positive": 0,
         "neutral": 0,
-        "negative": 3
+        "negative": 4
       },
       "themes": [
         {
@@ -25,7 +25,7 @@
           "examples": [
             {
               "severity": "high",
-              "summary": "Rubric changed days before deadline without notice, causing students to meet wrong criteria."
+              "summary": "Rubric changed last minute without notice, student prepared using wrong criteria."
             }
           ]
         },
@@ -43,7 +43,25 @@
           "examples": [
             {
               "severity": "high",
-              "summary": "Placement tasks are unrelated to course, limited to photocopying and data entry for two months."
+              "summary": "Student's placement tasks are unrelated to their course, involving only photocopying and data entry."
+            }
+          ]
+        },
+        {
+          "theme": "Facilities",
+          "count": 1,
+          "severity_counts": {
+            "low": 0,
+            "medium": 1,
+            "high": 0,
+            "critical": 0
+          },
+          "avg_sentiment": -1.0,
+          "priority_score": 24,
+          "examples": [
+            {
+              "severity": "medium",
+              "summary": "Printing credits deplete quickly each trimester, forcing student to pay out‑of‑pocket for hard‑copy reports."
             }
           ]
         },
@@ -61,7 +79,7 @@
           "examples": [
             {
               "severity": "low",
-              "summary": "Tutorial repeats the same example unnecessarily, wasting session time for students."
+              "summary": "Student feels tutorial repeats example unnecessarily, wasting session time after first understanding."
             }
           ]
         }
@@ -69,15 +87,15 @@
     }
   },
   {
-    "run_at": "2026-10-14T04:20:52",
-    "source_file": "feedback_20261014_041936.json",
+    "run_at": "2026-10-14T06:19:53",
+    "source_file": "feedback_20261014_061849.json",
     "stats": {
-      "total_entries": 3,
-      "counted_entries": 1,
+      "total_entries": 6,
+      "counted_entries": 4,
       "sentiment_distribution": {
         "positive": 0,
         "neutral": 0,
-        "negative": 1
+        "negative": 4
       },
       "themes": [
         {
@@ -94,7 +112,112 @@
           "examples": [
             {
               "severity": "high",
-              "summary": "Rubric changed days before deadline without notice, causing students to meet wrong criteria."
+              "summary": "Rubric changed last minute without notice, student prepared using wrong criteria."
+            }
+          ]
+        },
+        {
+          "theme": "Internship Placement",
+          "count": 1,
+          "severity_counts": {
+            "low": 0,
+            "medium": 0,
+            "high": 1,
+            "critical": 0
+          },
+          "avg_sentiment": -1.0,
+          "priority_score": 68,
+          "examples": [
+            {
+              "severity": "high",
+              "summary": "Student's placement tasks are unrelated to their course, involving only photocopying and data entry."
+            }
+          ]
+        },
+        {
+          "theme": "Facilities",
+          "count": 1,
+          "severity_counts": {
+            "low": 0,
+            "medium": 1,
+            "high": 0,
+            "critical": 0
+          },
+          "avg_sentiment": -1.0,
+          "priority_score": 24,
+          "examples": [
+            {
+              "severity": "medium",
+              "summary": "Printing credits deplete quickly each trimester, forcing student to pay out‑of‑pocket for hard‑copy reports."
+            }
+          ]
+        },
+        {
+          "theme": "Teaching Quality",
+          "count": 1,
+          "severity_counts": {
+            "low": 1,
+            "medium": 0,
+            "high": 0,
+            "critical": 0
+          },
+          "avg_sentiment": -1.0,
+          "priority_score": 24,
+          "examples": [
+            {
+              "severity": "low",
+              "summary": "Student feels tutorial repeats example unnecessarily, wasting session time after first understanding."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "run_at": "2026-10-14T06:11:45",
+    "source_file": "feedback_20261014_061029.json",
+    "stats": {
+      "total_entries": 3,
+      "counted_entries": 2,
+      "sentiment_distribution": {
+        "positive": 0,
+        "neutral": 0,
+        "negative": 2
+      },
+      "themes": [
+        {
+          "theme": "Internship Placement",
+          "count": 1,
+          "severity_counts": {
+            "low": 0,
+            "medium": 0,
+            "high": 1,
+            "critical": 0
+          },
+          "avg_sentiment": -1.0,
+          "priority_score": 68,
+          "examples": [
+            {
+              "severity": "high",
+              "summary": "Student's placement tasks are unrelated to their course, involving only photocopying and data entry."
+            }
+          ]
+        },
+        {
+          "theme": "Teaching Quality",
+          "count": 1,
+          "severity_counts": {
+            "low": 1,
+            "medium": 0,
+            "high": 0,
+            "critical": 0
+          },
+          "avg_sentiment": -1.0,
+          "priority_score": 24,
+          "examples": [
+            {
+              "severity": "low",
+              "summary": "Student feels tutorial repeats example unnecessarily, wasting session time after first understanding."
             }
           ]
         }

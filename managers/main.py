@@ -10,6 +10,37 @@ import data_manager
 import logic_manager
 import ai_manager
 
+
+def refresh_aggregated_output(data_dir):
+    """Re-aggregates every stored record and saves aggregated_output.json. Returns the stats.
+
+    Admin reviews change processed_feedback.json, so running this picks them up without
+    calling the AI. Only the latest copy of each feedback_id is used, and every record is
+    checked and has the rules re-applied, so a reviewed entry is counted exactly once."""
+    records = data_manager.load_feedback_records(base_dir=data_dir)
+    latest = {record.get("feedback_id"): record for record in records if isinstance(record, dict)}
+    valid_records, _ = logic_manager.split_valid_records(list(latest.values()))
+    stats = logic_manager.aggregate_themes(
+        [logic_manager.apply_feedback_rules(record) for record in valid_records])
+    data_manager.aggregate_themes(stats, base_dir=data_dir)
+    return stats
+
+
+def refresh_dashboard(data_dir):
+    """Brings the dashboard files up to date with any reviews done since the last import:
+    the totals (aggregated_output.json) and the trend (trend_output.json). The trend still
+    compares against the run before the last import, the same as when it was first made."""
+    stats = refresh_aggregated_output(data_dir)
+    try:
+        history = data_manager.load_history(base_dir=data_dir)
+    except ValueError as error:   # corrupt history file: left unchanged, trend not refreshed
+        logging.error("%s The trend was not refreshed.", error)
+        return
+    if history:
+        trend = logic_manager.compare_runs(stats, history[1] if len(history) > 1 else None)
+        data_manager.save_trend(trend, filename=io_manager.TREND_FILE, base_dir=data_dir)
+
+
 if __name__ == "__main__":
 
     # AI Manager config init
@@ -30,11 +61,15 @@ if __name__ == "__main__":
     data_manager.init_manager(os.path.join(DATA_DIR, "aggregated_output.json"))
     data_manager.load_feedback_records(base_dir=DATA_DIR)
 
+    # Pick up any reviews done in an earlier session, so the dashboard shows them
+    refresh_dashboard(DATA_DIR)
+
     # Handles dashboard, input, output
     io_payload = io_manager.main()    
 
     # Prevent ERROR MESSAGES WHEN USING OPTION 1 and 2
     if io_payload is None or io_payload == "exit":
+        refresh_dashboard(DATA_DIR)    # saves any reviews just made in the dashboard
         sys.exit(0)
 
 
@@ -58,7 +93,17 @@ if __name__ == "__main__":
 
     # and collapse the duplicate copies earlier runs left in the cache.
 
-    done = {record.get("feedback_id") for record in data_manager.load_feedback_records(base_dir=DATA_DIR)}
+    stored = data_manager.load_feedback_records(base_dir=DATA_DIR)
+    done = {record.get("feedback_id") for record in stored}
+
+    # feedback_ids must be unique. A new entry that reuses the id of DIFFERENT stored feedback
+    # would be skipped without a word, so say which ones were skipped.
+    stored_text = {record.get("feedback_id"): record.get("text") for record in stored}
+    reused_ids = [entry["feedback_id"] for entry in new_entries
+                  if entry["feedback_id"] in stored_text and entry["text"] != stored_text[entry["feedback_id"]]]
+    if reused_ids:
+        logging.warning("Skipped %d entries whose feedback_id is already used by different feedback: %s. "
+                        "Give them new IDs and import them again.", len(reused_ids), ", ".join(reused_ids))
 
     pending = {}
 
@@ -113,6 +158,14 @@ if __name__ == "__main__":
         classified_records.append(record)
     # --- End of Call 1: Dynamic Entry Classification ---
 
+    # If the AI could not classify anything (API down, bad key), stop here. Saving a "run" with
+    # no new data would replace the real trend with an all-Steady one. The entries stay in
+    # feedback_before_ai.json and are retried on the next import.
+    if not classified_records:
+        logging.error("The AI could not classify any of the %d new entries. They were kept and "
+                      "will be retried on the next import.", len(entries))
+        sys.exit(1)
+
 
     # Produces classified.json
     data_manager.receive_ai_input(json.dumps(classified_records))
@@ -132,23 +185,9 @@ if __name__ == "__main__":
     data_manager.save_feedback_dict(processed_feedbacks, base_dir=DATA_DIR)
 
 
-    # 1. PULL ALL ENTRIES from processed_feedback.json (that contains logic manager's processed feedback)
-    # using the data manager
-    all_records = data_manager.load_feedback_records(base_dir=DATA_DIR)
-
-    # An admin review adds a corrected copy of an entry to the same file, so keep only the
-    # latest copy of each feedback_id, then check and re-apply the rules to every record.
-    # Otherwise reviewed entries would be counted twice, or never counted at all.
-    latest = {record.get("feedback_id"): record for record in all_records if isinstance(record, dict)}
-    valid_all, _ = logic_manager.split_valid_records(list(latest.values()))
-    all_records = [logic_manager.apply_feedback_rules(record) for record in valid_all]
-
-    # 2. Re-run the aggregate themes over the FULL set of records (past + present)
-    logic_output = logic_manager.aggregate_themes(all_records)
-
-
-    # Save aggregated_output.json here
-    data_manager.aggregate_themes(logic_output, base_dir=DATA_DIR)
+    # Re-aggregate over the FULL set of records (past + present) and save aggregated_output.json.
+    # Reviewed entries are included with the admin's corrections.
+    logic_output = refresh_aggregated_output(DATA_DIR)
 
     # Add this run's flagged entries to for_review.json (keeps the history, newest first)
     run_at = datetime.now().isoformat(timespec="seconds")
@@ -164,11 +203,15 @@ if __name__ == "__main__":
     # Trend comparison: this run vs the previous run. It is worked out BEFORE this run
     # is added to the history, so the newest history entry is the previous run.
     # Produces trend_output.json and aggregated_history.json
-    history = data_manager.load_history(base_dir=DATA_DIR)
-    trend = logic_manager.compare_runs(logic_output, history[0] if history else None)
-    data_manager.save_trend(trend, filename=io_manager.TREND_FILE, base_dir=DATA_DIR)
-    data_manager.append_history({"run_at": run_at, "source_file": source_file, "stats": logic_output},
-                                base_dir=DATA_DIR)
+    try:
+        history = data_manager.load_history(base_dir=DATA_DIR)
+    except ValueError as error:   # corrupt history file: left unchanged so it can be repaired
+        logging.error("%s The trend was not updated this run.", error)
+    else:
+        trend = logic_manager.compare_runs(logic_output, history[0] if history else None)
+        data_manager.save_trend(trend, filename=io_manager.TREND_FILE, base_dir=DATA_DIR)
+        data_manager.append_history({"run_at": run_at, "source_file": source_file, "stats": logic_output},
+                                    base_dir=DATA_DIR)
 
     # Tell user AI summary is being requested from API
     io_manager.print_ai_request_notice()
