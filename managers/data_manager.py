@@ -102,24 +102,32 @@ def _save_review_file(filepath: Path, data: Dict[str, Any]) -> bool:
         logging.error("Failed to write to '%s': %s", filepath, e)
         return False
 
-def _append_to_processed_feedback(
+def _upsert_to_processed_feedback(
     record: Dict[str, Any],
     filename: str = "processed_feedback.json",
     base_dir: str = "/data"
 ) -> bool:
-    """Internal helper to safely append an updated record into processed_feedback.json and global memory."""
+    """
+    Saves an updated record to processed_feedback.json and in-memory stores.
+    Cross-checks by feedback_id: updates the entry if it already exists, or appends if new.
+    """
     global records_store
-    
-    # Update global in-memory store
-    if "records_store" in globals():
-        records_store.append(record)
+    target_id = record.get("feedback_id")
 
+    # 1. Update global in-memory store if available
+    if "records_store" in globals() and isinstance(records_store, list):
+        existing_in_mem = next((item for item in records_store if item.get("feedback_id") == target_id), None)
+        if existing_in_mem:
+            existing_in_mem.update(record)
+        else:
+            records_store.append(record)
+
+    # 2. Disk persistence logic
     filepath = Path(base_dir) / filename
     filepath.parent.mkdir(parents=True, exist_ok=True)
 
     existing_store: Dict[str, Any] = {"records": []}
 
-    # Load existing records if processed_feedback.json exists
     if filepath.exists() and filepath.stat().st_size > 0:
         try:
             with open(filepath, "r", encoding="utf-8") as f:
@@ -131,17 +139,29 @@ def _append_to_processed_feedback(
         except Exception as e:
             logging.warning("Failed to read '%s': %s. Initializing fresh store.", filepath, e)
 
-    # Append updated record
-    existing_store.setdefault("records", []).append(record)
+    records_list = existing_store.get("records", [])
 
-    # Save back to processed_feedback.json
+    # 3. Cross-check disk records for existing feedback_id
+    updated_in_disk = False
+    for idx, existing_item in enumerate(records_list):
+        if existing_item.get("feedback_id") == target_id:
+            records_list[idx] = record  # Replace existing entry with latest version
+            updated_in_disk = True
+            break
+
+    if not updated_in_disk:
+        records_list.append(record)  # Append only if it's a new ID
+
+    existing_store["records"] = records_list
+
+    # 4. Save back to processed_feedback.json
     try:
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(existing_store, f, indent=2, ensure_ascii=False)
-        logging.info("Updated record '%s' appended to '%s'.", record.get("feedback_id"), filepath)
+        logging.info("Record '%s' successfully updated/upserted in '%s'.", target_id, filepath)
         return True
     except Exception as e:
-        logging.error("Failed to append record to '%s': %s", filepath, e)
+        logging.error("Failed to write updated record to '%s': %s", filepath, e)
         return False
 
 
@@ -155,7 +175,7 @@ def update_review_entry(
 ) -> bool:
     """
     Updates an item in for_review.json by feedback_id, sets agreement/confidence to 1,
-    saves for_review.json, and appends the updated entry into processed_feedback.json.
+    saves for_review.json, and cross-checks/upserts the latest entry into processed_feedback.json.
     """
     filepath = Path(base_dir) / filename
     data = _load_review_file(filepath)
@@ -185,11 +205,12 @@ def update_review_entry(
     # 1. Save updated review entry back to for_review.json
     saved_review = _save_review_file(filepath, data)
     if not saved_review:
-        logging.error("Failed to save changes to '%s'. Skipping append to processed_feedback.json.", filepath)
+        logging.error("Failed to save changes to '%s'. Skipping update to processed_feedback.json.", filepath)
         return False
 
-    # 2. Append the updated record to processed_feedback.json
-    return _append_to_processed_feedback(updated_record, filename="processed_feedback.json", base_dir=base_dir)
+    # 2. Cross-check and upsert into processed_feedback.json
+    return _upsert_to_processed_feedback(updated_record, filename="processed_feedback.json", base_dir=base_dir)
+
 
 def delete_review_entry(
     feedback_id: str,
@@ -699,31 +720,31 @@ def search_records(query_text: str) -> List[Dict[str, Any]]:
 
     return results
 
-    def save_dict_to_json(data_dict: Dict[str, Any], filepath: str = "/data/summary.json") -> bool:
-        """
-        Receives a dictionary and saves/updates it to a JSON file.
-        Creates the directory and file if they do not exist.
-        """
-        path = Path(filepath)
-        path.parent.mkdir(parents=True, exist_ok=True)  # Auto-create folders if missing
+def save_dict_to_json(data_dict: Dict[str, Any], filepath: str = "/data/summary.json") -> bool:
+    """
+    Receives a dictionary and saves/updates it to a JSON file.
+    Creates the directory and file if they do not exist.
+    """
+    path = Path(filepath)
+    path.parent.mkdir(parents=True, exist_ok=True)  # Auto-create folders if missing
 
-        # Load existing data if file exists, otherwise start with empty dict
-        existing_data = {}
-        if path.exists() and path.stat().st_size > 0:
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    existing_data = json.load(f)
-            except json.JSONDecodeError:
-                existing_data = {}
+    # Load existing data if file exists, otherwise start with empty dict
+    existing_data = {}
+    if path.exists() and path.stat().st_size > 0:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                existing_data = json.load(f)
+        except json.JSONDecodeError:
+            existing_data = {}
 
-        # Merge new dictionary fields into existing data
-        existing_data.update(data_dict)
+    # Merge new dictionary fields into existing data
+    existing_data.update(data_dict)
 
-        # Write merged dictionary back to JSON
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(existing_data, f, indent=2, ensure_ascii=False)
+    # Write merged dictionary back to JSON
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(existing_data, f, indent=2, ensure_ascii=False)
 
-        return True
+    return True
 
 
 # # =====================================================================
