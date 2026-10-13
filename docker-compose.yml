@@ -5,9 +5,9 @@ services:
     build: .
     volumes:
       # Mounts your local Project folder to the container's /Project folder
-      - ./Project:/Project
+      - .:/Project
       # Mounts your local data folder to /data inside the container
-      - ./Project/data:/data
+      - ./data:/data
       # Caches your pip packages
       - pip_packages:/usr/local/lib/python3.11/site-packages
     stdin_open: true

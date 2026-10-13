@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import logging
 
 import io_manager
-import data_manager1
+import data_manager
 import logic_manager
 import ai_manager
 
@@ -21,7 +21,7 @@ if __name__ == "__main__":
         raise SystemExit(1)
 
     # Check if data folder is created
-    data_manager1.init_manager()
+    data_manager.init_manager()
 
     # Handles dashboard, input, output
     io_payload = io_manager.main()    
@@ -43,17 +43,17 @@ if __name__ == "__main__":
         new_entries = [io_payload]
 
     # Create feedback_before_ai.json
-    data_manager1.save_to_feedback_before_ai(new_entries)
+    data_manager.save_to_feedback_before_ai(new_entries)
  
     # Classify each feedback_id once: skip anything already in feedback_store.json,
 
     # and collapse the duplicate copies earlier runs left in the cache.
 
-    done = {record.get("feedback_id") for record in data_manager1.load_feedback_records()}
+    done = {record.get("feedback_id") for record in data_manager.load_feedback_records()}
 
     pending = {}
 
-    for entry in data_manager1.load_or_create_feedback_before_ai()["records"]:
+    for entry in data_manager.load_or_create_feedback_before_ai()["records"]:
 
         # --- ADD THESE 2 LINES TO AVOID THE ERROR: if entry["feedback_id"] not in done---
         #                                TypeError: 'NoneType' object is not subscriptable
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     summary_prompt = ai_manager.load_summary_prompt()
 
     # Seed the theme tracking list from any previously classified entries
-    known = ai_manager.find_new_themes(data_manager1.load_feedback_records(), themes)
+    known = ai_manager.find_new_themes(data_manager.load_feedback_records(), themes)
 
     # Tell user, that main.py is calling the API
     io_manager.print_connection_notice()
@@ -106,7 +106,7 @@ if __name__ == "__main__":
 
 
     # Produces classified.json
-    data_manager1.receive_ai_input(json.dumps(classified_records))
+    data_manager.receive_ai_input(json.dumps(classified_records))
 
     # Tell user, main.py is compiling results and aggregate themes
     io_manager.print_compilation_notice()
@@ -115,25 +115,25 @@ if __name__ == "__main__":
     processed_feedbacks = [logic_manager.apply_feedback_rules(record) for record in classified_records]
 
     # Produces aggregate_output.json (but not aggregate_output, this is logic manager's processed feedback)
-    data_manager1.save_feedback_dict(processed_feedbacks)
+    data_manager.save_feedback_dict(processed_feedbacks)
 
 
     # 1. PULL ALL ENTRIES from aggregated_output.json(That contains logic manager's processed feedback) 
     # using the data manager
-    all_records = data_manager1.load_feedback_records()
+    all_records = data_manager.load_feedback_records()
 
     # 2. Re-run the aggregate themes over the FULL set of records (past + present)
     logic_output = logic_manager.aggregate_themes(all_records)
 
 
     # Save aggregated_output.json here
-    data_manager1.aggregate_themes(logic_output)
+    data_manager.aggregate_themes(logic_output)
 
     # create for_review.json
     review_data = logic_manager.rank_review_queue(processed_feedbacks)
 
-    review_path = data_manager1.Path("data/for_review.json")
-    data_manager1._save_review_file(review_path, review_data)
+    review_path = data_manager.Path("data/for_review.json")
+    data_manager._save_review_file(review_path, review_data)
     # End of create for_review.json
     
     # Tell user AI summary is being requested from API
@@ -146,7 +146,7 @@ if __name__ == "__main__":
 
         # Create summary.json or replace summary.json with new summary
     if summary is not None:
-        data_manager1.update_summary_fields(
+        data_manager.update_summary_fields(
             root_updates={"overall_summary": summary.get("overall_summary")},
             item_updates=summary.get("theme_actions")
         )

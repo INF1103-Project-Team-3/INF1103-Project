@@ -8,7 +8,7 @@ import re
 import uuid
 import textwrap
 import pwinput  # third-party: pip install pwinput
-import data_manager1
+import data_manager
 
 logger = logging.getLogger(__name__)
 
@@ -399,11 +399,11 @@ def display_dashboard():
     """Load the output files and print the dashboard, then the review queue."""
     pending = load_review_queue()
 
-    agg = data_manager1.load_aggregated_output(filename=AGGREGATED_FILE,
+    agg = data_manager.load_aggregated_output(filename=AGGREGATED_FILE,
                                                base_dir=DATA_DIRECTORY)
     if agg.get("themes"):
-        data_manager1.SUMMARY_STORAGE_PATH = Path(data_path(SUMMARY_FILE))
-        summary = data_manager1.load_summary()
+        data_manager.SUMMARY_STORAGE_PATH = Path(data_path(SUMMARY_FILE))
+        summary = data_manager.load_summary()
         rows = build_theme_rows(agg)
         both = sum(1 for r in pending
                    if r.get("counted") and review_label(r) == "critical")
@@ -446,7 +446,7 @@ def run_admin_search():
             print_block("Cancelled.")
             return None
 
-        results = data_manager1.search_records(query)
+        results = data_manager.search_records(query)
         if results:
             print_search_results(results)
             return None
@@ -464,7 +464,7 @@ def load_review_queue():
     record in the file, so a record with both at 1 counts as reviewed and is
     hidden. Deleted records are already gone from the file.
     """
-    data = data_manager1._load_review_file(Path(DATA_DIRECTORY) / REVIEW_FILE)
+    data = data_manager._load_review_file(Path(DATA_DIRECTORY) / REVIEW_FILE)
     return [
         r for r in data.get("records", [])
         if isinstance(r, dict)
@@ -557,7 +557,7 @@ def review_update(record):
             return
         changes[field] = value
 
-    if data_manager1.update_review_entry(record.get("feedback_id"),
+    if data_manager.update_review_entry(record.get("feedback_id"),
                                          filename=REVIEW_FILE, base_dir=DATA_DIRECTORY,
                                          **changes):
         print_block("Updated. It has been removed from the review queue.")
@@ -571,7 +571,7 @@ def review_delete(record):
     if (answer or "").lower() not in ("y", "yes"):
         print_block("Delete cancelled.")
         return
-    if data_manager1.delete_review_entry(record.get("feedback_id"),
+    if data_manager.delete_review_entry(record.get("feedback_id"),
                                          filename=REVIEW_FILE, base_dir=DATA_DIRECTORY):
         print_block("Deleted.")
     else:

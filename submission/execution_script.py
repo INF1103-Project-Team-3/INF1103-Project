@@ -1,3 +1,8 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "managers"))
+
 import json
 import logic_manager
 from sample_ai_output import SAMPLE_RECORDS

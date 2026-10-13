@@ -4,14 +4,14 @@ FROM python:3.11-slim
 WORKDIR /Project
 
 # Copy requirements from the local Project subfolder
-COPY Project/Requirements/requirements.txt ./Requirements/
+COPY requirements/requirements.txt ./requirements/
 
 # Install dependencies
-RUN pip install --no-cache-dir -r Requirements/requirements.txt
+RUN pip install --no-cache-dir -r requirements/requirements.txt
 
 # Copy the contents of your local Project folder into the container's working directory
-COPY Project/ .
+COPY . .
 
 # Run your main script
-CMD ["python", "Managers/main.py"]
+CMD ["python", "managers/main.py"]
 
