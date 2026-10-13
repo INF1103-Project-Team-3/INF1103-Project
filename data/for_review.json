@@ -1,20 +1,58 @@
 {
   "records": [
     {
-      "feedback_id": "fb_004",
-      "text": "Someone in my project group keeps sending me threatening messages and I don't feel safe coming to campus.",
-      "timestamp": "2026-09-16T09:12:00",
-      "theme": "123456789",
+      "feedback_id": "fb_010",
+      "text": "The air conditioning in the lecture theatre has been broken for two weeks, it's unbearable sitting through a 2 hour class.",
+      "timestamp": "2026-09-19T09:30:00",
+      "theme": "Facilities",
       "sentiment": "negative",
-      "severity": "critical",
-      "summary": "Student receives threatening messages from a groupmate and feels unsafe on campus.",
-      "confidence": 1,
-      "agreement": 1,
-      "counted": true,
+      "severity": "medium",
+      "summary": "Air conditioning broken for two weeks makes two‑hour lecture unbearable.",
+      "confidence": 0.87,
+      "agreement": 0.67,
+      "counted": false,
       "needs_review": true,
       "review_reason": [
-        "Critical severity"
-      ]
+        "Agreement 0.67 - AI outputs did not fully agree."
+      ],
+      "run_at": "2026-10-14T04:20:52",
+      "source_file": "feedback_20261014_041936.json"
+    },
+    {
+      "feedback_id": "fb_014",
+      "text": "Printing credits run out so fast every trimester, I end up paying out of pocket just to submit hard copy reports.",
+      "timestamp": "2026-09-19T17:30:00",
+      "theme": "Facilities",
+      "sentiment": "negative",
+      "severity": "medium",
+      "summary": "Printing credits deplete each trimester, forcing student to pay out‑of‑pocket for hard copies.",
+      "confidence": 0.85,
+      "agreement": 0.67,
+      "counted": false,
+      "needs_review": true,
+      "review_reason": [
+        "Agreement 0.67 - AI outputs did not fully agree."
+      ],
+      "run_at": "2026-10-14T04:23:04",
+      "source_file": "feedback_20261014_042150.json"
+    },
+    {
+      "feedback_id": "fb_008",
+      "text": "It's fine I guess, could be better could be worse, hard to say really.",
+      "timestamp": "2026-09-18T10:58:00",
+      "theme": "Unclear",
+      "sentiment": "neutral",
+      "severity": "low",
+      "summary": "Student provides vague feedback, saying it's fine but hard to judge.",
+      "confidence": 0.35,
+      "agreement": 1.0,
+      "counted": false,
+      "needs_review": true,
+      "review_reason": [
+        "Confidence 0.35 is below threshold 0.5."
+      ],
+      "run_at": "2026-10-14T04:20:52",
+      "source_file": "feedback_20261014_041936.json"
     }
   ]
 }

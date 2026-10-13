@@ -1,0 +1,104 @@
+[
+  {
+    "run_at": "2026-10-14T04:23:04",
+    "source_file": "feedback_20261014_042150.json",
+    "stats": {
+      "total_entries": 6,
+      "counted_entries": 3,
+      "sentiment_distribution": {
+        "positive": 0,
+        "neutral": 0,
+        "negative": 3
+      },
+      "themes": [
+        {
+          "theme": "Assessment",
+          "count": 1,
+          "severity_counts": {
+            "low": 0,
+            "medium": 0,
+            "high": 1,
+            "critical": 0
+          },
+          "avg_sentiment": -1.0,
+          "priority_score": 68,
+          "examples": [
+            {
+              "severity": "high",
+              "summary": "Rubric changed days before deadline without notice, causing students to meet wrong criteria."
+            }
+          ]
+        },
+        {
+          "theme": "Internship Placement",
+          "count": 1,
+          "severity_counts": {
+            "low": 0,
+            "medium": 0,
+            "high": 1,
+            "critical": 0
+          },
+          "avg_sentiment": -1.0,
+          "priority_score": 68,
+          "examples": [
+            {
+              "severity": "high",
+              "summary": "Placement tasks are unrelated to course, limited to photocopying and data entry for two months."
+            }
+          ]
+        },
+        {
+          "theme": "Teaching Quality",
+          "count": 1,
+          "severity_counts": {
+            "low": 1,
+            "medium": 0,
+            "high": 0,
+            "critical": 0
+          },
+          "avg_sentiment": -1.0,
+          "priority_score": 24,
+          "examples": [
+            {
+              "severity": "low",
+              "summary": "Tutorial repeats the same example unnecessarily, wasting session time for students."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "run_at": "2026-10-14T04:20:52",
+    "source_file": "feedback_20261014_041936.json",
+    "stats": {
+      "total_entries": 3,
+      "counted_entries": 1,
+      "sentiment_distribution": {
+        "positive": 0,
+        "neutral": 0,
+        "negative": 1
+      },
+      "themes": [
+        {
+          "theme": "Assessment",
+          "count": 1,
+          "severity_counts": {
+            "low": 0,
+            "medium": 0,
+            "high": 1,
+            "critical": 0
+          },
+          "avg_sentiment": -1.0,
+          "priority_score": 68,
+          "examples": [
+            {
+              "severity": "high",
+              "summary": "Rubric changed days before deadline without notice, causing students to meet wrong criteria."
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

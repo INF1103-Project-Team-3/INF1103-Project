@@ -1,5 +1,5 @@
 {
-  "total_entries": 4,
+  "total_entries": 6,
   "counted_entries": 3,
   "sentiment_distribution": {
     "positive": 0,
@@ -8,38 +8,38 @@
   },
   "themes": [
     {
-      "theme": "Social Environment",
+      "theme": "Assessment",
       "count": 1,
       "severity_counts": {
         "low": 0,
         "medium": 0,
-        "high": 0,
-        "critical": 1
+        "high": 1,
+        "critical": 0
       },
       "avg_sentiment": -1.0,
-      "priority_score": 82,
+      "priority_score": 68,
       "examples": [
         {
-          "severity": "critical",
-          "summary": "Student receives threatening messages from a groupmate and feels unsafe on campus."
+          "severity": "high",
+          "summary": "Rubric changed days before deadline without notice, causing students to meet wrong criteria."
         }
       ]
     },
     {
-      "theme": "Administration",
+      "theme": "Internship Placement",
       "count": 1,
       "severity_counts": {
         "low": 0,
-        "medium": 1,
-        "high": 0,
+        "medium": 0,
+        "high": 1,
         "critical": 0
       },
       "avg_sentiment": -1.0,
-      "priority_score": 32,
+      "priority_score": 68,
       "examples": [
         {
-          "severity": "medium",
-          "summary": "Portal for module timetables frequently times out, forcing multiple retries each week."
+          "severity": "high",
+          "summary": "Placement tasks are unrelated to course, limited to photocopying and data entry for two months."
         }
       ]
     },
@@ -53,11 +53,11 @@
         "critical": 0
       },
       "avg_sentiment": -1.0,
-      "priority_score": 32,
+      "priority_score": 24,
       "examples": [
         {
           "severity": "low",
-          "summary": "Student finds lectures too short."
+          "summary": "Tutorial repeats the same example unnecessarily, wasting session time for students."
         }
       ]
     }
