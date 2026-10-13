@@ -53,6 +53,23 @@ def write_json(path, data):
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
+def read_json_list(path):
+    """Reads a JSON file that holds a list. A missing or empty file gives an
+    empty list. A file that exists but isn't valid JSON, or isn't a list,
+    raises an error instead of being treated as empty, so history is never
+    silently lost."""
+    path = Path(path)
+    if not path.exists() or path.stat().st_size == 0:
+        return []
+    try:
+        data = read_json(path)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"{path.name} is not valid JSON, so it was left unchanged: {error}")
+    if not isinstance(data, list):
+        raise ValueError(f"{path.name} should contain a list, so it was left unchanged")
+    return data
+
+
 def append_json(path, new_items, sort_key=None, unique_by=None):
     """Adds new_items (a list) to the list stored in a JSON file, keeping
     everything already there. New items are placed first, then:
@@ -66,15 +83,7 @@ def append_json(path, new_items, sort_key=None, unique_by=None):
     so the history is never lost. The file is replaced in one step, so a
     crash part-way through can't corrupt it."""
     path = Path(path)
-    history = []
-    if path.exists() and path.stat().st_size > 0:
-        try:
-            history = read_json(path)
-        except json.JSONDecodeError as error:
-            raise ValueError(f"{path.name} is not valid JSON, so it was left unchanged: {error}")
-        if not isinstance(history, list):
-            raise ValueError(f"{path.name} should contain a list, so it was left unchanged")
-    combined = list(new_items) + history
+    combined = list(new_items) + read_json_list(path)
     if unique_by:
         seen = set()
         unique = []

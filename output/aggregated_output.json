@@ -1,10 +1,10 @@
 {
-  "total_entries": 29,
-  "counted_entries": 19,
+  "total_entries": 30,
+  "counted_entries": 20,
   "sentiment_distribution": {
     "positive": 2,
     "neutral": 3,
-    "negative": 14
+    "negative": 15
   },
   "themes": [
     {
@@ -38,6 +38,36 @@
       ]
     },
     {
+      "theme": "Facilities",
+      "count": 4,
+      "severity_counts": {
+        "low": 1,
+        "medium": 2,
+        "high": 0,
+        "critical": 1
+      },
+      "avg_sentiment": -0.5,
+      "priority_score": 36,
+      "examples": [
+        {
+          "severity": "critical",
+          "summary": "Loose stairwell railing near makerspace poses safety hazard that could cause injury."
+        },
+        {
+          "severity": "medium",
+          "summary": "Printing credits deplete each trimester, forcing student to pay out-of-pocket for required hard copies."
+        },
+        {
+          "severity": "medium",
+          "summary": "Vending machine on level 3 eats coins, causing student to lose about $4 this month."
+        },
+        {
+          "severity": "low",
+          "summary": "Student praises new lab benches for providing more space during practical sessions."
+        }
+      ]
+    },
+    {
       "theme": "Social Environment",
       "count": 3,
       "severity_counts": {
@@ -60,32 +90,6 @@
         {
           "severity": "critical",
           "summary": "Student feels unsafe as another student waits outside lecture hall weekly."
-        }
-      ]
-    },
-    {
-      "theme": "Facilities",
-      "count": 3,
-      "severity_counts": {
-        "low": 1,
-        "medium": 2,
-        "high": 0,
-        "critical": 0
-      },
-      "avg_sentiment": -0.33,
-      "priority_score": 16,
-      "examples": [
-        {
-          "severity": "medium",
-          "summary": "Printing credits deplete each trimester, forcing student to pay out-of-pocket for required hard copies."
-        },
-        {
-          "severity": "medium",
-          "summary": "Vending machine on level 3 eats coins, causing student to lose about $4 this month."
-        },
-        {
-          "severity": "low",
-          "summary": "Student praises new lab benches for providing more space during practical sessions."
         }
       ]
     },
