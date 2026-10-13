@@ -512,6 +512,8 @@ def save_feedback_dict(
     if success:
         logging.info("Feedback dictionary successfully stored in '%s'.", Path(base_dir) / filename)
     return success
+
+
 def save_feedback_record(record: Dict[str, Any]) -> bool:
     """Appends a new feedback record to global state and saves."""
     records_store.append(record)
@@ -543,7 +545,6 @@ def load_summary() -> Dict[str, Any]:
         with open(SUMMARY_STORAGE_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
             summary_store = data if isinstance(data, dict) else {}
-        logging.info("Loaded summary from '%s'", SUMMARY_STORAGE_PATH)
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
         logging.error("Corrupt summary JSON at '%s': %s", SUMMARY_STORAGE_PATH, e)
         summary_store = {}
