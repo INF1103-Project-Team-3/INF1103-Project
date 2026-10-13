@@ -22,13 +22,25 @@ PAYLOAD_EXT = ".json"
 
 DATA_DIRECTORY = "data"                      # where the output files are saved
 TEST_INPUT_FILE = "test-input.json"          # single entries are saved here
-AGGREGATED_FILE = "aggregated_output.json"  # theme table data
-SUMMARY_FILE = "summary.json"  
+AGGREGATED_FILE = "aggregated_output.json"   # theme table data
+SUMMARY_FILE = "summary.json"                # summary of the aggregated data
 REVIEW_FILE = "for_review.json"              # for review files
+TREND_FILE = "trends_output.json"             # trend data
 
 # Display formatting for the dashboard.
-WIDTH = 68
+WIDTH = 82
 COLUMN_THEME = 22
+
+# Display formatting for theme & trend table.
+MERGED_THEME = 24
+MERGED_STATUS = 16
+MERGED_COUNT = 17
+MERGED_SENT = 8
+MERGED_URGENT = 6
+MERGED_GAP = "   "                            # space before the PRIORITY column
+MERGED_PRIORITY = 16
+MERGED_WIDTH = (MERGED_THEME + MERGED_STATUS + MERGED_COUNT + MERGED_SENT
+                + MERGED_URGENT + len(MERGED_GAP) + MERGED_PRIORITY)
 
 # Review queue display.
 REVIEW_LABEL_WIDTH = 16     # "low_confidence" column
@@ -243,34 +255,34 @@ def data_path(filename):
     return os.path.join(DATA_DIRECTORY, filename)
 
 
-def read_json(path):
-    """Load a JSON file that holds a list of rows. """
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
-        logger.warning("Could not read JSON %s: %s", path, exc)
-        return []
-    # The top level must be a list; a single object or string isn't a batch.
-    if not isinstance(data, list):
-        logger.warning("JSON %s must contain a list of entries", path)
-        return []
-    return data
+# def read_json(path):
+#     """Load a JSON file that holds a list of rows. """
+#     try:
+#         with open(path, encoding="utf-8") as f:
+#             data = json.load(f)
+#     except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+#         logger.warning("Could not read JSON %s: %s", path, exc)
+#         return []
+#     # The top level must be a list; a single object or string isn't a batch.
+#     if not isinstance(data, list):
+#         logger.warning("JSON %s must contain a list of entries", path)
+#         return []
+#     return data
 
 
-def write_json(path, data):
-    """Write data to path as JSON, creating the file if it doesn't exist.
+# def write_json(path, data):
+#     """Write data to path as JSON, creating the file if it doesn't exist.
 
-    Returns True on success, False if the file can't be written.
-    """
-    try:
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-    except OSError as exc:
-        logger.warning("Could not write JSON %s: %s", path, exc)
-        return False
-    return True
+#     Returns True on success, False if the file can't be written.
+#     """
+#     try:
+#         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+#         with open(path, "w", encoding="utf-8") as f:
+#             json.dump(data, f, indent=2, ensure_ascii=False)
+#     except OSError as exc:
+#         logger.warning("Could not write JSON %s: %s", path, exc)
+#         return False
+#     return True
 
 
 def read_csv(path):
@@ -296,7 +308,7 @@ def convert_csv_to_json(csv_path, json_path):
         return False
 
     # If a row has more cells than the header, they sit under a None key (saved as "null"). validate_entry ignores them.
-    return write_json(json_path, rows)
+    return data_manager._write_json_atomic(json_path, rows)
 #---------------------------------------------------------------------------
 
  
@@ -311,12 +323,12 @@ def save_entry(entry, path=None):
 
     Creates the file if it doesn't exist yet. Returns True on success.
     """
-    path = path or data_path(TEST_INPUT_FILE)
-    entries = read_json(path) if os.path.exists(path) else []
+    path = Path(data_path(TEST_INPUT_FILE))
+    entries = data_manager._read_list_strict(path) if path.exists() else []
     entries.append(entry)
-    return write_json(path, entries)
- 
- 
+    return data_manager._write_json_atomic(path, entries)
+
+
 def entries_to_payload(entries):
     """A list of validated entries: file(filename, bytes, mime_type).
  
@@ -329,7 +341,6 @@ def entries_to_payload(entries):
 
 
 # ---------------------------------------------------------------------------
-
 # Dashboard 
 # ---------------------------------------------------------------------------
 
@@ -381,7 +392,7 @@ def print_theme_table(rows):
 def print_suggested_actions(summary, rows):
     """Print each theme's suggested action, in the same order as the table."""
     actions = {a["theme"]: a["suggested_action"]
-               for a in summary.get("theme_actions", [])
+               for a in summary.get("summary_list", [])
                if a["theme"] != "Unclear"}
     if not actions:
         return
@@ -396,25 +407,120 @@ def print_suggested_actions(summary, rows):
 
 
 def display_dashboard():
-    """Load the output files and print the dashboard, then the review queue."""
+    """Display dashboard and review queue."""
     pending = load_review_queue()
+    agg = data_manager.load_aggregated_output(
+        filename=AGGREGATED_FILE, base_dir=DATA_DIRECTORY
+    )
 
-    agg = data_manager.load_aggregated_output(filename=AGGREGATED_FILE,
-                                               base_dir=DATA_DIRECTORY)
     if agg.get("themes"):
         data_manager.SUMMARY_STORAGE_PATH = Path(data_path(SUMMARY_FILE))
         summary = data_manager.load_summary()
-        rows = build_theme_rows(agg)
-        both = sum(1 for r in pending
-                   if r.get("counted") and review_label(r) == "critical")
+
+        both = sum(
+            1 for r in pending
+            if r.get("counted") and review_label(r) == "critical"
+        )
         print_dashboard_header(agg, summary, len(pending), both)
-        print_theme_table(rows)
-        print_suggested_actions(summary, rows)
+        display_themes_and_actions(agg, summary)
     else:
         print_block("No aggregated data yet.")
 
     print_review_queue(pending)
     offer_review(pending)
+
+
+# ---------------------------------------------------------------------------
+# Trend analysis
+# ---------------------------------------------------------------------------
+
+
+def load_trend():
+    """Load trend output, or return an empty dictionary."""
+    return data_manager.load_trends_output(
+        filename=TREND_FILE, base_dir=DATA_DIRECTORY
+    ) or {}
+
+
+def has_trend(trend):
+    """Check whether a previous run exists."""
+    return bool(trend.get("has_previous"))
+ 
+ 
+def print_trend_headline(trend):
+    """One line comparing the headline numbers with the previous run."""
+    run_at = (trend.get("previous_run") or {}).get("run_at", "").replace("T", " ")
+    headline = trend["headline"]
+    print_block(f"Trend vs previous run ({run_at})")
+    print_out(f"Entries: {headline['total_entries']['text']}    "
+              f"Negative: {headline['negative_percent']['text']}")
+ 
+ 
+def merge_theme_rows(rows, trend):
+    """Merge current themes with trend rows, prioritising trend order."""
+    trend_rows = {r["theme"]: r for r in trend.get("themes", [])}
+    current = {t["theme"]: (t, urgent) for t, urgent in rows}
+
+    merged = [
+        (name, *current.get(name, (None, None)), trend_row)
+        for name, trend_row in trend_rows.items()
+    ]
+
+    merged.extend(
+        (t["theme"], t, urgent, None)
+        for t, urgent in rows
+        if t["theme"] not in trend_rows
+    )
+
+    return merged
+ 
+ 
+def print_merged_theme_table(merged):
+    """Print themes alongside their trend information."""
+    print_block("THEMES")
+    print_out(
+        f"{'THEME':<{MERGED_THEME}}{'STATUS':<{MERGED_STATUS}}"
+        f"{'COUNT':<{MERGED_COUNT}}{'AVG SENT':>{MERGED_SENT}}"
+        f"{'H+C':>{MERGED_URGENT}}{MERGED_GAP}PRIORITY"
+    )
+    print_out("-" * MERGED_WIDTH)
+
+    for name, theme, urgent, trend in merged:
+        status = trend["status"] if trend else "-"
+        count = (trend["count"]["text"] if trend
+                 else str(theme["count"]))
+        priority = (trend["priority"]["text"] if trend
+                    else str(theme["priority_score"]))
+        avg_sent = f"{theme['avg_sentiment']:.2f}" if theme else "-"
+        high_crit = str(urgent) if theme else "-"
+
+        print_out(
+            f"{name:<{MERGED_THEME}}{status:<{MERGED_STATUS}}"
+            f"{count:<{MERGED_COUNT}}{avg_sent:>{MERGED_SENT}}"
+            f"{high_crit:>{MERGED_URGENT}}{MERGED_GAP}{priority}"
+        )
+
+    print_block("AVG SENT = average sentiment, H+C = high + critical entries")
+
+
+def display_themes_and_actions(agg, summary):
+    """ Print the theme table and suggested actions,
+      merging with trend data if available."""
+    rows = build_theme_rows(agg)
+    trend = load_trend()
+
+    if has_trend(trend):
+        print_trend_headline(trend)
+        merged = merge_theme_rows(rows, trend)
+        print_merged_theme_table(merged)
+        rows = [(t, urgent) for _, t, urgent, _ in merged if t]
+    else:
+        if trend.get("message"):
+            print_block(trend["message"])
+        print_theme_table(rows)
+
+    print_suggested_actions(summary, rows)
+
 
 # ---------------------------------------------------------------------------
 # Search
@@ -456,13 +562,12 @@ def run_admin_search():
 # ---------------------------------------------------------------------------
 # Review queue
 # ---------------------------------------------------------------------------
+#   update review entry sets agreement and confidence to 1 and leaves the
+#   record in the file, so a record with both at 1 counts as reviewed and is
+#   hidden. Deleted records are already gone from the file.
 
 def load_review_queue():
     """Records in for_review.json that still need a review.
-
-    update_review_entry sets agreement and confidence to 1 and leaves the
-    record in the file, so a record with both at 1 counts as reviewed and is
-    hidden. Deleted records are already gone from the file.
     """
     data = data_manager._load_review_file(Path(DATA_DIRECTORY) / REVIEW_FILE)
     return [
@@ -485,7 +590,7 @@ def review_label(record):
 
 
 def print_review_queue(pending):
-    """Print one line per record waiting for review."""
+    """Print one line per record for review."""
     print_block("REVIEW QUEUE")
     print_out("-" * WIDTH)
     if not pending:
@@ -500,7 +605,7 @@ def print_review_queue(pending):
 
 
 def print_review_entry(record, position, total):
-    """Show one flagged record in full."""
+    """Show one flagged record in full text."""
     print_block(f"Review {position} of {total}   ID: {record.get('feedback_id', '?')}")
     print_out("-" * WIDTH)
     print_out(textwrap.fill(clean(str(record.get("text", ""))), width=WIDTH,
@@ -541,9 +646,7 @@ def field_check(options):
 
 def review_update(record):
     """Ask for new theme/severity/sentiment. Enter keeps the current value.
-
-    Keeping all three approves the record as it is. Either way it leaves
-    the review queue.
+    Keeping all three approves the record as it is and leaves the review queue.
     """
     print_block("Press Enter to keep a value. Keeping all three approves the record as is.")
     changes = {}
@@ -594,7 +697,7 @@ def run_review_queue(pending):
 
 
 def offer_review(pending):
-    """After the queue is shown, ask whether to start reviewing."""
+    """After the queue is shown, prompt to start reviewing."""
     if not pending:
         return
     answer = _prompt("Review them now? (y/n): ")
@@ -622,9 +725,7 @@ def read_entry():
 
 def run_single_entry(is_admin=False):
     """Collect one feedback entry and confirm if they are user or admin.
- 
-    Saves the entry to test-input.json and returns it, or None if they
-    cancelled or it could not be saved.
+    Saves the entry to test-input.json and returns it, or None if they cancelled.
     """
     entry = read_entry()
     if entry is None:
@@ -646,9 +747,6 @@ def run_single_entry(is_admin=False):
 def run_admin_import():
     """Admin flow: import a JSON or CSV file. The file type is picked from
     the extension. Keeps asking for a path until a file loads or the admin quits.
-
-    A CSV is converted to a JSON file (name.csv -> name.json) before
-    validating. Returns the accepted rows as a payload, or None.
     """
     print_block()
     while True:
@@ -660,7 +758,7 @@ def run_admin_import():
 
         extension = os.path.splitext(path)[1].lower()
         if extension == ".json":
-            rows = read_json(path)
+            rows = data_manager._read_list_strict(Path(path))
             if rows:  # empty list counts as a failed load, so will reprompt
                 break
             print_out(f"  Invalid: could not read '{path}' as JSON (check the path and format).")
@@ -669,7 +767,7 @@ def run_admin_import():
             json_path = data_path(os.path.splitext(os.path.basename(path))[0] + ".json")
             if convert_csv_to_json(path, json_path):
                 print_block(f"Converted to '{json_path}'.")
-                rows = read_json(json_path)
+                rows = data_manager._read_list_strict(Path(json_path))
                 break
             print_out(f"  Invalid: could not convert '{path}' (check the path and format).")
         else:
@@ -748,4 +846,3 @@ def main():
  
 if __name__ == "__main__":
     main()
-
