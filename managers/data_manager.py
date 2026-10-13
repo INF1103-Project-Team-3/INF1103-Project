@@ -16,7 +16,7 @@ JSON_STORAGE_PATH = Path(os.getenv("JSON_STORAGE_PATH", "/data/aggregated_output
 SUMMARY_STORAGE_PATH = Path(os.getenv("SUMMARY_STORAGE_PATH", "/data/summary.json"))
 
 # Global states to hold current information in memory
-records_store: List[Dict[str, Any]] = [] 
+records_store: List[Dict[str, Any]] = []
 summary_store: Dict[str, Any] = {}
 aggregated_store: Dict[str, Any] = {
     "total_entries": 0,
@@ -29,7 +29,7 @@ aggregated_store: Dict[str, Any] = {
     "themes": []
 }
 
-def load_trends_output(filename: str = "trends_output.json", base_dir: str = "/data") -> Dict[str, Any]:
+def load_trends_output(filename: str = "trend_output.json", base_dir: str = "/data") -> Dict[str, Any]:
     """Load Trends Output:  For reading JSON files into memory."""
     filepath = Path(base_dir) / filename
 
@@ -202,7 +202,8 @@ def update_review_entry(
         logging.warning("Feedback ID '%s' not found in '%s'.", feedback_id, filepath)
         return False
 
-    # 1. Save updated review entry back to for_review.json
+    # 1. Remove the reviewed entry from for_review.json (the updated copy goes to processed_feedback.json)
+    data["records"] = [item for item in records if item.get("feedback_id") != feedback_id]
     saved_review = _save_review_file(filepath, data)
     if not saved_review:
         logging.error("Failed to save changes to '%s'. Skipping update to processed_feedback.json.", filepath)
