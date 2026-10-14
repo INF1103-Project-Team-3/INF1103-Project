@@ -134,7 +134,10 @@ All commands run inside the container:
 docker compose run --rm app pytest tests/
 
 # logic pipeline on sample data (no API key needed)
-docker compose run --rm app python submission/execution_script.py
+docker compose run --rm app python submission/execution_script.py sample_ai_output
+# a sample file name is required: sample_ai_output, sample_ai_output1 or sample_ai_output2
+# to test trend analysis, run sample_ai_output1 and then sample_ai_output2:
+# the second run is compared against the first
 
 # logic_manager on the 30 saved AI outputs, including trend vs the previous run
 docker compose run --rm app python managers/logic_manager.py   # writes to tests/logic_output/
