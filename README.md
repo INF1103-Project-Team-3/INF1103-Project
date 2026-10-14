@@ -13,7 +13,7 @@ The program is procedural Python (no classes), stores everything in flat JSON fi
 - **Two ways in:** users type a single piece of feedback; admins can also import a whole CSV or JSON file.
 - **Input validation:** every entry needs `feedback_id`, `text` and `timestamp` (`YYYY-MM-DDTHH:MM:SS`); text must contain letters and be at most 2,000 characters. Rejected rows are listed with the reason.
 - **AI classification (call 1):** each entry is classified **3 times** and the answers are combined by majority vote. An `agreement` score records how far the three runs agreed.
-- **Business rules:** an entry is flagged for review if it is **critical**, if confidence is **below 0.5**, or if the three AI runs **did not fully agree**. Low-confidence or low-agreement entries are left out of the statistics until reviewed.
+- **Business rules:** an entry is flagged for review if it is **critical**, if theme is **unclear**, if confidence is **below 0.5**, or if the three AI runs **did not fully agree**. Low-confidence, low-agreement and unclear entries are left out of the statistics until reviewed.
 - **Theme statistics:** counts, sentiment and severity mix per theme, plus a **0–100 priority score** (severity 45, frequency 35, negative sentiment 20).
 - **AI summary (call 2):** an overall summary and one suggested action per theme.
 - **Admin dashboard and review queue:** themes ranked by priority, suggested actions, and a review queue sorted critical-first where the admin can **update**, **delete** or **skip** each flagged entry.
