@@ -13,10 +13,12 @@ The program is procedural Python (no classes), stores everything in flat JSON fi
 - **Two ways in:** users type a single piece of feedback; admins can also import a whole CSV or JSON file.
 - **Input validation:** every entry needs `feedback_id`, `text` and `timestamp` (`YYYY-MM-DDTHH:MM:SS`); text must contain letters and be at most 2,000 characters. Rejected rows are listed with the reason.
 - **AI classification (call 1):** each entry is classified **3 times** and the answers are combined by majority vote. An `agreement` score records how far the three runs agreed.
-- **Business rules:** an entry is flagged for review if it is **critical**, if theme is **unclear**, if confidence is **below 0.5**, or if the three AI runs **did not fully agree**. Low-confidence, low-agreement and unclear entries are left out of the statistics until reviewed.
+- **Business rules:** an entry is flagged for review if it is **critical**, if theme is **Unclear**, if confidence is **below 0.5**, or if the three AI runs **did not fully agree**. Low-confidence, low-agreement and unclear entries are left out of the statistics until reviewed. Critical entries are flagged but still counted.
+- **Theme normalisation:** the AI’s theme labels are mapped onto 8 fixed themes via an alias table, and anything unrecognised becomes Unclear and goes to review.
 - **Theme statistics:** counts, sentiment and severity mix per theme, plus a **0–100 priority score** (severity 45, frequency 35, negative sentiment 20).
 - **AI summary (call 2):** an overall summary and one suggested action per theme.
 - **Admin dashboard and review queue:** themes ranked by priority, suggested actions, and a review queue sorted critical-first where the admin can **update**, **delete** or **skip** each flagged entry.
+- **Trend analysis:** each import compares every theme’s priority with the previous run and labels it Escalating, Easing, Steady, New or Not reported (a change of 5 points or more counts). The dashboard shows this as a STATUS column, plus the change in total entries and negative %.
 - **Search:** admins can search stored feedback by keyword.
 - **No double processing:** entries already classified are skipped, so re-running never spends API tokens on the same feedback twice.
 - **Rate-limit aware:** API calls retry on 429/5xx errors and pace themselves from Groq's rate-limit headers; daily token use is logged locally.
