@@ -4,6 +4,8 @@ __pycache__/
 INF1103-Project.code-workspace
 HANDOVER.md
 archive/
-config/token-usage-log.json
+managers/config/token-usage-log.json
 Project Part 1 - LLM Design Kickoff.md
 claude-project-export.zip
+key.txt
+tests/logic_output/

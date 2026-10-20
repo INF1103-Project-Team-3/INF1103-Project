@@ -1,0 +1,81 @@
+{
+    "records": [
+        {
+            "feedback_id": "fb_012",
+            "text": "The tutorial goes over the same worked example three times, we've all understood it after the first pass, it's a waste of the session.",
+            "timestamp": "2026-09-19T13:02:00",
+            "theme": "Teaching Quality",
+            "sentiment": "negative",
+            "severity": "low",
+            "summary": "Student feels tutorial repeats example unnecessarily, wasting session time after first understanding.",
+            "confidence": 0.9,
+            "agreement": 1.0
+        },
+        {
+            "feedback_id": "fb_013",
+            "text": "My IWSP placement company has had me doing photocopying and data entry with nothing related to my course, for the past two months.",
+            "timestamp": "2026-09-19T15:47:00",
+            "theme": "Internship Placement",
+            "sentiment": "negative",
+            "severity": "high",
+            "summary": "Student's placement tasks are unrelated to their course, involving only photocopying and data entry.",
+            "confidence": 0.92,
+            "agreement": 1.0
+        },
+        {
+            "feedback_id": "fb_014",
+            "text": "Printing credits run out so fast every trimester, I end up paying out of pocket just to submit hard copy reports.",
+            "timestamp": "2026-09-19T17:30:00",
+            "theme": "Facilities",
+            "sentiment": "negative",
+            "severity": "medium",
+            "summary": "Printing credits deplete quickly each trimester, forcing student to pay out‑of‑pocket for hard‑copy reports.",
+            "confidence": 0.9,
+            "agreement": 0.67
+        },
+        {
+            "feedback_id": "fb_008",
+            "text": "It's fine I guess, could be better could be worse, hard to say really.",
+            "timestamp": "2026-09-18T10:58:00",
+            "theme": "Unclear",
+            "sentiment": "neutral",
+            "severity": "low",
+            "summary": "Student expresses vague, indifferent opinion with no clear issue.",
+            "confidence": 0.4,
+            "agreement": 1.0
+        },
+        {
+            "feedback_id": "fb_010",
+            "text": "The air conditioning in the lecture theatre has been broken for two weeks, it's unbearable sitting through a 2 hour class.",
+            "timestamp": "2026-09-19T09:30:00",
+            "theme": "Facilities",
+            "sentiment": "negative",
+            "severity": "high",
+            "summary": "Air conditioning broken in lecture theatre makes two‑hour class unbearable for students.",
+            "confidence": 0.92,
+            "agreement": 0.67
+        },
+        {
+            "feedback_id": "fb_011",
+            "text": "The grading rubric for the group project was changed three days before submission without any announcement, we prepared for the wrong criteria entirely.",
+            "timestamp": "2026-09-19T11:14:00",
+            "theme": "Assessment",
+            "sentiment": "negative",
+            "severity": "high",
+            "summary": "Rubric changed last minute without notice, student prepared using wrong criteria.",
+            "confidence": 0.92,
+            "agreement": 1.0
+        },
+        {
+            "feedback_id": "fb_a1dbcf19",
+            "text": "sdac",
+            "timestamp": "2026-10-14T06:23:46",
+            "theme": "Unclear",
+            "sentiment": "neutral",
+            "severity": "low",
+            "summary": "Text contains no meaningful feedback.",
+            "confidence": 0.0,
+            "agreement": 1.0
+        }
+    ]
+}

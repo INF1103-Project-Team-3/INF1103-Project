@@ -1,11 +1,13 @@
-import json
 from datetime import datetime
 from pathlib import Path
- 
+
+import data_manager
+
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------
 MIN_CONFIDENCE = 0.5
+UNCLEAR_THEME = "Unclear"   # entries with this theme go to the review queue, not the dashboard
 
 # Trend comparison: a theme's priority must move by at least this many points
 # between runs to count as Escalating or Easing; smaller moves are Steady.
@@ -16,12 +18,6 @@ TREND_STATUS_ORDER = ["Escalating", "New", "Easing", "Steady", "Not reported"]
 # Allowed values. The dict order is the display order (low -> critical).
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 SENTIMENT_SCORE = {"positive": 1, "neutral": 0, "negative": -1}
- 
-# Paths are built from this file's location, so they work from any terminal
-# folder. logic_manager.py lives in src/, so two levels up is the repo root.
-REPO_ROOT = Path(__file__).resolve().parent.parent
-INPUT_FILE = REPO_ROOT / "config" / "test-output.json"
-OUTPUT_DIR = REPO_ROOT / "output"  # scratch results (git-ignored)
  
 # Every record from the AI must have these fields, with these types.
 REQUIRED_FIELDS = {
@@ -43,89 +39,6 @@ ZERO_TO_ONE_FIELDS = ("confidence", "agreement")
  
 
 # ---------------------------------------------------------------------------
-# Reading and writing JSON files
-# ---------------------------------------------------------------------------
-def read_json(path):
-    """Reads a JSON file and returns its contents (a dict or list)."""
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def write_json(path, data):
-    """Writes data to a JSON file, creating the parent folder if needed."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-
-
-def read_json_list(path):
-    """Reads a JSON file that holds a list. A missing or empty file gives an
-    empty list. A file that exists but isn't valid JSON, or isn't a list,
-    raises an error instead of being treated as empty, so history is never
-    silently lost."""
-    path = Path(path)
-    if not path.exists() or path.stat().st_size == 0:
-        return []
-    try:
-        data = read_json(path)
-    except json.JSONDecodeError as error:
-        raise ValueError(f"{path.name} is not valid JSON, so it was left unchanged: {error}")
-    if not isinstance(data, list):
-        raise ValueError(f"{path.name} should contain a list, so it was left unchanged")
-    return data
-
-
-def append_json(path, new_items, sort_key=None, unique_by=None):
-    """Adds new_items (a list) to the list stored in a JSON file, keeping
-    everything already there. New items are placed first, then:
-      - unique_by (a function returning an item's id): if the same id
-        appears more than once, only the first (newest) is kept, so
-        re-running a file replaces its earlier entries instead of
-        duplicating them
-      - sort_key: the combined list is re-sorted with it
-    A missing or empty file starts a new list. A file that exists but
-    can't be read as a list raises an error instead of being overwritten,
-    so the history is never lost. The file is replaced in one step, so a
-    crash part-way through can't corrupt it."""
-    path = Path(path)
-    combined = list(new_items) + read_json_list(path)
-    if unique_by:
-        seen = set()
-        unique = []
-        for item in combined:
-            item_id = unique_by(item)
-            if item_id not in seen:
-                seen.add(item_id)
-                unique.append(item)
-        combined = unique
-    if sort_key:
-        combined.sort(key=sort_key)
-    temp_path = path.with_name(path.name + ".tmp")
-    write_json(temp_path, combined)
-    temp_path.replace(path)
-
-
-def load_records(path: str | Path = INPUT_FILE) -> list:
-    """Loads the AI's classified feedback from a JSON file. Accepts a plain
-    list of records, or a dict with the list under a "records" key. Only
-    the overall shape is checked here; each record is checked separately
-    by validate_record()."""
-    path = Path(path)
-    if not path.exists():
-        raise FileNotFoundError(f"Input file not found: {path}")
-    data = read_json(path)
-    # the file may be {"records": [...]} instead of a plain list
-    if isinstance(data, dict) and "records" in data:
-        data = data["records"]
-    # individual records are checked later by validate_record(), so one bad
-    # entry doesn't stop the whole file from loading
-    if not isinstance(data, list):
-        raise ValueError(f"{path.name} should contain a list of feedback records")
-    return data
-
-
-# ---------------------------------------------------------------------------
 # Validating the AI's output
 # ---------------------------------------------------------------------------
 def _matches_type(value, type_name):
@@ -138,6 +51,7 @@ def _matches_type(value, type_name):
             return isinstance(value, (int, float)) and not isinstance(value, bool)
         case _:
             raise ValueError(f"Unknown type name: {type_name}")
+
 
 def validate_record(record):
     """Returns a list of problems with one record. An empty list means the
@@ -298,6 +212,7 @@ def apply_feedback_rules(record):
     """Normalises the theme and adds three fields: needs_review,
     review_reason and counted. The record must already have passed
     validate_record(), so every field is known to be present."""
+    theme = normalise_theme(record["theme"])    # e.g. "other" becomes "Unclear"
     review = []
     if record["severity"] == "critical": #checking if feedback is critical
         review.append("Critical severity")
@@ -305,11 +220,14 @@ def apply_feedback_rules(record):
         review.append(f"Confidence {record['confidence']:.2f} is below threshold {MIN_CONFIDENCE}.")
     if record["agreement"] < 1.0: #checking if feedback has low agreement
         review.append(f"Agreement {record['agreement']:.2f} - AI outputs did not fully agree.")
+    if theme == UNCLEAR_THEME: #checking if the AI could not assign a theme
+        review.append("Unclear theme - needs a theme assigned.")
     return {
         **record,
-        "theme": normalise_theme(record["theme"]),
-        # low-confidence or low-agreement feedback is reviewed, not counted
-        "counted": record["confidence"] >= MIN_CONFIDENCE and record["agreement"] >= 1.0,
+        "theme": theme,
+        # low-confidence, low-agreement or unclear-theme feedback is reviewed, not counted
+        "counted": (record["confidence"] >= MIN_CONFIDENCE and record["agreement"] >= 1.0
+                    and theme != UNCLEAR_THEME),
         "needs_review": len(review) > 0,
         "review_reason": review,
     }
@@ -493,7 +411,7 @@ def compare_runs(current_stats: dict, previous_entry: dict | None) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Test runner: python src/logic_manager.py
+# Test runner: python managers/logic_manager.py
 # ---------------------------------------------------------------------------
 def run_sanity_checks(records, invalid_records, processed_records, review_queue, stats, trend):
     """Fails loudly if the results are inconsistent."""
@@ -521,12 +439,21 @@ def run_sanity_checks(records, invalid_records, processed_records, review_queue,
             assert earlier["theme"] <= later["theme"], "themes not grouped within a severity"
 
 
+# Settings for the test runner only. The real pipeline calls the data_manager
+# functions with their default folders instead.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+TEST_INPUT_DIR = REPO_ROOT / "tests" / "ai_manager_samples"
+TEST_INPUT_FILE = "test-output.json"
+TEST_OUTPUT_DIR = REPO_ROOT / "tests" / "logic_output"
+
+
 def main():
-    records = load_records()
+    out = str(TEST_OUTPUT_DIR)
+    records = data_manager.load_records(TEST_INPUT_FILE, base_dir=str(TEST_INPUT_DIR))
     valid_records, invalid_records = split_valid_records(records)
  
     # always written, so the file never shows results from an older run
-    write_json(OUTPUT_DIR / "invalid_records.json", invalid_records)
+    data_manager.save_invalid_records(invalid_records, base_dir=out)
     if invalid_records:
         print(f"WARNING: {len(invalid_records)} of {len(records)} records failed "
               f"validation and were skipped (see invalid_records.json):")
@@ -537,29 +464,28 @@ def main():
     processed_records = [apply_feedback_rules(r) for r in valid_records]
     review_queue = rank_review_queue(processed_records)
     stats = aggregate_themes(processed_records)
-    write_json(OUTPUT_DIR / "aggregated_output.json", stats)
+    data_manager.aggregate_themes(stats, base_dir=out)   # writes aggregated_output.json
     run_at = datetime.now().isoformat(timespec="seconds")
 
     # for_review.json keeps every run; each record is stamped so runs can be told apart
-    append_json(OUTPUT_DIR / "for_review.json", [
-        {**record, "run_at": run_at, "source_file": INPUT_FILE.name}
+    data_manager.append_for_review([
+        {**record, "run_at": run_at, "source_file": TEST_INPUT_FILE}
         for record in review_queue
-    ], sort_key=review_sort_key, unique_by=lambda record: record["feedback_id"])
+    ], sort_key=review_sort_key, unique_by=lambda record: record["feedback_id"], base_dir=out)
 
     # aggregated_history.json keeps every run's stats, newest first. The trend
     # is worked out BEFORE this run is added, so the newest entry is the previous run.
-    history_path = OUTPUT_DIR / "aggregated_history.json"
-    history = read_json_list(history_path)
+    history = data_manager.load_history(base_dir=out)
     trend = compare_runs(stats, history[0] if history else None)
-    write_json(OUTPUT_DIR / "trend_output.json", trend)
-    append_json(history_path, [{"run_at": run_at, "source_file": INPUT_FILE.name, "stats": stats}])
+    data_manager.save_trend(trend, base_dir=out)
+    data_manager.append_history({"run_at": run_at, "source_file": TEST_INPUT_FILE, "stats": stats}, base_dir=out)
 
     print(f"Total: {len(processed_records)}, Counted: {stats['counted_entries']}, "
           f"Flagged for review: {len(review_queue)}, Invalid: {len(invalid_records)}")
     if trend["has_previous"]:
         print(f"Trend vs previous run ({trend['previous_run']['run_at']}):")
         print(f"  Entries: {trend['headline']['total_entries']['text']}, "
-              f"negative: {trend['headline']['negative_percent']['text']},")
+              f"negative: {trend['headline']['negative_percent']['text']}")
         for row in trend["themes"]:
             print(f"  {row['theme']:<22}{row['status']:<13}"
                   f"count {row['count']['text']:<16}priority {row['priority']['text']}")
@@ -571,8 +497,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-  
-    
-
-
-

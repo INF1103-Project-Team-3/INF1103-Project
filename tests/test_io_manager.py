@@ -1,6 +1,6 @@
 from datetime import datetime
 import json
-from src import io_manager 
+import io_manager
 
 # Test print_out()
 def test_print_out(capsys):
@@ -143,21 +143,21 @@ def test_read_json_valid(tmp_path):
     file = tmp_path / "data.json"
     file.write_text(json.dumps(data), encoding="utf-8")
 
-    assert io_manager.read_json(file) == data
+    assert io_manager.read_json_rows(file) == data
 
 
 def test_read_json_invalid_json(tmp_path):
     file = tmp_path / "bad.json"
     file.write_text("{invalid json", encoding="utf-8")
 
-    assert io_manager.read_json(file) == []
+    assert io_manager.read_json_rows(file) == []
 
 
 def test_read_json_not_list(tmp_path):
     file = tmp_path / "dict.json"
     file.write_text(json.dumps({"hello": "world"}), encoding="utf-8")
 
-    assert io_manager.read_json(file) == []
+    assert io_manager.read_json_rows(file) == []
 
 # Test read_csv()
 
@@ -226,7 +226,7 @@ def test_read_csv_bad_encoding(tmp_path):
 # Test prompt_until_valid() 
 
 def test_prompt_until_valid_success(monkeypatch):
-    monkeypatch.setattr(io_manager, "_prompt", lambda msg: "hello")
+    monkeypatch.setattr(io_manager, "_prompt", lambda msg, hidden=False: "hello")
 
     def validator(answer):
         return answer.upper(), ""
@@ -238,7 +238,7 @@ def test_prompt_until_valid_success(monkeypatch):
 
 def test_prompt_until_valid_retry(monkeypatch):
     answers = iter(["123", "hello"])
-    monkeypatch.setattr(io_manager, "_prompt", lambda msg: next(answers))
+    monkeypatch.setattr(io_manager, "_prompt", lambda msg, hidden=False: next(answers))
 
     def validator(answer):
         if answer.isalpha():
@@ -251,7 +251,7 @@ def test_prompt_until_valid_retry(monkeypatch):
 
 
 def test_prompt_until_valid_quit(monkeypatch):
-    monkeypatch.setattr(io_manager, "_prompt", lambda msg: None)
+    monkeypatch.setattr(io_manager, "_prompt", lambda msg, hidden=False: None)
 
     def validator(answer):
         return answer, ""

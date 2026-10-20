@@ -1,4 +1,16 @@
-[
+"""
+Shared fake data, shaped exactly like what ai_manager.classify_entry() will
+eventually return (see doc section 3.5). Every manager can import
+SAMPLE_RECORDS to test against before ai_manager is actually linked in --
+that way everyone's testing against the same fake data, not their own
+one-off dicts.
+
+Deliberately includes edge cases, not just the happy path: critical
+severity, low confidence, a confidence exactly at the 0.5 boundary, and a
+theme outside the fixed six (see "new themes" in the doc's open decisions).
+"""
+
+SAMPLE_RECORDS = [
   {
     "feedback_id": "fb_001",
     "text": "I can't keep up with the lecturer's slides, they move way too fast for me to take proper notes.",
@@ -330,3 +342,4 @@
     "agreement": 1.0
   }
 ]
+
