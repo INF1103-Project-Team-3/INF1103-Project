@@ -18,7 +18,7 @@ REQUEST_TIMEOUT_S = 30
 class GroqClient(LLMClient):
     """LLMClient for Groq's chat completions endpoint."""
 
-    def __init__(self, api_key: str, model: str = MODEL):
+    def __init__(self, api_key: str | None, model: str = MODEL):
         self.__api_key = api_key
         self.__model = model
         # One shared session, so every request reuses the open connection instead
@@ -39,6 +39,8 @@ class GroqClient(LLMClient):
         max_completion_tokens: int | None = None,
     ) -> tuple[str, int, float]:
         """POST one strict-schema chat completion to Groq. See LLMClient.send."""
+        if not self.__api_key:
+            raise LLMRequestError("API key missing", LLMRequestError.AUTH, False)
         body = {
             "model": self.__model,
             "messages": messages,

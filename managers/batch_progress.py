@@ -13,6 +13,9 @@ class BatchProgress:
         self.__started = clock()
         self.__ok = 0
         self.__failed_ids = []
+        self.__unattempted_ids = []
+        self.__stop_reason = None
+        self.__stopped_after = None
         self.__tokens = 0
         self.__last_finished = None
         self.__record_started = self.__started
@@ -38,6 +41,24 @@ class BatchProgress:
     @property
     def failed_ids(self) -> list[str]:
         return list(self.__failed_ids)
+
+    @property
+    def pending_ids(self) -> list[str]:
+        """Every record to retry next run: those that failed, then those never tried."""
+        return self.__failed_ids + self.__unattempted_ids
+
+    @property
+    def stopped(self) -> bool:
+        return self.__stop_reason is not None
+
+    @property
+    def stop_reason(self) -> str | None:
+        return self.__stop_reason
+
+    @property
+    def stopped_after(self) -> str | None:
+        """The request_id the batch stopped at."""
+        return self.__stopped_after
 
     @property
     def tokens(self) -> int:
@@ -90,3 +111,11 @@ class BatchProgress:
     def finish_failed(self, request_id: str) -> None:
         self.__failed_ids.append(request_id)
         self.__last_finished = self.__clock()
+
+    def stop(self, reason: str, request_id: str) -> None:
+        self.__stop_reason = reason
+        self.__stopped_after = request_id
+
+    def leave_pending(self, request_ids: list[str]) -> None:
+        """Record the entries a stopped batch never tried."""
+        self.__unattempted_ids.extend(request_ids)

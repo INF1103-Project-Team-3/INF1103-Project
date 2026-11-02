@@ -80,11 +80,21 @@ class ConsoleProgressReporter(ProgressReporter):
         with self.__lock:
             self._finish_record(f"  FAIL  {request_id}  left pending: {reason}")
 
+    def on_batch_stopped(self, progress: BatchProgress) -> None:
+        with self.__lock:
+            self.__status = ""
+            self.__wait_until = None
+            self._write_line(
+                f"  STOP  {progress.stop_reason} after {progress.stopped_after}: "
+                f"{progress.total - progress.done} records left pending"
+            )
+
     def on_batch_end(self, progress: BatchProgress, tokens_today: int | None, daily_limit: int | None) -> None:
         self._end_timer()
         counts = f"{progress.ok} ok"
-        if progress.failed:
-            counts += f", {progress.failed} pending ({', '.join(progress.failed_ids)})"
+        pending_ids = progress.pending_ids
+        if pending_ids:
+            counts += f", {len(pending_ids)} pending ({', '.join(pending_ids)})"
         parts = [f"[AI] Done in {self._format_duration(progress.elapsed)}: {counts}", f"{progress.tokens:,} tokens"]
         if tokens_today is not None:
             limit = f" / {daily_limit:,}" if daily_limit is not None else ""

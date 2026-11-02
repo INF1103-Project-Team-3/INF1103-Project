@@ -8,6 +8,7 @@ PROMPT_PATH = os.path.join(CONFIG_DIR, "system_prompt.txt")
 THEMES_PATH = os.path.join(CONFIG_DIR, "themes.json")
 THEMES_PLACEHOLDER = "{themes}"
 SUMMARY_PROMPT_PATH = os.path.join(CONFIG_DIR, "summary_prompt.txt")
+UNCLEAR_THEME = "Unclear"
 
 
 class PromptLibrary:
@@ -42,16 +43,17 @@ class PromptLibrary:
         return self.__summary_prompt
 
     def find_new_themes(self, records: list[dict], known_themes: list[str] | None = None) -> list[str]:
-        """Return known_themes extended with any non-canonical themes in records.
+        """Return known_themes extended with any labels the model coined in records.
 
         Call once with the stored records to seed the list, then once per new
         record, so a coined label is offered back to the model across runs.
-        First-seen order keeps the payload stable between runs.
+        Reads ai_theme only, so human tags never reach the model. First-seen
+        order keeps the payload stable between runs.
         """
         new_themes = list(known_themes or [])
         for record in records:
-            theme = record.get("theme")
-            if theme and theme not in self.__themes and theme not in new_themes:
+            theme = record.get("ai_theme") if isinstance(record, dict) else None
+            if theme and theme != UNCLEAR_THEME and theme not in self.__themes and theme not in new_themes:
                 new_themes.append(theme)
         return new_themes
 

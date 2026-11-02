@@ -36,5 +36,9 @@ class ProgressReporter(ABC):
         """A record failed, and is retried on the next run."""
 
     @abstractmethod
+    def on_batch_stopped(self, progress: BatchProgress) -> None:
+        """The batch stopped early: further requests would fail the same way."""
+
+    @abstractmethod
     def on_batch_end(self, progress: BatchProgress, tokens_today: int | None, daily_limit: int | None) -> None:
         """The batch is over. tokens_today is None if the ledger could not be read."""

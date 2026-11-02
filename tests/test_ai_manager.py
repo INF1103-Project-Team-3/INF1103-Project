@@ -7,7 +7,9 @@ import requests
 import ai_manager
 from ai_manager import AIManager, BACKOFF_BASE_S, MAX_ATTEMPTS
 from ai_task import AITask
-from classification_task import CLASSIFY_TOKEN_MARGIN, ClassificationTask, MAX_SUMMARY_WORDS
+from classification_task import (
+    CLASSIFY_TOKEN_MARGIN, ClassificationTask, MAX_ALTERNATIVE_THEMES, MAX_COINED_THEME_WORDS
+)
 from groq_client import GroqClient
 from llm_client import LLMClient
 from llm_request_error import LLMRequestError
@@ -22,8 +24,12 @@ ENTRY = {"feedback_id": "fb_001", "text": "The slides move too fast.", "timestam
 STATS = {"themes": [{"theme": "Facilities"}, {"theme": "Assessment"}]}
 
 
-def classification(theme="Facilities", sentiment="negative", severity="high", summary="Short summary.", confidence=0.9):
-    return {"theme": theme, "sentiment": sentiment, "severity": severity, "summary": summary, "confidence": confidence}
+def classification(theme="Facilities", alternative_themes=(), sentiment="negative", severity="high"):
+    return {"theme": theme, "alternative_themes": list(alternative_themes), "sentiment": sentiment, "severity": severity}
+
+
+def discard(record):
+    pass
 
 
 def summary_output(themes=("Facilities", "Assessment")):
@@ -71,8 +77,8 @@ def ledger_path(tmp_path):
     return tmp_path / "ledger.json"
 
 
-def build_manager(client, prompts, ledger_path, samples=1, reporter=None):
-    return AIManager(client, "test-key", prompts, reporter or RecordingProgressReporter(), samples, str(ledger_path))
+def build_manager(client, prompts, ledger_path, reporter=None):
+    return AIManager(client, "test-key", prompts, reporter or RecordingProgressReporter(), str(ledger_path))
 
 
 def today_usage(ledger_path, model="stub-model"):
@@ -94,87 +100,278 @@ def test_stub_substitutes_for_groq_client(prompts, ledger_path, sleeps):
     manager = build_manager(client, prompts, ledger_path)
 
     assert isinstance(client, LLMClient)
-    assert manager.classify_entries([ENTRY], [])[0]["theme"] == "Facilities"
+    assert manager.classify_entries([ENTRY], [], discard)[0][0]["ai_theme"] == "Facilities"
     assert manager.summarise(STATS) == summary_output()
 
 
 def test_both_tasks_are_ai_tasks(prompts):
-    assert isinstance(ClassificationTask(ENTRY, prompts.system_prompt, []), AITask)
+    assert isinstance(ClassificationTask(ENTRY, prompts.system_prompt, prompts.themes, []), AITask)
     assert isinstance(SummaryTask(STATS, prompts.summary_prompt), AITask)
 
 
-# Call 1: aggregating samples
-def test_majority_and_pass_through(prompts, ledger_path, sleeps):
-    samples = [
-        classification(theme="Facilities", summary="Low confidence.", confidence=0.5),
-        classification(theme="Facilities", summary="High confidence.", confidence=0.8),
-        classification(theme="Assessment", summary="Outvoted.", confidence=0.99),
-    ]
-    entry = {**ENTRY, "course": "INF1103"}
-    client = StubLLMClient([json.dumps(sample) for sample in samples])
+# Call 1: the record contract
+def test_success_adds_ai_fields_and_passes_everything_through(prompts, ledger_path, sleeps):
+    entry = {**ENTRY, "theme": "Assessment", "sentiment": "neutral", "severity": "low", "course": "INF1103"}
+    client = StubLLMClient([json.dumps(classification(alternative_themes=["Assessment"]))])
 
-    record = build_manager(client, prompts, ledger_path, samples=3).classify_entries([entry], [])[0]
+    classified, pending, stopped = build_manager(client, prompts, ledger_path).classify_entries([entry], [], discard)
 
-    assert record == {
+    assert classified == [{
         **entry,
-        "theme": "Facilities",
-        "sentiment": "negative",
-        "severity": "high",
-        "summary": "High confidence.",
-        "confidence": 0.8,
-        "agreement": 0.67,
-    }
+        "ai_theme": "Facilities",
+        "ai_alternative_themes": ["Assessment"],
+        "ai_sentiment": "negative",
+        "ai_severity": "high",
+    }]
+    assert pending == []
+    assert stopped is False
 
 
-def test_no_majority_falls_back_to_first_sample(prompts, ledger_path, sleeps):
-    samples = [classification(theme=theme) for theme in ("Facilities", "Assessment", "Workload")]
-    client = StubLLMClient([json.dumps(sample) for sample in samples])
+def test_only_the_text_reaches_the_model(prompts, ledger_path, sleeps):
+    entry = {**ENTRY, "theme": "HUMAN-THEME", "sentiment": "HUMAN-SENTIMENT", "severity": "HUMAN-SEVERITY"}
+    client = StubLLMClient([json.dumps(classification())])
 
-    record = build_manager(client, prompts, ledger_path, samples=3).classify_entries([ENTRY], [])[0]
+    build_manager(client, prompts, ledger_path).classify_entries([entry], [], discard)
 
-    assert record["theme"] == "Facilities"
-    assert record["agreement"] == 0.33
+    assert json.loads(client.calls[0]["messages"][1]["content"]) == {"text": ENTRY["text"]}
+    assert "HUMAN" not in json.dumps(client.calls[0]["messages"])
 
 
-def test_failed_sample_leaves_entry_out_and_batch_continues(prompts, ledger_path, sleeps):
+def test_on_classified_fires_per_record_as_it_finishes(prompts, ledger_path, sleeps):
     second = {**ENTRY, "feedback_id": "fb_002"}
-    client = StubLLMClient([
-        json.dumps(classification()),
-        error(LLMRequestError.REQUEST, retryable=False),
-        json.dumps(classification(theme="Assessment")),
-        json.dumps(classification(theme="Assessment")),
-    ])
+    third = {**ENTRY, "feedback_id": "fb_003"}
+    saved = []
+    client = StubLLMClient([json.dumps(classification())] + ["not json"] * MAX_ATTEMPTS + [json.dumps(classification())])
 
-    records = build_manager(client, prompts, ledger_path, samples=2).classify_entries([ENTRY, second], [])
+    build_manager(client, prompts, ledger_path).classify_entries([ENTRY, second, third], [], saved.append)
 
-    assert [record["feedback_id"] for record in records] == ["fb_002"]
+    assert [record["feedback_id"] for record in saved] == ["fb_001", "fb_003"]
+
+
+@pytest.mark.parametrize("returned, stored", [
+    ("facilities", "Facilities"),
+    ("FACILITIES", "Facilities"),
+    ("Wellbeing", "Well-being"),
+    ("well being", "Well-being"),
+    ("Well-Being", "Well-being"),
+    ("teaching-quality", "Teaching Quality"),
+    ("unclear.", "Unclear"),
+    ("Well-being", "Well-being"),
+    ("Facility", "Facility"),
+    ("Mental Health", "Mental Health"),
+    ("Teaching", "Teaching"),
+])
+def test_spelling_variants_map_to_the_listed_label(returned, stored):
+    task = ClassificationTask(ENTRY, "prompt", ["Facilities", "Well-being", "Teaching Quality"], [])
+
+    assert task.parse(json.dumps(classification(theme=returned)))["theme"] == stored
+
+
+def test_spelling_variant_is_stored_as_listed_and_not_offered_back(prompts, ledger_path, sleeps):
+    second = {**ENTRY, "feedback_id": "fb_002"}
+    client = StubLLMClient([json.dumps(classification(theme="facilities")), json.dumps(classification())])
+
+    classified, _, _ = build_manager(client, prompts, ledger_path).classify_entries([ENTRY, second], [], discard)
+
+    assert classified[0]["ai_theme"] == "Facilities"
+    assert "existing_new_themes" not in json.loads(client.calls[1]["messages"][1]["content"])
+
+
+def test_spelling_variant_repeating_an_alternative_is_rejected(prompts):
+    task = ClassificationTask(ENTRY, prompts.system_prompt, prompts.themes, [])
+
+    assert task.parse(json.dumps(classification(theme="facilities", alternative_themes=["Facilities"]))) is None
+
+
+@pytest.mark.parametrize("raw", ['"not a dict"', '{"theme": 1}', "[]"])
+def test_spelling_match_leaves_malformed_output_for_validation(prompts, raw):
+    assert ClassificationTask(ENTRY, prompts.system_prompt, prompts.themes, []).parse(raw) is None
+
+
+def test_long_listed_theme_is_still_valid(tmp_path):
+    long_theme = "word " * (MAX_COINED_THEME_WORDS + 1)
+    task = ClassificationTask(ENTRY, "prompt", [long_theme], [])
+
+    assert task.validate(classification(theme=long_theme)) is True
 
 
 # Call 1: coined themes
 def test_coined_themes_are_offered_back_to_the_model(prompts, ledger_path, sleeps):
     second = {**ENTRY, "feedback_id": "fb_002"}
-    client = StubLLMClient([json.dumps(classification(theme="Coined")), json.dumps(classification())])
+    client = StubLLMClient([json.dumps(classification(theme="Catering")), json.dumps(classification())])
 
-    build_manager(client, prompts, ledger_path).classify_entries([ENTRY, second], [{"theme": "Stored"}])
+    build_manager(client, prompts, ledger_path).classify_entries([ENTRY, second], [{"ai_theme": "Stored"}], discard)
 
     payloads = [json.loads(call["messages"][1]["content"]) for call in client.calls]
     assert payloads[0] == {"text": ENTRY["text"], "existing_new_themes": ["Stored"]}
-    assert payloads[1]["existing_new_themes"] == ["Stored", "Coined"]
+    assert payloads[1]["existing_new_themes"] == ["Stored", "Catering"]
 
 
-def test_no_coined_themes_leaves_the_key_out(prompts, ledger_path, sleeps):
+def test_human_themes_are_never_offered_to_the_model(prompts, ledger_path, sleeps):
     client = StubLLMClient([json.dumps(classification())])
+    stored = [{"theme": "HUMAN-THEME", "ai_theme": "Facilities"}]
 
-    build_manager(client, prompts, ledger_path).classify_entries([ENTRY], [])
+    build_manager(client, prompts, ledger_path).classify_entries([ENTRY], stored, discard)
 
     assert json.loads(client.calls[0]["messages"][1]["content"]) == {"text": ENTRY["text"]}
+
+
+def test_failed_record_does_not_change_the_known_themes(prompts, ledger_path, sleeps):
+    second = {**ENTRY, "feedback_id": "fb_002"}
+    client = StubLLMClient(["not json"] * MAX_ATTEMPTS + [json.dumps(classification())])
+
+    build_manager(client, prompts, ledger_path).classify_entries([ENTRY, second], [], discard)
+
+    assert json.loads(client.calls[-1]["messages"][1]["content"]) == {"text": ENTRY["text"]}
+
+
+# Call 1: failure behaviour
+def test_invalid_output_leaves_record_pending_and_batch_continues(prompts, ledger_path, sleeps):
+    second = {**ENTRY, "feedback_id": "fb_002"}
+    client = StubLLMClient(["not json"] * MAX_ATTEMPTS + [json.dumps(classification())])
+
+    classified, pending, stopped = build_manager(client, prompts, ledger_path).classify_entries([ENTRY, second], [], discard)
+
+    assert pending == [ENTRY]
+    assert [record["feedback_id"] for record in classified] == ["fb_002"]
+    assert stopped is False
+
+
+def test_rejected_key_stops_the_batch(prompts, ledger_path, sleeps):
+    second = {**ENTRY, "feedback_id": "fb_002"}
+    client = StubLLMClient([error(LLMRequestError.AUTH, retryable=False)])
+
+    classified, pending, stopped = build_manager(client, prompts, ledger_path).classify_entries([ENTRY, second], [], discard)
+
+    assert classified == []
+    assert pending == [ENTRY, second]
+    assert stopped is True
+    assert len(client.calls) == 1
+
+
+def test_missing_key_stops_the_batch_without_a_request(prompts, ledger_path, sleeps, monkeypatch):
+    def fail(*args, **kwargs):
+        raise AssertionError("no request should be sent")
+    monkeypatch.setattr(requests.Session, "post", fail)
+    manager = AIManager(GroqClient(None), "none", prompts, RecordingProgressReporter(), str(ledger_path))
+
+    classified, pending, stopped = manager.classify_entries([ENTRY], [], discard)
+
+    assert (classified, pending, stopped) == ([], [ENTRY], True)
+
+
+def test_every_attempt_lost_to_connection_errors_stops_the_batch(prompts, ledger_path, sleeps):
+    second = {**ENTRY, "feedback_id": "fb_002"}
+    client = StubLLMClient([error(LLMRequestError.CONNECTION)] * MAX_ATTEMPTS)
+
+    classified, pending, stopped = build_manager(client, prompts, ledger_path).classify_entries([ENTRY, second], [], discard)
+
+    assert (classified, pending, stopped) == ([], [ENTRY, second], True)
+    assert len(client.calls) == MAX_ATTEMPTS
+    assert sleeps == [BACKOFF_BASE_S, BACKOFF_BASE_S**2]  # no wait once it has stopped
+
+
+def test_connection_recovering_does_not_stop_the_batch(prompts, ledger_path, sleeps):
+    client = StubLLMClient([error(LLMRequestError.CONNECTION), error(LLMRequestError.CONNECTION), json.dumps(classification())])
+
+    classified, _, stopped = build_manager(client, prompts, ledger_path).classify_entries([ENTRY], [], discard)
+
+    assert len(classified) == 1
+    assert stopped is False
+
+
+def test_rejected_request_leaves_record_pending_and_batch_continues(prompts, ledger_path, sleeps):
+    second = {**ENTRY, "feedback_id": "fb_002"}
+    client = StubLLMClient([error(LLMRequestError.REQUEST, retryable=False), json.dumps(classification())])
+
+    classified, pending, stopped = build_manager(client, prompts, ledger_path).classify_entries([ENTRY, second], [], discard)
+
+    assert pending == [ENTRY]
+    assert len(classified) == 1
+    assert stopped is False
+
+
+def test_rate_limit_wait_over_a_minute_stops_the_batch(prompts, ledger_path, sleeps, monkeypatch):
+    second = {**ENTRY, "feedback_id": "fb_002"}
+    monkeypatch.setattr(requests.Session, "post", lambda *a, **k: response(429, headers={"retry-after": "3600"}))
+    manager = AIManager(GroqClient("key"), "test-key", prompts, RecordingProgressReporter(), str(ledger_path))
+
+    classified, pending, stopped = manager.classify_entries([ENTRY, second], [], discard)
+
+    assert (classified, pending, stopped) == ([], [ENTRY, second], True)
+    assert sleeps == []
+
+
+def test_long_wait_after_a_success_keeps_the_record_and_stops(prompts, ledger_path, sleeps):
+    second = {**ENTRY, "feedback_id": "fb_002"}
+    client = StubLLMClient([json.dumps(classification())], wait_seconds=62)
+    saved = []
+
+    classified, pending, stopped = build_manager(client, prompts, ledger_path).classify_entries([ENTRY, second], [], saved.append)
+
+    assert len(classified) == 1
+    assert saved == classified
+    assert (pending, stopped) == ([second], True)
+    assert sleeps == []
+
+
+def test_retry_after_of_a_minute_does_not_stop_despite_the_buffer(prompts, ledger_path, sleeps, monkeypatch):
+    replies = [response(429, headers={"retry-after": "60"}), response(200, groq_reply(json.dumps(classification())))]
+    monkeypatch.setattr(requests.Session, "post", lambda *a, **k: replies.pop(0))
+    manager = AIManager(GroqClient("key"), "test-key", prompts, RecordingProgressReporter(), str(ledger_path))
+
+    classified, _, stopped = manager.classify_entries([ENTRY], [], discard)
+
+    assert len(classified) == 1
+    assert stopped is False
+    assert sleeps[0] == 60 + DELAY_BUFFER_S
+
+
+def test_token_reset_near_a_minute_does_not_stop_despite_the_buffer(prompts, ledger_path, sleeps, monkeypatch):
+    headers = {"x-ratelimit-remaining-tokens": "100", "x-ratelimit-reset-tokens": "59.9s"}
+    reply = response(200, groq_reply(json.dumps(classification())), headers)
+    monkeypatch.setattr(requests.Session, "post", lambda *a, **k: reply)
+    manager = AIManager(GroqClient("key"), "test-key", prompts, RecordingProgressReporter(), str(ledger_path))
+
+    _, _, stopped = manager.classify_entries([ENTRY], [], discard)
+
+    assert stopped is False
+
+
+def test_retry_after_over_a_minute_and_a_second_stops(prompts, ledger_path, sleeps, monkeypatch):
+    monkeypatch.setattr(requests.Session, "post", lambda *a, **k: response(429, headers={"retry-after": "61"}))
+    manager = AIManager(GroqClient("key"), "test-key", prompts, RecordingProgressReporter(), str(ledger_path))
+
+    _, _, stopped = manager.classify_entries([ENTRY], [], discard)
+
+    assert stopped is True
+    assert sleeps == []
+
+
+def test_corrupt_stored_record_does_not_crash_the_batch(prompts, ledger_path, sleeps):
+    client = StubLLMClient([json.dumps(classification())])
+
+    classified, _, _ = build_manager(client, prompts, ledger_path).classify_entries([ENTRY], [None, "bad", {"ai_theme": "Stored"}], discard)
+
+    assert len(classified) == 1
+    assert json.loads(client.calls[0]["messages"][1]["content"])["existing_new_themes"] == ["Stored"]
+
+
+def test_wait_of_exactly_a_minute_does_not_stop(prompts, ledger_path, sleeps):
+    client = StubLLMClient([error(wait_seconds=60), json.dumps(classification())])
+
+    classified, _, stopped = build_manager(client, prompts, ledger_path).classify_entries([ENTRY], [], discard)
+
+    assert len(classified) == 1
+    assert stopped is False
+    assert sleeps[0] == 60
 
 
 # Retry loop
 def test_retries_until_output_validates(prompts, ledger_path, sleeps):
     client = StubLLMClient(["not json", json.dumps({"theme": "incomplete"}), json.dumps(classification())])
 
-    records = build_manager(client, prompts, ledger_path).classify_entries([ENTRY], [])
+    records, _, _ = build_manager(client, prompts, ledger_path).classify_entries([ENTRY], [], discard)
 
     assert len(records) == 1
     assert len(client.calls) == 3
@@ -186,7 +383,7 @@ def test_retries_until_output_validates(prompts, ledger_path, sleeps):
 def test_error_without_wait_uses_backoff_and_error_with_wait_uses_it(prompts, ledger_path, sleeps):
     client = StubLLMClient([error(), error(wait_seconds=7.5), json.dumps(classification())])
 
-    build_manager(client, prompts, ledger_path).classify_entries([ENTRY], [])
+    build_manager(client, prompts, ledger_path).classify_entries([ENTRY], [], discard)
 
     assert sleeps == [BACKOFF_BASE_S, 7.5, 0.5]
 
@@ -194,16 +391,16 @@ def test_error_without_wait_uses_backoff_and_error_with_wait_uses_it(prompts, le
 def test_gives_up_after_max_attempts(prompts, ledger_path, sleeps):
     client = StubLLMClient([error() for _ in range(MAX_ATTEMPTS)])
 
-    assert build_manager(client, prompts, ledger_path).classify_entries([ENTRY], []) == []
+    assert build_manager(client, prompts, ledger_path).classify_entries([ENTRY], [], discard) == ([], [ENTRY], False)
     assert len(client.calls) == MAX_ATTEMPTS
     # A request whose every attempt failed is still recorded, with 0
     assert today_usage(ledger_path)["requests"] == [{"feedback_id": ENTRY["feedback_id"], "total_tokens": 0}]
 
 
 def test_non_retryable_error_stops_after_one_call(prompts, ledger_path, sleeps):
-    client = StubLLMClient([error(LLMRequestError.AUTH, retryable=False)])
+    client = StubLLMClient([error(LLMRequestError.REQUEST, retryable=False)])
 
-    assert build_manager(client, prompts, ledger_path).classify_entries([ENTRY], []) == []
+    assert build_manager(client, prompts, ledger_path).classify_entries([ENTRY], [], discard) == ([], [ENTRY], False)
     assert len(client.calls) == 1
     assert sleeps == []
 
@@ -229,7 +426,7 @@ def test_summarise_returns_none_when_every_attempt_fails(prompts, ledger_path, s
 
 # Response validation
 def test_classification_uses_its_own_limits(prompts):
-    task = ClassificationTask(ENTRY, prompts.system_prompt, [])
+    task = ClassificationTask(ENTRY, prompts.system_prompt, prompts.themes, [])
 
     assert task.request_id == ENTRY["feedback_id"]
     assert task.token_margin == CLASSIFY_TOKEN_MARGIN
@@ -240,22 +437,42 @@ def test_classification_uses_its_own_limits(prompts):
     "not a dict",
     {"theme": "missing fields"},
     {**classification(), "extra": 1},
+    {**classification(), "summary": "Removed field."},
+    {**classification(), "confidence": 0.9},
     classification(theme=" "),
+    classification(theme="word " * (MAX_COINED_THEME_WORDS + 1)),
     classification(theme=1),
     classification(sentiment="angry"),
     classification(severity="urgent"),
-    classification(confidence=1.5),
-    classification(confidence=-0.1),
-    classification(confidence="high"),
-    classification(summary=" "),
-    classification(summary="word " * (MAX_SUMMARY_WORDS + 1)),
+    {**classification(), "alternative_themes": "Assessment"},
+    classification(alternative_themes=["Coined Label"]),
+    classification(alternative_themes=["Unclear"]),
+    classification(alternative_themes=["Facilities"]),
+    classification(theme="Unclear", alternative_themes=["Assessment", "Assessment"]),
+    classification(alternative_themes=[1]),
+    classification(alternative_themes=["Assessment"] * (MAX_ALTERNATIVE_THEMES + 1)),
 ])
 def test_classification_rejects_bad_output(prompts, bad_result):
-    assert ClassificationTask(ENTRY, prompts.system_prompt, []).validate(bad_result) is False
+    assert ClassificationTask(ENTRY, prompts.system_prompt, prompts.themes, []).validate(bad_result) is False
 
 
-def test_classification_accepts_valid_output(prompts):
-    assert ClassificationTask(ENTRY, prompts.system_prompt, []).validate(classification()) is True
+@pytest.mark.parametrize("good_result", [
+    classification(),
+    classification(alternative_themes=["Assessment"]),
+    classification(theme="Unclear"),
+    classification(theme="Unclear", alternative_themes=["Facilities", "Assessment"]),
+    classification(theme="Catering", alternative_themes=["Facilities"]),
+    classification(theme="word " * MAX_COINED_THEME_WORDS),
+])
+def test_classification_accepts_valid_output(prompts, good_result):
+    assert ClassificationTask(ENTRY, prompts.system_prompt, prompts.themes, []).validate(good_result) is True
+
+
+def test_classification_schema_lets_theme_be_coined_but_not_alternatives(prompts):
+    properties = ClassificationTask(ENTRY, prompts.system_prompt, prompts.themes, []).schema["properties"]
+
+    assert "enum" not in properties["theme"]
+    assert properties["alternative_themes"]["items"]["enum"] == ["Facilities", "Assessment"]
 
 
 @pytest.mark.parametrize("bad_result", [
@@ -281,7 +498,7 @@ def test_summary_rejects_bad_output(prompts, bad_result):
 
 
 def test_parse_raises_on_non_json(prompts):
-    task = ClassificationTask(ENTRY, prompts.system_prompt, [])
+    task = ClassificationTask(ENTRY, prompts.system_prompt, prompts.themes, [])
 
     with pytest.raises(json.JSONDecodeError):
         task.parse("not json")
@@ -342,6 +559,7 @@ def test_groq_connection_failure(monkeypatch):
     with pytest.raises(LLMRequestError) as caught:
         GroqClient("key").send([], "name", {}, 1600)
 
+    assert str(caught.value) == "connection failed"
     assert caught.value.kind == LLMRequestError.CONNECTION
     assert caught.value.retryable is True
     assert caught.value.wait_seconds is None
@@ -483,6 +701,9 @@ def test_prompt_library_loads_the_real_config():
     assert prompts.themes
     assert "{themes}" not in prompts.system_prompt
     assert prompts.summary_prompt
+    assert "existing_new_themes" in prompts.system_prompt
+    for removed in ("confidence", "summary"):
+        assert removed not in prompts.system_prompt
 
 
 @pytest.mark.parametrize("themes", ['"Facilities"', "[]", '[""]', "[1]"])
@@ -503,6 +724,14 @@ def test_prompt_library_rejects_empty_summary_prompt(tmp_path):
 
 
 def test_find_new_themes(prompts):
-    records = [{"theme": "Facilities"}, {"theme": "Coined"}, {"theme": "Coined"}, {"theme": ""}, {}]
+    records = [
+        {"ai_theme": "Facilities"},
+        {"ai_theme": "Catering"},
+        {"ai_theme": "Catering"},
+        {"ai_theme": "Unclear"},
+        {"ai_theme": ""},
+        {"theme": "Human Label"},
+        {},
+    ]
 
-    assert prompts.find_new_themes(records, ["Earlier"]) == ["Earlier", "Coined"]
+    assert prompts.find_new_themes(records, ["Earlier"]) == ["Earlier", "Catering"]
