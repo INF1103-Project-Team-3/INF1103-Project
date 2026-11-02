@@ -54,7 +54,8 @@ class GroqClient(LLMClient):
                 API_URL, headers={"Authorization": f"Bearer {self.__api_key}"}, json=body, timeout=REQUEST_TIMEOUT_S
             )
         except requests.RequestException as exc:
-            raise LLMRequestError(f"connection failed: {exc}", LLMRequestError.CONNECTION, True) from exc
+            logger.debug("connection failed: %s", exc)
+            raise LLMRequestError("connection failed", LLMRequestError.CONNECTION, True) from exc
         if response.status_code >= 400:
             raise self._to_error(response, token_margin)
         # In its own try, as requests' JSON error is also a RequestException.
@@ -63,7 +64,8 @@ class GroqClient(LLMClient):
             content = payload["choices"][0]["message"]["content"]
             total_tokens = (payload.get("usage") or {}).get("total_tokens", 0)
         except (ValueError, KeyError, IndexError, TypeError) as exc:
-            raise LLMRequestError(f"malformed response: {exc!r}", LLMRequestError.OUTPUT, True) from exc
+            logger.debug("malformed response: %r", exc)
+            raise LLMRequestError("malformed response", LLMRequestError.OUTPUT, True) from exc
         wait_seconds = self.__rate_limiter.compute_delay(response.headers, FALLBACK_DELAY_S, token_margin)
         return content, total_tokens, wait_seconds
 
@@ -76,20 +78,18 @@ class GroqClient(LLMClient):
         else (a bad key, a malformed request) fails the same way every time.
         """
         status = response.status_code
-        if status != 429:
-            # The cause (e.g. invalid_request_error) is only in the body.
-            logger.warning("response body: %s", response.text[:500])
-        message = f"HTTP {status}"
+        # The cause (e.g. invalid_request_error) is only in the body.
+        logger.debug("HTTP %d response body: %s", status, response.text[:500])
         wait_seconds = self.__rate_limiter.compute_delay(response.headers, None, token_margin)
         if status in (429, 498):
-            return LLMRequestError(message, LLMRequestError.RATE_LIMIT, True, wait_seconds)
+            return LLMRequestError(f"rate limited (HTTP {status})", LLMRequestError.RATE_LIMIT, True, wait_seconds)
         if status >= 500:
-            return LLMRequestError(message, LLMRequestError.SERVER, True, wait_seconds)
+            return LLMRequestError(f"server error (HTTP {status})", LLMRequestError.SERVER, True, wait_seconds)
         if status in (401, 403):
-            return LLMRequestError(message, LLMRequestError.AUTH, False)
+            return LLMRequestError(f"key rejected (HTTP {status})", LLMRequestError.AUTH, False)
         if status == 400 and self._is_json_validate_failed(response):
-            return LLMRequestError(message, LLMRequestError.OUTPUT, True, wait_seconds)
-        return LLMRequestError(message, LLMRequestError.REQUEST, False)
+            return LLMRequestError(f"invalid output (HTTP {status})", LLMRequestError.OUTPUT, True, wait_seconds)
+        return LLMRequestError(f"request rejected (HTTP {status})", LLMRequestError.REQUEST, False)
 
     def _is_json_validate_failed(self, response: requests.Response) -> bool:
         """Return True if Groq rejected the model's output against the schema."""
