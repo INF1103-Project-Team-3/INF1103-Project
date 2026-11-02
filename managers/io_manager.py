@@ -25,7 +25,7 @@ TEST_INPUT_FILE = "test-input.json"          # single entries are saved here
 AGGREGATED_FILE = "aggregated_output.json"   # theme table data
 SUMMARY_FILE = "summary.json"                # summary of the aggregated data
 REVIEW_FILE = "for_review.json"              # for review files
-TREND_FILE = "trends_output.json"             # trend data
+TREND_FILE = "trend_output.json"             # trend data
 
 # Display formatting for the dashboard.
 WIDTH = 82
@@ -267,6 +267,16 @@ def read_csv(path):
         return []
 
 
+def read_json_rows(path):
+    """Load a JSON file of rows. Returns [] if it can't be read, so the
+    caller can reprompt instead of crashing."""
+    try:
+        return data_manager._read_list_strict(Path(path))
+    except (ValueError, OSError) as exc:
+        logger.warning("Could not read JSON %s: %s", path, exc)
+        return []
+
+
 def convert_csv_to_json(csv_path, json_path):
     """Convert a CSV file into a JSON file (a list of objects).
 
@@ -279,9 +289,8 @@ def convert_csv_to_json(csv_path, json_path):
 
     # If a row has more cells than the header, they sit under a None key (saved as "null"). validate_entry ignores them.
     return data_manager._write_json_atomic(Path(json_path), rows)
-#---------------------------------------------------------------------------
 
- 
+#---------------------------------------------------------------------------
 # Payloads
 # ---------------------------------------------------------------------------
 # Single entries are saved to test-input.json (see save_entry).
@@ -532,19 +541,14 @@ def run_admin_search():
 # ---------------------------------------------------------------------------
 # Review queue
 # ---------------------------------------------------------------------------
-#   update review entry sets agreement and confidence to 1 and leaves the
-#   record in the file, so a record with both at 1 counts as reviewed and is
-#   hidden. Deleted records are already gone from the file.
+#   update_review_entry and delete_review_entry both remove the record from
+#   for_review.json, so every record still in the file needs a review.
 
 def load_review_queue():
     """Records in for_review.json that still need a review.
     """
     data = data_manager._load_review_file(Path(DATA_DIRECTORY) / REVIEW_FILE)
-    return [
-        r for r in data.get("records", [])
-        if isinstance(r, dict)
-        and not (r.get("agreement") == 1 and r.get("confidence") == 1)
-    ]
+    return [r for r in data.get("records", []) if isinstance(r, dict)]
 
 
 def review_label(record):
@@ -728,7 +732,7 @@ def run_admin_import():
 
         extension = os.path.splitext(path)[1].lower()
         if extension == ".json":
-            rows = data_manager._read_list_strict(Path(path))
+            rows = read_json_rows(path)
             if rows:  # empty list counts as a failed load, so will reprompt
                 break
             print_out(f"  Invalid: could not read '{path}' as JSON (check the path and format).")
@@ -737,7 +741,7 @@ def run_admin_import():
             json_path = data_path(os.path.splitext(os.path.basename(path))[0] + ".json")
             if convert_csv_to_json(path, json_path):
                 print_block(f"Converted to '{json_path}'.")
-                rows = data_manager._read_list_strict(Path(json_path))
+                rows = read_json_rows(json_path)
                 break
             print_out(f"  Invalid: could not convert '{path}' (check the path and format).")
         else:

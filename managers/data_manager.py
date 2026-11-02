@@ -16,7 +16,7 @@ JSON_STORAGE_PATH = Path(os.getenv("JSON_STORAGE_PATH", "/data/aggregated_output
 SUMMARY_STORAGE_PATH = Path(os.getenv("SUMMARY_STORAGE_PATH", "/data/summary.json"))
 
 # Global states to hold current information in memory
-records_store: List[Dict[str, Any]] = [] 
+records_store: List[Dict[str, Any]] = []
 summary_store: Dict[str, Any] = {}
 aggregated_store: Dict[str, Any] = {
     "total_entries": 0,
@@ -29,7 +29,7 @@ aggregated_store: Dict[str, Any] = {
     "themes": []
 }
 
-def load_trends_output(filename: str = "trends_output.json", base_dir: str = "/data") -> Dict[str, Any]:
+def load_trends_output(filename: str = "trend_output.json", base_dir: str = "/data") -> Dict[str, Any]:
     """Load Trends Output:  For reading JSON files into memory."""
     filepath = Path(base_dir) / filename
 
@@ -202,7 +202,8 @@ def update_review_entry(
         logging.warning("Feedback ID '%s' not found in '%s'.", feedback_id, filepath)
         return False
 
-    # 1. Save updated review entry back to for_review.json
+    # 1. Remove the reviewed entry from for_review.json (the updated copy goes to processed_feedback.json)
+    data["records"] = [item for item in records if item.get("feedback_id") != feedback_id]
     saved_review = _save_review_file(filepath, data)
     if not saved_review:
         logging.error("Failed to save changes to '%s'. Skipping update to processed_feedback.json.", filepath)
@@ -212,11 +213,38 @@ def update_review_entry(
     return _upsert_to_processed_feedback(updated_record, filename="processed_feedback.json", base_dir=base_dir)
 
 
+def _remove_from_records_file(feedback_id: str, filename: str, base_dir: str) -> bool:
+    """Removes every record with this feedback_id from a JSON file of records
+    ({"records": [...]} or a plain list). A missing or empty file is fine."""
+    filepath = Path(base_dir) / filename
+    if not filepath.exists() or filepath.stat().st_size == 0:
+        return True
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        logging.error("Failed to read '%s': %s", filepath, e)
+        return False
+
+    def keep(item: Any) -> bool:
+        return not (isinstance(item, dict) and item.get("feedback_id") == feedback_id)
+
+    if isinstance(data, dict) and isinstance(data.get("records"), list):
+        data["records"] = [item for item in data["records"] if keep(item)]
+    elif isinstance(data, list):
+        data = [item for item in data if keep(item)]
+    return _write_json_atomic(filepath, data)
+
+
 def delete_review_entry(
     feedback_id: str,
     filename: str = "for_review.json",
     base_dir: str = "/data"
 ) -> bool:
+    """Deletes a feedback entry for good: removes it from for_review.json, and from
+    processed_feedback.json and feedback_before_ai.json so it is no longer counted on
+    the dashboard, found by search, or sent to the AI again."""
+    global records_store
     filepath = Path(base_dir) / filename
     data = _load_review_file(filepath)
     records = data.get("records", [])
@@ -228,7 +256,13 @@ def delete_review_entry(
         logging.warning("Feedback ID '%s' not found for deletion in '%s'.", feedback_id, filepath)
         return False
 
-    return _save_review_file(filepath, data)
+    if not _save_review_file(filepath, data):
+        return False
+
+    records_store = [item for item in records_store
+                     if not (isinstance(item, dict) and item.get("feedback_id") == feedback_id)]
+    return (_remove_from_records_file(feedback_id, "processed_feedback.json", base_dir)
+            and _remove_from_records_file(feedback_id, "feedback_before_ai.json", base_dir))
 
 def update_summary_fields(
     root_updates: Optional[Dict[str, Any]] = None,
