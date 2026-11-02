@@ -13,6 +13,7 @@ from llm_client import LLMClient
 from llm_request_error import LLMRequestError
 from prompt_library import PromptLibrary
 from rate_limiter import DELAY_BUFFER_S, FALLBACK_DELAY_S, MIN_DELAY_S, RateLimiter
+from recording_progress_reporter import RecordingProgressReporter
 from stub_llm_client import StubLLMClient
 from summary_task import MAX_ACTION_WORDS, SUMMARY_MAX_COMPLETION_TOKENS, SUMMARY_TOKEN_MARGIN, SummaryTask
 from token_ledger import TokenLedger
@@ -70,8 +71,8 @@ def ledger_path(tmp_path):
     return tmp_path / "ledger.json"
 
 
-def build_manager(client, prompts, ledger_path, samples=1):
-    return AIManager(client, "test-key", prompts, samples, str(ledger_path))
+def build_manager(client, prompts, ledger_path, samples=1, reporter=None):
+    return AIManager(client, "test-key", prompts, reporter or RecordingProgressReporter(), samples, str(ledger_path))
 
 
 def today_usage(ledger_path, model="stub-model"):
@@ -319,6 +320,18 @@ def test_groq_error_wait_comes_from_headers(monkeypatch):
         GroqClient("key").send([], "name", {}, 1600)
 
     assert caught.value.wait_seconds == 5 + DELAY_BUFFER_S
+
+
+def test_groq_response_body_only_goes_to_debug(monkeypatch, caplog):
+    monkeypatch.setattr(requests.Session, "post", lambda *a, **k: response(500, b"the body"))
+
+    with caplog.at_level(logging.WARNING), pytest.raises(LLMRequestError):
+        GroqClient("key").send([], "name", {}, 1600)
+    assert "the body" not in caplog.text
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(LLMRequestError):
+        GroqClient("key").send([], "name", {}, 1600)
+    assert "the body" in caplog.text
 
 
 def test_groq_connection_failure(monkeypatch):

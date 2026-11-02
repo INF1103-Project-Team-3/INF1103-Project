@@ -9,6 +9,7 @@ import io_manager
 import data_manager
 import logic_manager
 import ai_manager
+from console_progress_reporter import ConsoleProgressReporter
 from groq_client import GroqClient
 from prompt_library import PromptLibrary
 
@@ -138,7 +139,7 @@ if __name__ == "__main__":
     
 
     # --- AI Manager Initialisation ---
-    ai = ai_manager.AIManager(GroqClient(api_key), key_label, PromptLibrary())
+    ai = ai_manager.AIManager(GroqClient(api_key), key_label, PromptLibrary(), ConsoleProgressReporter())
 
     # Previously classified entries seed the theme tracking list
     stored_records = data_manager.load_feedback_records(base_dir=DATA_DIR)
@@ -209,12 +210,12 @@ if __name__ == "__main__":
     # Tell user AI summary is being requested from API
     io_manager.print_ai_request_notice()
 
-        # # --- Call 2: Final Run Summary ---
+    # --- Call 2: Final Run Summary ---
     # CONNECTED TO LIVE API: Generates overall executive summaries using live stats data
     summary = ai.summarise(logic_output)
-        # # --- End of Call 2: Final Run Summary ---
+    # --- End of Call 2: Final Run Summary ---
 
-        # Create summary.json or replace summary.json with new summary
+    # Create summary.json or replace summary.json with new summary
     if summary is not None:
         data_manager.update_summary_fields(
             root_updates={"overall_summary": summary.get("overall_summary")},

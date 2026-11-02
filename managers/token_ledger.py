@@ -22,6 +22,23 @@ class TokenLedger:
         self.__path = path
         self.__usage_label = f"groq/{model}"  # same key the comparison harness used
 
+    @property
+    def daily_limit(self) -> int | None:
+        """The model's known daily cap, or None if it is not known."""
+        return TPD_LIMITS.get(self.__model)
+
+    def today_total(self, key_label: str) -> int | None:
+        """Return today's recorded tokens for this key, or None if the ledger is unreadable."""
+        try:
+            with open(self.__path, encoding="utf-8") as file:
+                log = json.load(file)
+        except FileNotFoundError:
+            return 0
+        except (OSError, json.JSONDecodeError):
+            return None
+        today = datetime.now(timezone.utc).date().isoformat()
+        return log.get(today, {}).get(key_label, {}).get("totals", {}).get(self.__model, 0)
+
     def record(self, key_label: str, request_id: str, total_tokens: int) -> None:
         """Add one request's token usage to the ledger, warning near the daily cap.
 
