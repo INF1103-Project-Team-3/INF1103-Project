@@ -9,6 +9,8 @@ import io_manager
 import data_manager
 import logic_manager
 import ai_manager
+from groq_client import GroqClient
+from prompt_library import PromptLibrary
 
 
 def refresh_aggregated_output(data_dir):
@@ -136,26 +138,17 @@ if __name__ == "__main__":
     
 
     # --- AI Manager Initialisation ---
-    themes = ai_manager.load_canonical_themes()
-    prompt = ai_manager.load_system_prompt(themes)
-    summary_prompt = ai_manager.load_summary_prompt()
+    ai = ai_manager.AIManager(GroqClient(api_key), key_label, PromptLibrary())
 
-    # Seed the theme tracking list from any previously classified entries
-    known = ai_manager.find_new_themes(data_manager.load_feedback_records(base_dir=DATA_DIR), themes)
+    # Previously classified entries seed the theme tracking list
+    stored_records = data_manager.load_feedback_records(base_dir=DATA_DIR)
 
     # Tell user, that main.py is calling the API
     io_manager.print_connection_notice()
 
     # --- Call 1: Dynamic Entry Classification ---
     # CONNECTED TO LIVE API: Loops through entries and requests classifications via live endpoints
-    classified_records = []
-    for entry in entries:
-        record = ai_manager.classify_entry(entry, prompt, api_key, key_label, known)
-        if record is None:  
-            continue
-        # Immediately feed back any newly coined theme into the 'known' list for the next loop
-        known = ai_manager.find_new_themes([record], themes, known)
-        classified_records.append(record)
+    classified_records = ai.classify_entries(entries, stored_records)
     # --- End of Call 1: Dynamic Entry Classification ---
 
     # If the AI could not classify anything (API down, bad key), stop here. Saving a "run" with
@@ -218,7 +211,7 @@ if __name__ == "__main__":
 
         # # --- Call 2: Final Run Summary ---
     # CONNECTED TO LIVE API: Generates overall executive summaries using live stats data
-    summary = ai_manager.summarise(logic_output, summary_prompt, api_key, key_label)
+    summary = ai.summarise(logic_output)
         # # --- End of Call 2: Final Run Summary ---
 
         # Create summary.json or replace summary.json with new summary
