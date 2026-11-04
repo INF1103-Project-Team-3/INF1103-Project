@@ -16,10 +16,16 @@ THEMES = (
 # Labels with no real theme ("other", "n/a", "spam") become this; it never counts as a match.
 UNCLEAR_THEME = "Unclear"
 
-SENTIMENTS = ("positive", "neutral", "negative")
+# Use these names instead of typing the strings (ground rule 6).
+POSITIVE, NEUTRAL, NEGATIVE = "positive", "neutral", "negative"
+SENTIMENTS = (POSITIVE, NEUTRAL, NEGATIVE)
 
+LOW, MEDIUM, HIGH, CRITICAL = "low", "medium", "high", "critical"
 # Order matters: the user/AI cross-check treats neighbours as one step apart.
-SEVERITIES = ("low", "medium", "high", "critical")
+SEVERITIES = (LOW, MEDIUM, HIGH, CRITICAL)
 
 # FeedbackRecord.verification values (design reference 7.1).
-VERIFICATION = ("pending", "matched", "mismatch", "unverified", "reviewed")
+PENDING, MATCHED, MISMATCH, UNVERIFIED, REVIEWED = (
+    "pending", "matched", "mismatch", "unverified", "reviewed"
+)
+VERIFICATION = (PENDING, MATCHED, MISMATCH, UNVERIFIED, REVIEWED)
