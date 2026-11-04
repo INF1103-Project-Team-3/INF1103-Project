@@ -20,4 +20,4 @@ COPY . .
 RUN ln -s /Project/data /data
 
 # Run the app from the repo root (data/ is created if it's missing)
-CMD ["sh", "-c", "mkdir -p data && python managers/main.py"]
+CMD ["sh", "-c", "mkdir -p data && python managers/main/main.py"]
