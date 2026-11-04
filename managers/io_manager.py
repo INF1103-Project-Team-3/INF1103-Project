@@ -541,19 +541,14 @@ def run_admin_search():
 # ---------------------------------------------------------------------------
 # Review queue
 # ---------------------------------------------------------------------------
-#   update review entry sets agreement and confidence to 1 and leaves the
-#   record in the file, so a record with both at 1 counts as reviewed and is
-#   hidden. Deleted records are already gone from the file.
+#   update_review_entry and delete_review_entry both remove the record from
+#   for_review.json, so every record still in the file needs a review.
 
 def load_review_queue():
     """Records in for_review.json that still need a review.
     """
     data = data_manager._load_review_file(Path(DATA_DIRECTORY) / REVIEW_FILE)
-    return [
-        r for r in data.get("records", [])
-        if isinstance(r, dict)
-        and not (r.get("agreement") == 1 and r.get("confidence") == 1)
-    ]
+    return [r for r in data.get("records", []) if isinstance(r, dict)]
 
 
 def review_label(record):
