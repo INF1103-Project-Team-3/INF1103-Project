@@ -17,7 +17,7 @@ from token_ledger import TokenLedger
 
 ENTRY = {"feedback_id": "fb_001", "text": "The slides move too fast.", "timestamp": "2026-09-15T10:32:00"}
 STATS = {"themes": [{"theme": "Facilities"}]}
-GOOD = json.dumps({"theme": "Facilities", "alternative_themes": [], "sentiment": "negative", "severity": "high"})
+GOOD = json.dumps({"theme": "Facilities", "sentiment": "negative", "severity": "high"})
 GOOD_SUMMARY = json.dumps({"overall_summary": "All.",
                            "theme_actions": [{"theme": "Facilities", "suggested_action": "Fix."}]})
 

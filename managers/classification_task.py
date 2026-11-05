@@ -6,7 +6,6 @@ from ai_task import AITask
 from prompt_library import UNCLEAR_THEME
 
 MAX_COINED_THEME_WORDS = 3  # a longer label would be sent back in every later request
-MAX_ALTERNATIVE_THEMES = 2  # stops a broad answer from suppressing every flag
 SENTIMENTS = ["positive", "neutral", "negative"]
 SEVERITIES = ["low", "medium", "high", "critical"]
 # Wait for the reset once fewer tokens than this remain. Kept at the tested
@@ -22,9 +21,7 @@ class ClassificationTask(AITask):
     """
 
     def __init__(self, entry: dict, system_prompt: str, themes: list[str], known_themes: list[str]):
-        super().__init__(
-            entry["feedback_id"], "feedback_classification", self._build_schema(themes), CLASSIFY_TOKEN_MARGIN
-        )
+        super().__init__(entry["feedback_id"], "feedback_classification", self._build_schema(), CLASSIFY_TOKEN_MARGIN)
         self.__text = entry["text"]
         self.__system_prompt = system_prompt
         self.__themes = themes
@@ -45,24 +42,17 @@ class ClassificationTask(AITask):
     def validate(self, result: object) -> bool:
         """Return True if result is a valid classification.
 
-        Strict mode guarantees the shape, but not a non-empty theme, the length
-        of a coined theme, the limit on alternatives or that they differ from
-        each other and from theme, which its schema subset cannot express.
+        Strict mode guarantees the shape, but not a non-empty theme or the length
+        of a coined theme, which its schema subset cannot express.
         """
         if not isinstance(result, dict) or set(result) != set(self.schema["required"]):
             return False
-        alternatives = result["alternative_themes"]
         return (
             isinstance(result["theme"], str)
             and result["theme"].strip() != ""
             and (result["theme"] in self.__themes or len(result["theme"].split()) <= MAX_COINED_THEME_WORDS)
             and result["sentiment"] in SENTIMENTS
             and result["severity"] in SEVERITIES
-            and isinstance(alternatives, list)
-            and len(alternatives) <= MAX_ALTERNATIVE_THEMES
-            and all(alternative in self.__themes for alternative in alternatives)
-            and len(set(alternatives)) == len(alternatives)
-            and result["theme"] not in alternatives
         )
 
     def _clean(self, result: object) -> object:
@@ -86,8 +76,8 @@ class ClassificationTask(AITask):
             payload["existing_new_themes"] = self.__known_themes
         return payload
 
-    def _build_schema(self, themes: list[str]) -> dict:
-        """Return the output schema. theme can be coined; alternatives must be listed.
+    def _build_schema(self) -> dict:
+        """Return the output schema. theme is free text, so the model can coin one.
 
         Strict mode requires every property in "required" and additionalProperties: false.
         """
@@ -95,10 +85,9 @@ class ClassificationTask(AITask):
             "type": "object",
             "properties": {
                 "theme": {"type": "string"},
-                "alternative_themes": {"type": "array", "items": {"type": "string", "enum": themes}},
                 "sentiment": {"type": "string", "enum": SENTIMENTS},
                 "severity": {"type": "string", "enum": SEVERITIES},
             },
-            "required": ["theme", "alternative_themes", "sentiment", "severity"],
+            "required": ["theme", "sentiment", "severity"],
             "additionalProperties": False,
         }

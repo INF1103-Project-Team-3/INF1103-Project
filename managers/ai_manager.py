@@ -63,9 +63,9 @@ class AIManager:
         An entry needs feedback_id and text. Only the text reaches the model,
         along with any labels it coined in stored_records or earlier in this
         batch; everything else, human tags included, passes through untouched.
-        A classified record is its entry plus ai_theme, ai_alternative_themes,
-        ai_sentiment and ai_severity, and goes to on_classified as soon as it
-        finishes, so a crash does not lose paid work.
+        A classified record is its entry plus ai_theme, ai_sentiment and
+        ai_severity, and goes to on_classified as soon as it finishes, so a
+        crash does not lose paid work.
 
         Returns (classified, pending, stopped). A record with invalid output
         goes pending and the batch continues. A missing or rejected key, every

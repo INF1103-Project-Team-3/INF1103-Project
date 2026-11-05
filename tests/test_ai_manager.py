@@ -8,7 +8,7 @@ import ai_manager
 from ai_manager import AIManager, BACKOFF_BASE_S, MAX_ATTEMPTS
 from ai_task import AITask
 from classification_task import (
-    CLASSIFY_TOKEN_MARGIN, ClassificationTask, MAX_ALTERNATIVE_THEMES, MAX_COINED_THEME_WORDS
+    CLASSIFY_TOKEN_MARGIN, ClassificationTask, MAX_COINED_THEME_WORDS
 )
 from groq_client import GroqClient
 from llm_client import LLMClient
@@ -24,8 +24,8 @@ ENTRY = {"feedback_id": "fb_001", "text": "The slides move too fast.", "timestam
 STATS = {"themes": [{"theme": "Facilities"}, {"theme": "Assessment"}]}
 
 
-def classification(theme="Facilities", alternative_themes=(), sentiment="negative", severity="high"):
-    return {"theme": theme, "alternative_themes": list(alternative_themes), "sentiment": sentiment, "severity": severity}
+def classification(theme="Facilities", sentiment="negative", severity="high"):
+    return {"theme": theme, "sentiment": sentiment, "severity": severity}
 
 
 def discard(record):
@@ -112,14 +112,13 @@ def test_both_tasks_are_ai_tasks(prompts):
 # Call 1: the record contract
 def test_success_adds_ai_fields_and_passes_everything_through(prompts, ledger_path, sleeps):
     entry = {**ENTRY, "theme": "Assessment", "sentiment": "neutral", "severity": "low", "course": "INF1103"}
-    client = StubLLMClient([json.dumps(classification(alternative_themes=["Assessment"]))])
+    client = StubLLMClient([json.dumps(classification())])
 
     classified, pending, stopped = build_manager(client, prompts, ledger_path).classify_entries([entry], [], discard)
 
     assert classified == [{
         **entry,
         "ai_theme": "Facilities",
-        "ai_alternative_themes": ["Assessment"],
         "ai_sentiment": "negative",
         "ai_severity": "high",
     }]
@@ -175,12 +174,6 @@ def test_spelling_variant_is_stored_as_listed_and_not_offered_back(prompts, ledg
 
     assert classified[0]["ai_theme"] == "Facilities"
     assert "existing_new_themes" not in json.loads(client.calls[1]["messages"][1]["content"])
-
-
-def test_spelling_variant_repeating_an_alternative_is_rejected(prompts):
-    task = ClassificationTask(ENTRY, prompts.system_prompt, prompts.themes, [])
-
-    assert task.parse(json.dumps(classification(theme="facilities", alternative_themes=["Facilities"]))) is None
 
 
 @pytest.mark.parametrize("raw", ['"not a dict"', '{"theme": 1}', "[]"])
@@ -444,13 +437,7 @@ def test_classification_uses_its_own_limits(prompts):
     classification(theme=1),
     classification(sentiment="angry"),
     classification(severity="urgent"),
-    {**classification(), "alternative_themes": "Assessment"},
-    classification(alternative_themes=["Coined Label"]),
-    classification(alternative_themes=["Unclear"]),
-    classification(alternative_themes=["Facilities"]),
-    classification(theme="Unclear", alternative_themes=["Assessment", "Assessment"]),
-    classification(alternative_themes=[1]),
-    classification(alternative_themes=["Assessment"] * (MAX_ALTERNATIVE_THEMES + 1)),
+    {**classification(), "alternative_themes": []},
 ])
 def test_classification_rejects_bad_output(prompts, bad_result):
     assert ClassificationTask(ENTRY, prompts.system_prompt, prompts.themes, []).validate(bad_result) is False
@@ -458,21 +445,19 @@ def test_classification_rejects_bad_output(prompts, bad_result):
 
 @pytest.mark.parametrize("good_result", [
     classification(),
-    classification(alternative_themes=["Assessment"]),
     classification(theme="Unclear"),
-    classification(theme="Unclear", alternative_themes=["Facilities", "Assessment"]),
-    classification(theme="Catering", alternative_themes=["Facilities"]),
+    classification(theme="Catering"),
     classification(theme="word " * MAX_COINED_THEME_WORDS),
 ])
 def test_classification_accepts_valid_output(prompts, good_result):
     assert ClassificationTask(ENTRY, prompts.system_prompt, prompts.themes, []).validate(good_result) is True
 
 
-def test_classification_schema_lets_theme_be_coined_but_not_alternatives(prompts):
+def test_classification_schema_lets_theme_be_coined(prompts):
     properties = ClassificationTask(ENTRY, prompts.system_prompt, prompts.themes, []).schema["properties"]
 
     assert "enum" not in properties["theme"]
-    assert properties["alternative_themes"]["items"]["enum"] == ["Facilities", "Assessment"]
+    assert set(properties) == {"theme", "sentiment", "severity"}
 
 
 @pytest.mark.parametrize("bad_result", [
@@ -702,7 +687,7 @@ def test_prompt_library_loads_the_real_config():
     assert "{themes}" not in prompts.system_prompt
     assert prompts.summary_prompt
     assert "existing_new_themes" in prompts.system_prompt
-    for removed in ("confidence", "summary"):
+    for removed in ("confidence", "summary", "alternative_themes"):
         assert removed not in prompts.system_prompt
 
 

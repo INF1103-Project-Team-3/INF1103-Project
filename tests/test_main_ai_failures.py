@@ -14,7 +14,7 @@ ENTRIES = [
     {"feedback_id": "fb_001", "text": "The slides move too fast.", "timestamp": "2026-09-15T10:32:00"},
     {"feedback_id": "fb_002", "text": "The printers are broken.", "timestamp": "2026-09-15T10:33:00"},
 ]
-GOOD = json.dumps({"theme": "Facilities", "alternative_themes": [], "sentiment": "negative", "severity": "high"})
+GOOD = json.dumps({"theme": "Facilities", "sentiment": "negative", "severity": "high"})
 REJECTED = LLMRequestError("key rejected (HTTP 401)", LLMRequestError.AUTH, False)
 
 
