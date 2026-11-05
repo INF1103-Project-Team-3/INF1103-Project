@@ -4,9 +4,9 @@ import logging
 
 import requests
 
-from llm_client import LLMClient
-from llm_request_error import LLMRequestError
-from rate_limiter import FALLBACK_DELAY_S, RateLimiter
+from .llm_client import LLMClient
+from .llm_request_error import LLMRequestError
+from .rate_limiter import FALLBACK_DELAY_S, RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +18,9 @@ REQUEST_TIMEOUT_S = 30
 class GroqClient(LLMClient):
     """LLMClient for Groq's chat completions endpoint."""
 
-    def __init__(self, api_key: str | None, model: str = MODEL):
+    def __init__(self, api_key: str | None, model: str | None = None):
         self.__api_key = api_key
-        self.__model = model
+        self.__model = model if model is not None else MODEL
         # One shared session, so every request reuses the open connection instead
         # of repeating the TCP/TLS handshake.
         self.__session = requests.Session()

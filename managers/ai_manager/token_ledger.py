@@ -1,7 +1,7 @@
 """TokenLedger: a local daily log of tokens used, with a warning near the daily cap."""
 
-import json
 import logging
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -15,11 +15,15 @@ class TokenLedger:
     ledger of each response's usage.total_tokens gives early warning. It is an
     estimate and undercounts: a failed attempt returns no usage, though Groq may
     still bill it. Groq's own count (the console) is authoritative.
+
+    The log is read and written through the functions passed in, as only the
+    Data Manager touches files. load_log returns None for a corrupt log.
     """
 
-    def __init__(self, model: str, path: str):
+    def __init__(self, model: str, load_log: Callable[[], dict | None], save_log: Callable[[dict], object]):
         self.__model = model
-        self.__path = path
+        self.__load_log = load_log
+        self.__save_log = save_log
         self.__usage_label = f"groq/{model}"  # same key the comparison harness used
 
     @property
@@ -29,12 +33,8 @@ class TokenLedger:
 
     def today_total(self, key_label: str) -> int | None:
         """Return today's recorded tokens for this key, or None if the ledger is unreadable."""
-        try:
-            with open(self.__path, encoding="utf-8") as file:
-                log = json.load(file)
-        except FileNotFoundError:
-            return 0
-        except (OSError, json.JSONDecodeError):
+        log = self.__load_log()
+        if log is None:
             return None
         today = datetime.now(timezone.utc).date().isoformat()
         return log.get(today, {}).get(key_label, {}).get("totals", {}).get(self.__model, 0)
@@ -49,14 +49,10 @@ class TokenLedger:
         with 0. Ledger problems are logged, never raised, since tracking is
         advisory.
         """
-        try:
-            with open(self.__path, encoding="utf-8") as file:
-                log = json.load(file)
-        except FileNotFoundError:
-            log = {}
-        except (OSError, json.JSONDecodeError) as exc:
+        log = self.__load_log()
+        if log is None:
             # Never overwrite a ledger that failed to load.
-            logger.warning("token ledger unreadable, usage not recorded: %s", exc)
+            logger.warning("token ledger unreadable, usage not recorded")
             return
 
         today = datetime.now(timezone.utc).date().isoformat()
@@ -73,8 +69,7 @@ class TokenLedger:
         usage["total_tokens"] += total_tokens
 
         try:
-            with open(self.__path, "w", encoding="utf-8") as file:
-                json.dump(log, file, indent=2)
+            self.__save_log(log)
         except OSError as exc:
             logger.warning("token ledger not written: %s", exc)
             return

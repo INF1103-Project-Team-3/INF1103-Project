@@ -1,6 +1,6 @@
 """RecordingProgressReporter: a ProgressReporter that keeps every event for tests to check."""
 
-from progress_reporter import ProgressReporter
+from managers.ai_manager import ProgressReporter
 
 
 class RecordingProgressReporter(ProgressReporter):

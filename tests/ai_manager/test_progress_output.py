@@ -1,22 +1,24 @@
 import io
 import json
 import threading
+from types import SimpleNamespace
 
 import pytest
 
-import ai_manager
-from ai_manager import AIManager, BACKOFF_BASE_S, MAX_ATTEMPTS
-from batch_progress import BatchProgress
-from console_progress_reporter import CLEAR_LINE, ConsoleProgressReporter
-from llm_request_error import LLMRequestError
-from progress_reporter import ProgressReporter
-from prompt_library import PromptLibrary
+from managers.ai_manager import (
+    AIManager, BatchProgress, ConsoleProgressReporter, ProgressReporter, PromptLibrary, ai_manager as ai_manager_module
+)
+from managers.ai_manager.ai_manager import BACKOFF_BASE_S, MAX_ATTEMPTS
+from managers.ai_manager.console_progress_reporter import CLEAR_LINE
+from managers.ai_manager.llm_request_error import LLMRequestError
+from managers.ai_manager.token_ledger import TokenLedger
+from managers.models import FeedbackRecord
+from in_memory_token_log import InMemoryTokenLog
 from recording_progress_reporter import RecordingProgressReporter
 from stub_llm_client import StubLLMClient
-from token_ledger import TokenLedger
 
-ENTRY = {"feedback_id": "fb_001", "text": "The slides move too fast.", "timestamp": "2026-09-15T10:32:00"}
-STATS = {"themes": [{"theme": "Facilities"}]}
+USER = {"theme": "Assessment", "sentiment": "neutral", "severity": "low"}
+RESULT = SimpleNamespace(to_dict=lambda: {"themes": [{"theme": "Facilities"}]})  # stands in for AggregationResult
 GOOD = json.dumps({"theme": "Facilities", "sentiment": "negative", "severity": "high"})
 GOOD_SUMMARY = json.dumps({"overall_summary": "All.",
                            "theme_actions": [{"theme": "Facilities", "suggested_action": "Fix."}]})
@@ -29,22 +31,25 @@ def fake_clock(*times):
 
 
 @pytest.fixture
-def prompts(tmp_path):
-    paths = (tmp_path / "themes.json", tmp_path / "prompt.txt", tmp_path / "summary.txt")
-    for path, content in zip(paths, ('["Facilities"]', "Themes: {themes}", "Summarise.")):
-        path.write_text(content, encoding="utf-8")
-    return PromptLibrary(*[str(path) for path in paths])
+def prompts():
+    return PromptLibrary("Themes: {themes}", "Summarise.", ["Facilities"])
+
+
+@pytest.fixture
+def entry():
+    return FeedbackRecord("fb_001", "The slides move too fast.", "2026-09-15T10:32:00", None, USER)
 
 
 @pytest.fixture
 def sleeps(monkeypatch):
     waits = []
-    monkeypatch.setattr(ai_manager.time, "sleep", waits.append)
+    monkeypatch.setattr(ai_manager_module.time, "sleep", waits.append)
     return waits
 
 
-def build_manager(client, prompts, tmp_path, reporter):
-    return AIManager(client, "main", prompts, reporter, str(tmp_path / "ledger.json"))
+def build_manager(client, prompts, reporter):
+    token_log = InMemoryTokenLog()
+    return AIManager(client, "main", prompts, reporter, token_log.load, token_log.save)
 
 
 def discard(record):
@@ -58,20 +63,20 @@ def test_progress_reporter_cannot_be_instantiated():
 
 
 @pytest.mark.parametrize("reporter_class", [RecordingProgressReporter, ConsoleProgressReporter])
-def test_reporters_substitute_for_the_interface(reporter_class, prompts, tmp_path, sleeps):
+def test_reporters_substitute_for_the_interface(reporter_class, prompts, sleeps, entry):
     reporter = reporter_class(io.StringIO()) if reporter_class is ConsoleProgressReporter else reporter_class()
-    manager = build_manager(StubLLMClient([GOOD, GOOD_SUMMARY]), prompts, tmp_path, reporter)
+    manager = build_manager(StubLLMClient([GOOD, GOOD_SUMMARY]), prompts, reporter)
 
     assert isinstance(reporter, ProgressReporter)
-    assert manager.classify_entries([ENTRY], [], discard)[0][0]["ai_theme"] == "Facilities"
-    assert manager.summarise(STATS) is not None
+    assert manager.classify_entries([entry], [], discard)[0][0].ai["theme"] == "Facilities"
+    assert manager.summarise(RESULT, []) is not None
 
 
 # Events from AIManager
-def test_events_for_a_record_that_succeeds_first_time(prompts, tmp_path, sleeps):
+def test_events_for_a_record_that_succeeds_first_time(prompts, sleeps, entry):
     reporter = RecordingProgressReporter()
 
-    build_manager(StubLLMClient([GOOD]), prompts, tmp_path, reporter).classify_entries([ENTRY], [], discard)
+    build_manager(StubLLMClient([GOOD]), prompts, reporter).classify_entries([entry], [], discard)
 
     assert reporter.events == [
         ("batch_start", "Classifying 1 records", ["stub-model", "1 sample each", "key: main"]),
@@ -82,12 +87,12 @@ def test_events_for_a_record_that_succeeds_first_time(prompts, tmp_path, sleeps)
     ]
 
 
-def test_events_for_retries(prompts, tmp_path, sleeps):
+def test_events_for_retries(prompts, sleeps, entry):
     reporter = RecordingProgressReporter()
     server_error = LLMRequestError("server error (HTTP 500)", LLMRequestError.SERVER, True)
     client = StubLLMClient(["not json", server_error, GOOD])
 
-    build_manager(client, prompts, tmp_path, reporter).classify_entries([ENTRY], [], discard)
+    build_manager(client, prompts, reporter).classify_entries([entry], [], discard)
 
     retries = [event for event in reporter.events if event[0] in ("attempt_failed", "wait")]
     assert retries == [
@@ -99,10 +104,10 @@ def test_events_for_retries(prompts, tmp_path, sleeps):
     ]
 
 
-def test_events_when_every_attempt_fails(prompts, tmp_path, sleeps):
+def test_events_when_every_attempt_fails(prompts, sleeps, entry):
     reporter = RecordingProgressReporter()
 
-    build_manager(StubLLMClient(["not json"] * MAX_ATTEMPTS), prompts, tmp_path, reporter).classify_entries([ENTRY], [], discard)
+    build_manager(StubLLMClient(["not json"] * MAX_ATTEMPTS), prompts, reporter).classify_entries([entry], [], discard)
 
     assert reporter.names.count("attempt_failed") == MAX_ATTEMPTS - 1
     assert ("record_failed", "fb_001", f"no valid output after {MAX_ATTEMPTS} attempts: invalid output") in reporter.events
@@ -110,11 +115,11 @@ def test_events_when_every_attempt_fails(prompts, tmp_path, sleeps):
     assert reporter.names[-1] == "batch_end"
 
 
-def test_events_when_a_failure_cannot_be_retried(prompts, tmp_path, sleeps):
+def test_events_when_a_failure_cannot_be_retried(prompts, sleeps, entry):
     reporter = RecordingProgressReporter()
     rejected = LLMRequestError("key rejected (HTTP 401)", LLMRequestError.AUTH, False)
 
-    build_manager(StubLLMClient([rejected]), prompts, tmp_path, reporter).classify_entries([ENTRY], [], discard)
+    build_manager(StubLLMClient([rejected]), prompts, reporter).classify_entries([entry], [], discard)
 
     assert ("record_failed", "fb_001", "key rejected (HTTP 401)") in reporter.events
     assert ("batch_stopped", "key rejected (HTTP 401)", "fb_001") in reporter.events
@@ -122,48 +127,48 @@ def test_events_when_a_failure_cannot_be_retried(prompts, tmp_path, sleeps):
     assert "wait" not in reporter.names
 
 
-def test_stop_comes_after_the_failed_record_and_before_the_batch_end(prompts, tmp_path, sleeps):
+def test_stop_comes_after_the_failed_record_and_before_the_batch_end(prompts, sleeps, entry):
     reporter = RecordingProgressReporter()
     rejected = LLMRequestError("key rejected (HTTP 401)", LLMRequestError.AUTH, False)
 
-    build_manager(StubLLMClient([rejected]), prompts, tmp_path, reporter).classify_entries([ENTRY], [], discard)
+    build_manager(StubLLMClient([rejected]), prompts, reporter).classify_entries([entry], [], discard)
 
     assert reporter.names[-3:] == ["record_failed", "batch_stopped", "batch_end"]
 
 
-def test_invalid_output_does_not_report_a_stop(prompts, tmp_path, sleeps):
+def test_invalid_output_does_not_report_a_stop(prompts, sleeps, entry):
     reporter = RecordingProgressReporter()
 
-    build_manager(StubLLMClient(["not json"] * MAX_ATTEMPTS), prompts, tmp_path, reporter).classify_entries([ENTRY], [], discard)
+    build_manager(StubLLMClient(["not json"] * MAX_ATTEMPTS), prompts, reporter).classify_entries([entry], [], discard)
 
     assert "batch_stopped" not in reporter.names
 
 
-def test_summary_is_a_batch_of_one_that_reports_retries(prompts, tmp_path, sleeps):
+def test_summary_is_a_batch_of_one_that_reports_retries(prompts, sleeps):
     reporter = RecordingProgressReporter()
 
-    build_manager(StubLLMClient(["not json", GOOD_SUMMARY]), prompts, tmp_path, reporter).summarise(STATS)
+    build_manager(StubLLMClient(["not json", GOOD_SUMMARY]), prompts, reporter).summarise(RESULT, [])
 
     assert reporter.events[0] == ("batch_start", "Summarising this run", ["stub-model", "key: main"])
     assert ("record_ok", "summary", "1 retry") in reporter.events
     assert reporter.names[-1] == "batch_end"
 
 
-def test_failed_summary_ends_its_batch(prompts, tmp_path, sleeps):
+def test_failed_summary_ends_its_batch(prompts, sleeps):
     reporter = RecordingProgressReporter()
 
-    result = build_manager(StubLLMClient(["not json"] * MAX_ATTEMPTS), prompts, tmp_path, reporter).summarise(STATS)
+    result = build_manager(StubLLMClient(["not json"] * MAX_ATTEMPTS), prompts, reporter).summarise(RESULT, [])
 
     assert result is None
     assert reporter.names[-2:] == ["record_failed", "batch_end"]
 
 
-def test_ai_manager_never_prints(prompts, tmp_path, sleeps, capsys):
+def test_ai_manager_never_prints(prompts, sleeps, capsys, entry):
     client = StubLLMClient(["not json", GOOD, GOOD_SUMMARY])
-    manager = build_manager(client, prompts, tmp_path, RecordingProgressReporter())
+    manager = build_manager(client, prompts, RecordingProgressReporter())
 
-    manager.classify_entries([ENTRY], [], discard)
-    manager.summarise(STATS)
+    manager.classify_entries([entry], [], discard)
+    manager.summarise(RESULT, [])
 
     captured = capsys.readouterr()
     assert captured.out == ""
@@ -223,8 +228,9 @@ def test_stopping_records_the_reason_and_the_untried_ids():
 
 
 # TokenLedger's total for the done line
-def test_today_total(tmp_path):
-    ledger = TokenLedger("some-model", str(tmp_path / "ledger.json"))
+def test_today_total():
+    token_log = InMemoryTokenLog()
+    ledger = TokenLedger("some-model", token_log.load, token_log.save)
 
     assert ledger.today_total("main") == 0
     ledger.record("main", "fb_001", 100)
@@ -233,16 +239,16 @@ def test_today_total(tmp_path):
     assert ledger.today_total("main") == 150
 
 
-def test_today_total_is_none_when_the_ledger_is_corrupt(tmp_path):
-    path = tmp_path / "ledger.json"
-    path.write_text("{corrupt", encoding="utf-8")
+def test_today_total_is_none_when_the_ledger_is_corrupt():
+    token_log = InMemoryTokenLog()
+    token_log.corrupt = True
 
-    assert TokenLedger("some-model", str(path)).today_total("main") is None
+    assert TokenLedger("some-model", token_log.load, token_log.save).today_total("main") is None
 
 
 def test_daily_limit():
-    assert TokenLedger("openai/gpt-oss-120b", "unused").daily_limit == 200_000
-    assert TokenLedger("some-model", "unused").daily_limit is None
+    assert TokenLedger("openai/gpt-oss-120b", None, None).daily_limit == 200_000
+    assert TokenLedger("some-model", None, None).daily_limit is None
 
 
 # ConsoleProgressReporter, plain lines
@@ -362,12 +368,12 @@ def test_live_timer_thread_stops_cleanly():
     assert not [thread for thread in threading.enumerate() if thread.name == "ai-progress-timer"]
 
 
-def test_output_does_not_contain_the_api_key(prompts, tmp_path, sleeps):
+def test_output_does_not_contain_the_api_key(prompts, sleeps, entry):
     stream = io.StringIO()
     rejected = LLMRequestError("key rejected (HTTP 401)", LLMRequestError.AUTH, False)
-    manager = build_manager(StubLLMClient([rejected]), prompts, tmp_path, ConsoleProgressReporter(stream))
+    manager = build_manager(StubLLMClient([rejected]), prompts, ConsoleProgressReporter(stream))
 
-    manager.classify_entries([ENTRY], [], discard)
+    manager.classify_entries([entry], [], discard)
 
     assert "key rejected (HTTP 401)" in stream.getvalue()
     assert "Bearer" not in stream.getvalue()

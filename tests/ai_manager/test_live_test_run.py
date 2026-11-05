@@ -2,14 +2,14 @@ import json
 
 import pytest
 
-import ai_manager
-from ai_manager import AIManager
+from managers.ai_manager import AIManager, PromptLibrary, ai_manager as ai_manager_module
+from managers.ai_manager.llm_request_error import LLMRequestError
+from managers.models import FeedbackRecord
+from in_memory_token_log import InMemoryTokenLog
 from live_test_run import (
     HUMAN_TAGS_FILE, LiveTestRun, OUTPUT_FILE, REFERENCE_ENTRIES_FILE,
     STRESS_ENTRIES_FILE, STRESS_OUTPUT_FILE, STRESS_TAGS_FILE,
 )
-from llm_request_error import LLMRequestError
-from prompt_library import PromptLibrary
 from recording_progress_reporter import RecordingProgressReporter
 from stub_llm_client import StubLLMClient
 
@@ -22,11 +22,9 @@ def ai_reply(theme="Facilities", sentiment="negative", severity="high"):
 
 def record(feedback_id="fb_001", theme="Facilities", ai_theme="Facilities",
            sentiment="negative", ai_sentiment="negative", severity="high", ai_severity="high"):
-    return {
-        "feedback_id": feedback_id, "theme": theme, "sentiment": sentiment, "severity": severity,
-        "ai_theme": ai_theme,
-        "ai_sentiment": ai_sentiment, "ai_severity": ai_severity,
-    }
+    built = FeedbackRecord(feedback_id, "Text.", "t", None, {"theme": theme, "sentiment": sentiment, "severity": severity})
+    built.set_ai(ai_theme, ai_sentiment, ai_severity)
+    return built
 
 
 @pytest.fixture
@@ -46,15 +44,12 @@ def samples_dir(tmp_path):
 
 
 def build_run(samples_dir, replies, monkeypatch):
-    monkeypatch.setattr(ai_manager.time, "sleep", lambda seconds: None)
-    themes, prompt, summary = (samples_dir / name for name in ("themes.json", "prompt.txt", "summary.txt"))
-    themes.write_text(json.dumps(THEMES), encoding="utf-8")
-    prompt.write_text("Themes: {themes}", encoding="utf-8")
-    summary.write_text("Summarise.", encoding="utf-8")
+    monkeypatch.setattr(ai_manager_module.time, "sleep", lambda seconds: None)
     client = StubLLMClient(replies)
+    token_log = InMemoryTokenLog()
     manager = AIManager(
-        client, "test-key", PromptLibrary(str(themes), str(prompt), str(summary)),
-        RecordingProgressReporter(), str(samples_dir / "ledger.json"),
+        client, "test-key", PromptLibrary("Themes: {themes}", "Summarise.", THEMES),
+        RecordingProgressReporter(), token_log.load, token_log.save,
     )
     return LiveTestRun(manager, THEMES, samples_dir), client
 
@@ -66,10 +61,7 @@ def test_run_sends_only_the_text_and_keeps_hand_labels_as_human_tags(samples_dir
 
     assert (pending, stopped) == ([], False)
     assert json.loads(client.calls[0]["messages"][1]["content"]) == {"text": "First."}
-    assert classified[1]["theme"] == "Assessment"
-    assert classified[1]["sentiment"] == "neutral"
-    assert "summary" not in classified[0]
-    assert "note" not in classified[0]
+    assert classified[1].user == {"theme": "Assessment", "sentiment": "neutral", "severity": "low"}
 
 
 def test_run_saves_each_record_as_it_finishes(samples_dir, monkeypatch):
@@ -80,7 +72,7 @@ def test_run_saves_each_record_as_it_finishes(samples_dir, monkeypatch):
 
     saved = json.loads((samples_dir / OUTPUT_FILE).read_text(encoding="utf-8"))
     assert [item["feedback_id"] for item in saved] == ["fb_001"]
-    assert [item["feedback_id"] for item in pending] == ["fb_002"]
+    assert [item.feedback_id for item in pending] == ["fb_002"]
     assert stopped is True
 
 
@@ -156,6 +148,7 @@ def test_stress_run_uses_the_stress_files(samples_dir, monkeypatch):
 
     classified, _, _ = live_run.run_stress()
 
-    assert classified[0]["theme"] == "Academic"
+    assert classified[0].user["theme"] == "Academic"
     assert json.loads(client.calls[0]["messages"][1]["content"]) == {"text": "Long text."}
-    assert json.loads((samples_dir / STRESS_OUTPUT_FILE).read_text(encoding="utf-8"))[0]["ai_theme"] == "Facilities"
+    saved = json.loads((samples_dir / STRESS_OUTPUT_FILE).read_text(encoding="utf-8"))
+    assert saved[0]["ai"]["theme"] == "Facilities"

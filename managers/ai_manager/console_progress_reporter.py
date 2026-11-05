@@ -6,8 +6,8 @@ import threading
 import time
 from typing import TextIO
 
-from batch_progress import BatchProgress
-from progress_reporter import ProgressReporter
+from .batch_progress import BatchProgress
+from .progress_reporter import ProgressReporter
 
 BAR_WIDTH = 20
 REDRAW_INTERVAL_S = 1

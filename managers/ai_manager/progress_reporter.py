@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-from batch_progress import BatchProgress
+from .batch_progress import BatchProgress
 
 
 class ProgressReporter(ABC):

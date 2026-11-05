@@ -2,7 +2,7 @@
 
 import json
 
-from ai_task import AITask
+from .ai_task import AITask
 
 MAX_OVERALL_SUMMARY_WORDS = 120  # overall_summary; the prompt aims for ~80
 MAX_ACTION_WORDS = 30  # each suggested_action
@@ -42,7 +42,7 @@ class SummaryTask(AITask):
     """One summary request for one run's stats."""
 
     def __init__(self, stats: dict, system_prompt: str):
-        """stats is logic_manager.aggregate_themes' output."""
+        """stats is AggregationResult.to_dict()'s output."""
         super().__init__(
             SUMMARY_REQUEST_ID, "feedback_summary", SUMMARY_SCHEMA, SUMMARY_TOKEN_MARGIN, SUMMARY_MAX_COMPLETION_TOKENS
         )

@@ -2,27 +2,26 @@
 
 import json
 
-from ai_task import AITask
-from prompt_library import UNCLEAR_THEME
+from managers.models import FeedbackRecord, SENTIMENTS, SEVERITIES, UNCLEAR_THEME
+
+from .ai_task import AITask
 
 MAX_COINED_THEME_WORDS = 3  # a longer label would be sent back in every later request
-SENTIMENTS = ["positive", "neutral", "negative"]
-SEVERITIES = ["low", "medium", "high", "critical"]
 # Wait for the reset once fewer tokens than this remain. Kept at the tested
 # value, although measured call 1 requests average ~1,700 tokens (max 2,295).
 CLASSIFY_TOKEN_MARGIN = 1600
 
 
 class ClassificationTask(AITask):
-    """One classification request for one feedback entry.
+    """One classification request for one feedback record.
 
-    Only the entry's text and labels the model coined earlier go in the request,
-    so human tags cannot anchor the model.
+    Only the record's text and labels the model coined earlier go in the request,
+    so user values cannot anchor the model.
     """
 
-    def __init__(self, entry: dict, system_prompt: str, themes: list[str], known_themes: list[str]):
-        super().__init__(entry["feedback_id"], "feedback_classification", self._build_schema(), CLASSIFY_TOKEN_MARGIN)
-        self.__text = entry["text"]
+    def __init__(self, record: FeedbackRecord, system_prompt: str, themes: list[str], known_themes: list[str]):
+        super().__init__(record.feedback_id, "feedback_classification", self._build_schema(), CLASSIFY_TOKEN_MARGIN)
+        self.__text = record.text
         self.__system_prompt = system_prompt
         self.__themes = themes
         self.__known_themes = known_themes
@@ -85,8 +84,8 @@ class ClassificationTask(AITask):
             "type": "object",
             "properties": {
                 "theme": {"type": "string"},
-                "sentiment": {"type": "string", "enum": SENTIMENTS},
-                "severity": {"type": "string", "enum": SEVERITIES},
+                "sentiment": {"type": "string", "enum": list(SENTIMENTS)},
+                "severity": {"type": "string", "enum": list(SEVERITIES)},
             },
             "required": ["theme", "sentiment", "severity"],
             "additionalProperties": False,
