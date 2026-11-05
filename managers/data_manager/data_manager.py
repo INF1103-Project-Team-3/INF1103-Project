@@ -246,6 +246,15 @@ class DataManager:
             return data
         return [data] if isinstance(data, dict) else []
 
+    def _read_list_strict(self, path: Union[str, Path]) -> List[Any]:
+        """Compatibility helper for older I/O tests expecting strict list reading."""
+        data = self.json_store.load(Path(path))
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict) and "records" in data:
+            return data["records"]
+        raise ValueError("Expected a list or records container.")
+
     def load_prompts(self) -> tuple[str, str]:
         prompt_path = self.data_dir / "prompts" / "system_prompt.txt"
         summary_path = self.data_dir / "prompts" / "summary_prompt.txt"
