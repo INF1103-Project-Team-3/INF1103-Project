@@ -55,5 +55,9 @@ class AITask(ABC):
 
         Raises json.JSONDecodeError or TypeError if raw is not JSON text.
         """
-        result = json.loads(raw)
+        result = self._clean(json.loads(raw))
         return result if self.validate(result) else None
+
+    def _clean(self, result: object) -> object:
+        """Return result tidied before validation. Most tasks need nothing here."""
+        return result

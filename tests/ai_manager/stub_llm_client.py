@@ -1,7 +1,7 @@
 """StubLLMClient: an LLMClient that plays back scripted replies, with no network."""
 
-from llm_client import LLMClient
-from llm_request_error import LLMRequestError
+from managers.ai_manager import LLMClient
+from managers.ai_manager.llm_request_error import LLMRequestError
 
 
 class StubLLMClient(LLMClient):

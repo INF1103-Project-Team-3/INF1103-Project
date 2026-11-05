@@ -1,6 +1,6 @@
 """RecordingProgressReporter: a ProgressReporter that keeps every event for tests to check."""
 
-from progress_reporter import ProgressReporter
+from managers.ai_manager import ProgressReporter
 
 
 class RecordingProgressReporter(ProgressReporter):
@@ -34,6 +34,9 @@ class RecordingProgressReporter(ProgressReporter):
 
     def on_record_failed(self, request_id, reason, progress):
         self.__events.append(("record_failed", request_id, reason))
+
+    def on_batch_stopped(self, progress):
+        self.__events.append(("batch_stopped", progress.stop_reason, progress.stopped_after))
 
     def on_batch_end(self, progress, tokens_today, daily_limit):
         self.__events.append(("batch_end", tokens_today, daily_limit))
