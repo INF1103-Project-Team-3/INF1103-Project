@@ -14,7 +14,6 @@ except ImportError:
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-
 class DataManager:
     """
     Core Data Manager class for v1.2 architecture. Encapsulates all file operations[cite: 8].
@@ -245,15 +244,6 @@ class DataManager:
         if isinstance(data, list):
             return data
         return [data] if isinstance(data, dict) else []
-
-    def _read_list_strict(self, path: Union[str, Path]) -> List[Any]:
-        """Compatibility helper for older I/O tests expecting strict list reading."""
-        data = self.json_store.load(Path(path))
-        if isinstance(data, list):
-            return data
-        if isinstance(data, dict) and "records" in data:
-            return data["records"]
-        raise ValueError("Expected a list or records container.")
 
     def load_prompts(self) -> tuple[str, str]:
         prompt_path = self.data_dir / "prompts" / "system_prompt.txt"
