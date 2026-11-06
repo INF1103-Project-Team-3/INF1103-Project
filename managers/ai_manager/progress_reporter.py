@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-from batch_progress import BatchProgress
+from .batch_progress import BatchProgress
 
 
 class ProgressReporter(ABC):
@@ -34,6 +34,10 @@ class ProgressReporter(ABC):
     @abstractmethod
     def on_record_failed(self, request_id: str, reason: str, progress: BatchProgress) -> None:
         """A record failed, and is retried on the next run."""
+
+    @abstractmethod
+    def on_batch_stopped(self, progress: BatchProgress) -> None:
+        """The batch stopped early: further requests would fail the same way."""
 
     @abstractmethod
     def on_batch_end(self, progress: BatchProgress, tokens_today: int | None, daily_limit: int | None) -> None:

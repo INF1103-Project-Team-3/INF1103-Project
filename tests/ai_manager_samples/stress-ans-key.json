@@ -1,0 +1,74 @@
+[
+  {
+    "feedback_id": "st_001",
+    "theme": "Academic",
+    "sentiment": "Negative",
+    "severity": "High"
+  },
+  {
+    "feedback_id": "st_002",
+    "theme": "Administration",
+    "sentiment": "Negative",
+    "severity": "Medium"
+  },
+  {
+    "feedback_id": "st_003",
+    "theme": "Well-being",
+    "sentiment": "Negative",
+    "severity": "High"
+  },
+  {
+    "feedback_id": "st_004",
+    "theme": "Well-being",
+    "sentiment": "Negative",
+    "severity": "High"
+  },
+  {
+    "feedback_id": "st_005",
+    "theme": "Facilities",
+    "sentiment": "Negative",
+    "severity": "Critical"
+  },
+  {
+    "feedback_id": "st_006",
+    "theme": "Well-being",
+    "sentiment": "Negative",
+    "severity": "Medium"
+  },
+  {
+    "feedback_id": "st_007",
+    "theme": "Administration",
+    "sentiment": "Negative",
+    "severity": "Medium"
+  },
+  {
+    "feedback_id": "st_008",
+    "theme": "Well-being",
+    "sentiment": "Negative",
+    "severity": "Critical"
+  },
+  {
+    "feedback_id": "st_009",
+    "theme": "Well-being",
+    "sentiment": "Negative",
+    "severity": "Critical"
+  },
+  {
+    "feedback_id": "st_010",
+    "theme": "Facilities",
+    "sentiment": "Negative",
+    "severity": "Critical"
+  },
+  {
+    "feedback_id": "st_011",
+    "theme": "Off-Topic",
+    "sentiment": "Neutral",
+    "severity": "Low"
+  },
+  {
+    "feedback_id": "st_012",
+    "theme": "Academic",
+    "sentiment": "Positive",
+    "severity": "Low"
+  }
+]
