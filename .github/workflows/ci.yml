@@ -31,3 +31,11 @@ jobs:
           python -m compileall .
           
           echo "All checks passed cleanly! Proceeding with squash allocation."
+
+      # Step 4: Build the app image and run the test suite inside it
+      - name: Run Tests in Docker
+        run: |
+          docker compose build
+
+          # -T: the GitHub virtual machine has no terminal to attach to
+          docker compose run --rm -T app pytest tests/ -v

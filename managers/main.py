@@ -9,6 +9,9 @@ import io_manager
 import data_manager
 import logic_manager
 import ai_manager
+from console_progress_reporter import ConsoleProgressReporter
+from groq_client import GroqClient
+from prompt_library import PromptLibrary
 
 
 def refresh_aggregated_output(data_dir):
@@ -49,8 +52,9 @@ if __name__ == "__main__":
     api_key = os.environ.get("GROQ_API_KEY")
     key_label = os.environ.get("GROQ_KEY_LABEL")
     if not api_key or not key_label:
-        logging.error("GROQ_API_KEY and GROQ_KEY_LABEL must be set in config/.env")
-        raise SystemExit(1)
+        # The app stays usable: new entries stay pending and are retried once these are set.
+        logging.warning("GROQ_API_KEY and GROQ_KEY_LABEL must be set in config/.env for AI classification")
+        api_key, key_label = None, "none"
 
     # Every data_manager call below is pointed at the same folder the I/O manager uses.
     # (data_manager's own default is "/data", which on Windows is C:\data, a different folder.)
@@ -136,39 +140,22 @@ if __name__ == "__main__":
     
 
     # --- AI Manager Initialisation ---
-    themes = ai_manager.load_canonical_themes()
-    prompt = ai_manager.load_system_prompt(themes)
-    summary_prompt = ai_manager.load_summary_prompt()
+    ai = ai_manager.AIManager(GroqClient(api_key), key_label, PromptLibrary(), ConsoleProgressReporter())
 
-    # Seed the theme tracking list from any previously classified entries
-    known = ai_manager.find_new_themes(data_manager.load_feedback_records(base_dir=DATA_DIR), themes)
+    # Labels the AI coined in previously classified entries are offered back to it
+    stored_records = data_manager.load_feedback_records(base_dir=DATA_DIR)
 
     # Tell user, that main.py is calling the API
     io_manager.print_connection_notice()
 
     # --- Call 1: Dynamic Entry Classification ---
     # CONNECTED TO LIVE API: Loops through entries and requests classifications via live endpoints
-    classified_records = []
-    for entry in entries:
-        record = ai_manager.classify_entry(entry, prompt, api_key, key_label, known)
-        if record is None:  
-            continue
-        # Immediately feed back any newly coined theme into the 'known' list for the next loop
-        known = ai_manager.find_new_themes([record], themes, known)
-        classified_records.append(record)
+    # Produces classified.json, one record at a time so a crash does not lose paid work
+    classified_records, _, stopped = ai.classify_entries(
+        entries, stored_records, lambda record: data_manager.receive_ai_input(json.dumps(record)))
     # --- End of Call 1: Dynamic Entry Classification ---
 
-    # If the AI could not classify anything (API down, bad key), stop here. Saving a "run" with
-    # no new data would replace the real trend with an all-Steady one. The entries stay in
-    # feedback_before_ai.json and are retried on the next import.
-    if not classified_records:
-        logging.error("The AI could not classify any of the %d new entries. They were kept and "
-                      "will be retried on the next import.", len(entries))
-        sys.exit(1)
-
-
-    # Produces classified.json
-    data_manager.receive_ai_input(json.dumps(classified_records))
+    # Records left pending stay in feedback_before_ai.json and are retried on the next import.
 
     # Tell user, main.py is compiling results and aggregate themes
     io_manager.print_compilation_notice()
@@ -176,7 +163,8 @@ if __name__ == "__main__":
     # Logic manager checks every record from the AI; malformed ones are set aside
     # (saved to invalid_records.json) and never counted
     valid_records, invalid_records = logic_manager.split_valid_records(classified_records)
-    data_manager.save_invalid_records(invalid_records, base_dir=DATA_DIR)
+    if classified_records:    # an empty run keeps the last run's list, as this file is overwritten
+        data_manager.save_invalid_records(invalid_records, base_dir=DATA_DIR)
 
     # Logic manager to process feedback from AI manager
     processed_feedbacks = [logic_manager.apply_feedback_rules(record) for record in valid_records]
@@ -203,31 +191,37 @@ if __name__ == "__main__":
     # Trend comparison: this run vs the previous run. It is worked out BEFORE this run
     # is added to the history, so the newest history entry is the previous run.
     # Produces trend_output.json and aggregated_history.json
-    try:
-        history = data_manager.load_history(base_dir=DATA_DIR)
-    except ValueError as error:   # corrupt history file: left unchanged so it can be repaired
-        logging.error("%s The trend was not updated this run.", error)
-    else:
-        trend = logic_manager.compare_runs(logic_output, history[0] if history else None)
-        data_manager.save_trend(trend, filename=io_manager.TREND_FILE, base_dir=DATA_DIR)
-        data_manager.append_history({"run_at": run_at, "source_file": source_file, "stats": logic_output},
-                                    base_dir=DATA_DIR)
+    # Skipped if the AI classified nothing (API down, bad key): saving a "run" with no new data
+    # would replace the real trend with an all-Steady one.
+    if classified_records:
+        try:
+            history = data_manager.load_history(base_dir=DATA_DIR)
+        except ValueError as error:   # corrupt history file: left unchanged so it can be repaired
+            logging.error("%s The trend was not updated this run.", error)
+        else:
+            trend = logic_manager.compare_runs(logic_output, history[0] if history else None)
+            data_manager.save_trend(trend, filename=io_manager.TREND_FILE, base_dir=DATA_DIR)
+            data_manager.append_history({"run_at": run_at, "source_file": source_file, "stats": logic_output},
+                                        base_dir=DATA_DIR)
 
-    # Tell user AI summary is being requested from API
-    io_manager.print_ai_request_notice()
+    # Skipped after a stopped batch or an empty run, so the last summary stays
+    if classified_records and not stopped:
 
-        # # --- Call 2: Final Run Summary ---
-    # CONNECTED TO LIVE API: Generates overall executive summaries using live stats data
-    summary = ai_manager.summarise(logic_output, summary_prompt, api_key, key_label)
-        # # --- End of Call 2: Final Run Summary ---
+        # Tell user AI summary is being requested from API
+        io_manager.print_ai_request_notice()
+
+        # --- Call 2: Final Run Summary ---
+        # CONNECTED TO LIVE API: Generates overall executive summaries using live stats data
+        summary = ai.summarise(logic_output)
+        # --- End of Call 2: Final Run Summary ---
 
         # Create summary.json or replace summary.json with new summary
-    if summary is not None:
-        data_manager.update_summary_fields(
-            root_updates={"overall_summary": summary.get("overall_summary")},
-            item_updates=summary.get("theme_actions"),
-            base_dir=DATA_DIR,
-        )
+        if summary is not None:
+            data_manager.update_summary_fields(
+                root_updates={"overall_summary": summary.get("overall_summary")},
+                item_updates=summary.get("theme_actions"),
+                base_dir=DATA_DIR,
+            )
 
 
     # === CALL: Final exit notice ===
