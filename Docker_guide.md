@@ -19,7 +19,7 @@ docker compose down
 ### 3. Run Application Script
 Execute the main script inside the running `app` container(run command in terminal and at root of folder):
 ```bash
-docker compose exec app python managers/main/main.py
+docker compose exec app python managers/main.py
 ```
 
 ### 4. Access Container Shell
