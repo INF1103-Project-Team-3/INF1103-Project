@@ -108,6 +108,11 @@ class ThemeNormaliser:
         """True for a base theme or a confirmed new theme (ignoring case and punctuation)."""
         return self.__key(theme) in self.__known
 
+    def is_new(self, label: str) -> bool:
+        """True for a real label that is not known yet, so not an alias or Unclear."""
+        theme = self.normalise(label)
+        return theme != UNCLEAR_THEME and not self.is_known(theme)
+
     @staticmethod
     def __key(label: str) -> str:
         """Lowercases, turns punctuation into spaces and collapses repeated

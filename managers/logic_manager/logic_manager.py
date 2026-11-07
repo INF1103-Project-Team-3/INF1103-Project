@@ -5,7 +5,7 @@ from managers.models import MATCHED, REVIEWED, THEMES, UNVERIFIED, FeedbackRecor
 from .record_validator import RecordValidator
 from .results import AggregationResult, TrendReport
 from .rule_engine import RuleEngine
-from .rules import CriticalSeverityRule, Rule, UnclearThemeRule
+from .rules import CriticalSeverityRule, NewThemeRule, ReviewRule, UnclearThemeRule, UserAIMismatchRule
 from .theme_aggregator import ThemeAggregator
 from .theme_normaliser import ThemeNormaliser
 from .trend_analyser import TrendAnalyser
@@ -16,12 +16,12 @@ class LogicManager:
     its parts. It never calls another manager, touches files or prints: the
     pipeline passes objects in and saves the objects that come back."""
 
-    def __init__(self, rules: list[Rule] | None = None, known_themes=THEMES):
+    def __init__(self, rules: list[ReviewRule] | None = None, known_themes=THEMES):
         """rules=None uses the default rules; pass a list to choose your own."""
         self.__normaliser = ThemeNormaliser(known_themes)
         self.__validator = RecordValidator()
         self.__engine = RuleEngine(self.__default_rules() if rules is None else rules)
-        self.__aggregator = ThemeAggregator()
+        self.__aggregator = ThemeAggregator(self.__normaliser)
         self.__analyser = TrendAnalyser()
 
     def set_known_themes(self, themes) -> None:
@@ -57,8 +57,13 @@ class LogicManager:
         """Compares any two runs; previous is None on the first run."""
         return self.__analyser.compare(current, previous)
 
-    def __default_rules(self) -> list[Rule]:
-        return [CriticalSeverityRule(), UnclearThemeRule(self.__normaliser)]
+    def __default_rules(self) -> list[ReviewRule]:
+        return [
+            CriticalSeverityRule(),
+            UnclearThemeRule(self.__normaliser),
+            NewThemeRule(self.__normaliser),
+            UserAIMismatchRule(self.__normaliser),
+        ]
 
     def __set_final_values(self, record: FeedbackRecord) -> None:
         """The final values are the user's, with the theme normalised (7.1)."""

@@ -1,6 +1,6 @@
 import pytest
 
-from managers.logic_manager import ReviewRule, Rule
+from managers.logic_manager import ReviewRule
 from managers.models import HIGH, MATCHED, NEGATIVE, FeedbackRecord
 
 
@@ -29,11 +29,6 @@ def make_checked_record(text):
     return record
 
 
-def test_rule_interface_cannot_be_created():
-    with pytest.raises(TypeError):
-        Rule()
-
-
 def test_review_rule_cannot_be_created_on_its_own():
     with pytest.raises(TypeError):
         ReviewRule(excludes=True)
@@ -42,10 +37,6 @@ def test_review_rule_cannot_be_created_on_its_own():
 def test_a_rule_missing_its_reason_cannot_be_created():
     with pytest.raises(TypeError):
         _NoReason(excludes=True)
-
-
-def test_a_review_rule_is_a_rule():
-    assert isinstance(_LongTextRule(), Rule)
 
 
 def test_flags_a_matching_record_and_stops_it_being_counted():

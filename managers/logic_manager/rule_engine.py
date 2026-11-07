@@ -2,23 +2,23 @@
 
 from managers.models import REVIEWED, SEVERITIES, FeedbackRecord
 
-from .rules import Rule
+from .rules import ReviewRule
 
 
 class RuleEngine:
     """Runs any list of rules over records without knowing which rules they
     are, so a new rule needs no change here (design reference 10.2, OCP)."""
 
-    def __init__(self, rules: list[Rule]):
-        """Raises TypeError if something in rules is not a Rule."""
+    def __init__(self, rules: list[ReviewRule]):
+        """Raises TypeError if something in rules is not a ReviewRule."""
         for rule in rules:
-            if not isinstance(rule, Rule):
-                raise TypeError(f"RuleEngine needs Rule objects, got {type(rule).__name__}")
+            if not isinstance(rule, ReviewRule):
+                raise TypeError(f"RuleEngine needs ReviewRule objects, got {type(rule).__name__}")
         # a copy, so changing the caller's list later does not change the engine
         self.__rules = tuple(rules)
 
     @property
-    def rules(self) -> tuple[Rule, ...]:
+    def rules(self) -> tuple[ReviewRule, ...]:
         return self.__rules
 
     def apply(self, records: list[FeedbackRecord]) -> None:
