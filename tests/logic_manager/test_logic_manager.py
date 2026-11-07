@@ -4,7 +4,8 @@ import pytest
 
 from managers.logic_manager import AggregationResult, LogicManager, ReviewRule, TrendReport
 from managers.models import (
-    CRITICAL, HIGH, LOW, MATCHED, NEGATIVE, POSITIVE, REVIEWED, THEMES, UNCLEAR_THEME, UNVERIFIED, FeedbackRecord,
+    CRITICAL, HIGH, LOW, MATCHED, MISMATCH, NEGATIVE, POSITIVE, REVIEWED, THEMES, UNCLEAR_THEME, UNVERIFIED,
+    FeedbackRecord,
 )
 
 
@@ -100,6 +101,51 @@ def test_default_rules_flag_critical_and_unclear_records(logic):
     assert unclear.theme == UNCLEAR_THEME
     assert unclear.needs_review
     assert not unclear.counted
+
+
+def test_a_disagreement_with_the_ai_goes_to_review_and_is_not_counted(logic):
+    record = make_record(theme="Facilities", ai_theme="Assessment")
+    records = logic.apply_rules([record])
+    assert record.verification == MISMATCH
+    assert record.review_reasons == ["AI disagrees with the user on theme (user 'Facilities', AI 'Assessment')"]
+    assert logic.review_queue(records) == [record]
+    assert logic.aggregate(records).counted_entries == 0
+
+
+def test_an_unclear_record_gets_both_reasons(logic):
+    record = make_record(theme="other", ai_theme="n/a")
+    logic.apply_rules([record])
+    assert record.verification == MISMATCH
+    assert len(record.review_reasons) == 2
+    assert not record.counted
+
+
+def test_applying_the_rules_again_does_not_repeat_a_mismatch(logic):
+    record = make_record(theme="Facilities", ai_theme="Assessment")
+    logic.apply_rules([record])
+    logic.apply_rules([record])
+    assert record.verification == MISMATCH
+    assert len(record.review_reasons) == 1
+
+
+def test_a_mismatch_clears_once_the_ai_agrees(logic):
+    record = make_record(theme="Facilities", ai_theme="Assessment")
+    logic.apply_rules([record])
+    record.set_ai("Facilities", NEGATIVE, HIGH)
+    logic.apply_rules([record])
+    assert record.verification == MATCHED
+    assert not record.needs_review
+    assert record.counted
+
+
+def test_an_admin_review_resolves_a_mismatch_for_good(logic):
+    record = make_record(theme="Facilities", ai_theme="Assessment")
+    logic.apply_rules([record])
+    record.mark_reviewed("Assessment", NEGATIVE, HIGH)
+    logic.apply_rules([record])
+    assert record.verification == REVIEWED
+    assert not record.needs_review
+    assert record.counted
 
 
 def test_a_reviewed_record_keeps_the_admins_values(logic):

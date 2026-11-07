@@ -2,7 +2,8 @@
 
 fixtures/part1_baseline.json holds what the Part 1 code produced, with confidence
 and agreement set to 1.0 so that only the rules kept in Part 2 apply (D1). The AI
-and the user agree on every record here, so the cross-check changes nothing.
+and the user agree on every record here, so the cross-check changes no result:
+only an Unclear record, already excluded, also becomes a mismatch.
 """
 
 import json

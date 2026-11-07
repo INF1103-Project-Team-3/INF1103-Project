@@ -5,7 +5,7 @@ from managers.models import MATCHED, REVIEWED, THEMES, UNVERIFIED, FeedbackRecor
 from .record_validator import RecordValidator
 from .results import AggregationResult, TrendReport
 from .rule_engine import RuleEngine
-from .rules import CriticalSeverityRule, Rule, UnclearThemeRule
+from .rules import CriticalSeverityRule, Rule, UnclearThemeRule, UserAIMismatchRule
 from .theme_aggregator import ThemeAggregator
 from .theme_normaliser import ThemeNormaliser
 from .trend_analyser import TrendAnalyser
@@ -58,7 +58,7 @@ class LogicManager:
         return self.__analyser.compare(current, previous)
 
     def __default_rules(self) -> list[Rule]:
-        return [CriticalSeverityRule(), UnclearThemeRule(self.__normaliser)]
+        return [CriticalSeverityRule(), UnclearThemeRule(self.__normaliser), UserAIMismatchRule(self.__normaliser)]
 
     def __set_final_values(self, record: FeedbackRecord) -> None:
         """The final values are the user's, with the theme normalised (7.1)."""
