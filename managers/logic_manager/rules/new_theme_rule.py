@@ -1,6 +1,6 @@
 """NewThemeRule: a theme nobody has confirmed yet can't be counted."""
 
-from managers.models import UNCLEAR_THEME, FeedbackRecord
+from managers.models import FeedbackRecord
 
 from ..theme_normaliser import ThemeNormaliser
 from .review_rule import ReviewRule
@@ -16,7 +16,7 @@ class NewThemeRule(ReviewRule):
         self.__normaliser = normaliser
 
     def _flags(self, record: FeedbackRecord) -> bool:
-        return record.theme != UNCLEAR_THEME and not self.__normaliser.is_known(record.theme)
+        return self.__normaliser.is_new(record.theme)
 
     def _reason(self, record: FeedbackRecord) -> str:
         return f"New theme '{record.theme}': confirm it or change it."

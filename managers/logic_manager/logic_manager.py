@@ -21,7 +21,7 @@ class LogicManager:
         self.__normaliser = ThemeNormaliser(known_themes)
         self.__validator = RecordValidator()
         self.__engine = RuleEngine(self.__default_rules() if rules is None else rules)
-        self.__aggregator = ThemeAggregator()
+        self.__aggregator = ThemeAggregator(self.__normaliser)
         self.__analyser = TrendAnalyser()
 
     def set_known_themes(self, themes) -> None:

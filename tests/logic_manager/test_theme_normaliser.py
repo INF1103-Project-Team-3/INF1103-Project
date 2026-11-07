@@ -63,6 +63,16 @@ def test_a_confirmed_theme_becomes_known(normaliser):
     assert normaliser.is_known("parking-fees")
 
 
+def test_is_new_only_for_a_real_label_that_is_not_known_yet(normaliser):
+    assert normaliser.is_new("parking fees")
+    assert not normaliser.is_new("Facilities")
+    assert not normaliser.is_new("wifi")    # an alias of Facilities
+    assert not normaliser.is_new(UNCLEAR_THEME)
+    assert not normaliser.is_new("n/a")
+    normaliser.set_known_themes(["Parking Fees"])
+    assert not normaliser.is_new("parking fees")
+
+
 def test_set_known_themes_replaces_confirmed_themes_but_keeps_base_ones(normaliser):
     normaliser.set_known_themes(["Car Park"])
     normaliser.set_known_themes(["Parking Fees"])

@@ -1,7 +1,9 @@
 from managers.logic_manager import AggregationResult
 from managers.logic_manager.theme_aggregator import ThemeAggregator
+from managers.logic_manager.theme_normaliser import ThemeNormaliser
 from managers.models import (
-    CRITICAL, HIGH, LOW, MATCHED, MEDIUM, MISMATCH, NEGATIVE, NEUTRAL, POSITIVE, UNVERIFIED, FeedbackRecord,
+    CRITICAL, HIGH, LOW, MATCHED, MEDIUM, MISMATCH, NEGATIVE, NEUTRAL, POSITIVE, UNCLEAR_THEME, UNVERIFIED,
+    FeedbackRecord,
 )
 
 
@@ -13,7 +15,13 @@ def make_record(feedback_id, theme="Facilities", sentiment=NEGATIVE, severity=HI
 
 
 def aggregate(records):
-    return ThemeAggregator().aggregate(records)
+    return ThemeAggregator(ThemeNormaliser()).aggregate(records)
+
+
+def make_excluded_record(feedback_id, theme):
+    record = make_record(feedback_id, theme)
+    record.add_review_reason("Not counted", excludes=True)
+    return record
 
 
 def test_returns_an_aggregation_result():
@@ -101,3 +109,19 @@ def test_themes_sort_by_count_then_priority_then_name():
 def test_negative_percent_covers_all_themes():
     records = [make_record("fb_001", "Facilities"), make_record("fb_002", "Assessment", POSITIVE, LOW)]
     assert aggregate(records).negative_percent == 50
+
+
+def test_pending_themes_count_each_new_theme_most_first_then_by_name():
+    records = [make_excluded_record("fb_001", "Zoo Trips"), make_excluded_record("fb_002", "Car Park"),
+               make_excluded_record("fb_003", "Parking Fees"), make_excluded_record("fb_004", "Parking Fees")]
+    assert list(aggregate(records).pending_themes.items()) == [("Parking Fees", 2), ("Car Park", 1), ("Zoo Trips", 1)]
+
+
+def test_only_new_themes_that_are_not_counted_are_pending():
+    reviewed = make_excluded_record("fb_001", "Parking Fees")
+    reviewed.mark_reviewed("Parking Fees", NEGATIVE, HIGH)
+    unchecked = FeedbackRecord("fb_002", "Some feedback.", "2026-09-17T08:03:00", None,
+                               {"theme": "Parking Fees", "sentiment": NEGATIVE, "severity": HIGH})
+    records = [reviewed, unchecked, make_excluded_record("fb_003", "Facilities"),
+               make_excluded_record("fb_004", UNCLEAR_THEME)]
+    assert aggregate(records).pending_themes == {}

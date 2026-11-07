@@ -117,11 +117,21 @@ def test_a_new_theme_waits_until_it_is_confirmed(logic):
     logic.apply_rules([record])
     assert record.review_reasons == ["New theme 'Parking Fees': confirm it or change it."]
     assert not record.counted
+    assert logic.aggregate([record]).pending_themes == {"Parking Fees": 1}
 
     logic.set_known_themes(["Parking Fees"])
     logic.apply_rules([record])
     assert not record.needs_review
     assert record.counted
+    assert logic.aggregate([record]).pending_themes == {}
+
+
+def test_a_confirmed_theme_is_no_longer_pending_even_if_the_ai_still_disagrees(logic):
+    record = make_record(theme="parking fees", ai_theme="Facilities")
+    logic.set_known_themes(["Parking Fees"])
+    logic.apply_rules([record])
+    assert not record.counted
+    assert logic.aggregate([record]).pending_themes == {}
 
 
 def test_an_unclear_record_gets_both_reasons(logic):
