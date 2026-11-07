@@ -112,6 +112,18 @@ def test_a_disagreement_with_the_ai_goes_to_review_and_is_not_counted(logic):
     assert logic.aggregate(records).counted_entries == 0
 
 
+def test_a_new_theme_waits_until_it_is_confirmed(logic):
+    record = make_record(theme="parking fees")
+    logic.apply_rules([record])
+    assert record.review_reasons == ["New theme 'Parking Fees': confirm it or change it."]
+    assert not record.counted
+
+    logic.set_known_themes(["Parking Fees"])
+    logic.apply_rules([record])
+    assert not record.needs_review
+    assert record.counted
+
+
 def test_an_unclear_record_gets_both_reasons(logic):
     record = make_record(theme="other", ai_theme="n/a")
     logic.apply_rules([record])
