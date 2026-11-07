@@ -112,6 +112,14 @@ def test_the_reason_lists_every_conflict():
     ]
 
 
+def test_the_ais_summary_is_not_compared():
+    record = make_checked_record()
+    record.set_ai("Facilities", NEGATIVE, HIGH, "The library wifi keeps dropping.")
+    apply_rule(record)
+    assert not record.needs_review
+    assert record.verification == MATCHED
+
+
 def test_an_admin_review_resolves_the_mismatch():
     record = apply_rule(make_checked_record(("Facilities", NEGATIVE, LOW), ("Assessment", POSITIVE, HIGH)))
     record.mark_reviewed("Assessment", POSITIVE, HIGH)
