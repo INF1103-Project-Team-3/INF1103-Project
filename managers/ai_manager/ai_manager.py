@@ -19,11 +19,11 @@ from managers.models import FeedbackRecord
 
 from .ai_summary import AISummary
 from .ai_task import AITask
-from .batch_progress import BatchProgress
 from .classification_task import ClassificationTask
 from .llm_client import LLMClient
 from .llm_request_error import LLMRequestError
 from .progress_reporter import ProgressReporter
+from .progress_tracker import ProgressTracker
 from .prompt_library import PromptLibrary
 from .summary_task import SummaryTask
 from .token_ledger import TokenLedger
@@ -82,27 +82,27 @@ class AIManager:
         retrying every record could take about 100 seconds each.
         """
         known_themes = self.__prompts.find_new_themes(stored_records)
-        progress = BatchProgress(len(records))
+        tracker = ProgressTracker(len(records))
         self.__reporter.on_batch_start(
             f"Classifying {len(records)} records",
             [self.__client.model, "1 sample each", f"key: {self.__key_label}"],
-            progress,
+            tracker.progress,
         )
         classified = []
         pending = []
         for index, record in enumerate(records):
-            if self._classify_entry(record, known_themes, progress) is None:
+            if self._classify_entry(record, known_themes, tracker) is None:
                 pending.append(record)
             else:
                 known_themes = self.__prompts.find_new_themes([record], known_themes)
                 classified.append(record)
                 on_classified(record)
-            if progress.stopped:
+            if tracker.stopped:
                 pending.extend(records[index + 1:])
-                progress.leave_pending([left.feedback_id for left in records[index + 1:]])
+                tracker.leave_pending([left.feedback_id for left in records[index + 1:]])
                 break
-        self._end_batch(progress)
-        return classified, pending, progress.stopped
+        self._end_batch(tracker)
+        return classified, pending, tracker.stopped
 
     def summarise(self, result: AggregationResult, records: list[FeedbackRecord]) -> AISummary | None:
         """Summarise one run (call 2).
@@ -116,30 +116,30 @@ class AIManager:
         stopped, as the API is then unlikely to answer (D20).
         """
         task = SummaryTask(result.to_dict(), records, self.__prompts.summary_prompt)
-        progress = BatchProgress(1)
+        tracker = ProgressTracker(1)
         self.__reporter.on_batch_start(
-            "Summarising this run", [self.__client.model, f"key: {self.__key_label}"], progress
+            "Summarising this run", [self.__client.model, f"key: {self.__key_label}"], tracker.progress
         )
-        progress.start_record()
-        output = self._request(task, progress)
+        tracker.start_record()
+        output = self._request(task, tracker)
         summary = None
         if output is not None:
             summary = AISummary(output["overall_summary"], output["theme_actions"])
-            progress.finish_ok()
-            retries = progress.record_retries
+            tracker.finish_ok()
+            retries = tracker.record_retries
             self.__reporter.on_record_ok(
-                task.request_id, "1 retry" if retries == 1 else f"{retries} retries", progress
+                task.request_id, "1 retry" if retries == 1 else f"{retries} retries", tracker.progress
             )
-        self._end_batch(progress)
+        self._end_batch(tracker)
         return summary
 
     def _classify_entry(
-        self, record: FeedbackRecord, known_themes: list[str], progress: BatchProgress
+        self, record: FeedbackRecord, known_themes: list[str], tracker: ProgressTracker
     ) -> FeedbackRecord | None:
         """Classify one record. Returns it, or None if it failed and so keeps ai = None."""
         task = ClassificationTask(record, self.__prompts.system_prompt, self.__prompts.themes, known_themes)
-        progress.start_record()
-        result = self._request(task, progress)
+        tracker.start_record()
+        result = self._request(task, tracker)
         if result is None:
             return None
         try:
@@ -147,16 +147,16 @@ class AIManager:
             # record and call 2 can read it later without another request.
             record.set_ai(result["theme"], result["sentiment"], result["severity"], result["summary"])
         except ValueError as exc:
-            progress.finish_failed(task.request_id)
-            self.__reporter.on_record_failed(task.request_id, str(exc), progress)
+            tracker.finish_failed(task.request_id)
+            self.__reporter.on_record_failed(task.request_id, str(exc), tracker.progress)
             return None
-        progress.finish_ok()
+        tracker.finish_ok()
         self.__reporter.on_record_ok(
-            task.request_id, f"{result['theme']} / {result['sentiment']} / {result['severity']}", progress
+            task.request_id, f"{result['theme']} / {result['sentiment']} / {result['severity']}", tracker.progress
         )
         return record
 
-    def _request(self, task: AITask, progress: BatchProgress) -> dict | None:
+    def _request(self, task: AITask, tracker: ProgressTracker) -> dict | None:
         """Send a task's request until its output validates, up to MAX_ATTEMPTS times.
 
         Every attempt is followed by the wait the client calls for, so callers
@@ -180,7 +180,7 @@ class AIManager:
                     messages, task.schema_name, task.schema, task.token_margin, task.max_completion_tokens
                 )
                 total_tokens += tokens
-                progress.add_tokens(tokens)
+                tracker.add_tokens(tokens)
                 result = task.parse(raw)
                 if result is None:
                     logger.debug("schema mismatch %s attempt %d: %s", task.request_id, attempt, raw)
@@ -189,14 +189,14 @@ class AIManager:
                 logger.debug("%s error %s attempt %d: %s", exc.kind, task.request_id, attempt, exc)
                 reason = str(exc)
                 if exc.kind == LLMRequestError.AUTH:
-                    progress.stop(reason, task.request_id)
+                    tracker.stop(reason, task.request_id)
                 if not exc.retryable:
                     gave_up_early = True
                     break
                 if exc.kind == LLMRequestError.CONNECTION:
                     connection_failures += 1
                     if connection_failures == MAX_ATTEMPTS:
-                        progress.stop("connection lost", task.request_id)
+                        tracker.stop("connection lost", task.request_id)
                         break
                 delay = exc.wait_seconds
                 if delay is None:
@@ -209,11 +209,11 @@ class AIManager:
                 delay = backoff
                 wait_reason = WAIT_BACKOFF
             if delay > MAX_WAIT_S:
-                progress.stop(f"rate-limit wait of {delay:.0f}s", task.request_id)
+                tracker.stop(f"rate-limit wait of {delay:.0f}s", task.request_id)
                 gave_up_early = result is None
                 break
             if result is None and attempt < MAX_ATTEMPTS:
-                progress.add_retry()
+                tracker.add_retry()
                 self.__reporter.on_attempt_failed(task.request_id, attempt, MAX_ATTEMPTS, reason)
             self.__reporter.on_wait(delay, wait_reason)
             time.sleep(delay)
@@ -222,14 +222,14 @@ class AIManager:
 
         self.__ledger.record(self.__key_label, task.request_id, total_tokens)
         if result is None:
-            progress.finish_failed(task.request_id)
+            tracker.finish_failed(task.request_id)
             failure = reason if gave_up_early else f"no valid output after {MAX_ATTEMPTS} attempts: {reason}"
-            self.__reporter.on_record_failed(task.request_id, failure, progress)
+            self.__reporter.on_record_failed(task.request_id, failure, tracker.progress)
         return result
 
-    def _end_batch(self, progress: BatchProgress) -> None:
-        if progress.stopped:
-            self.__reporter.on_batch_stopped(progress)
+    def _end_batch(self, tracker: ProgressTracker) -> None:
+        if tracker.stopped:
+            self.__reporter.on_batch_stopped(tracker.progress)
         self.__reporter.on_batch_end(
-            progress, self.__ledger.today_total(self.__key_label), self.__ledger.daily_limit
+            tracker.progress, self.__ledger.today_total(self.__key_label), self.__ledger.daily_limit
         )

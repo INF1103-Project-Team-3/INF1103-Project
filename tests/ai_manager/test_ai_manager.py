@@ -479,6 +479,15 @@ def test_non_retryable_error_stops_after_one_call(prompts, token_log, sleeps, en
     assert sleeps == []
 
 
+# AITask hands out a copy of its schema
+def test_task_schema_cannot_be_changed_from_outside(prompts, entry):
+    task = ClassificationTask(entry, prompts.system_prompt, prompts.themes, [])
+    task.schema["required"].append("extra")
+
+    assert "extra" not in task.schema["required"]
+    assert task.validate(classification()) is True
+
+
 # Call 2
 def test_summarise_sends_its_own_limits(prompts, token_log, sleeps):
     client = StubLLMClient([json.dumps(summary_output())])
