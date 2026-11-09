@@ -8,15 +8,17 @@ import pytest
 import requests
 
 import managers.ai_manager
-from managers.ai_manager import AIManager, AISummary, GroqClient, LLMClient, PromptLibrary, ai_manager as ai_manager_module
-from managers.ai_manager.ai_manager import BACKOFF_BASE_S, MAX_ATTEMPTS
+from managers.ai_manager import AIManager, AISummary, GroqClient, LLMClient, PromptLibrary
+from managers.ai_manager import request_runner as request_runner_module
 from managers.ai_manager.ai_task import AITask
 from managers.ai_manager.classification_task import (
     CLASSIFY_TOKEN_MARGIN, ClassificationTask, MAX_COINED_THEME_WORDS, MAX_SUMMARY_WORDS
 )
 from managers.ai_manager.groq_client import MODEL
 from managers.ai_manager.llm_request_error import LLMRequestError
+from managers.ai_manager.progress_tracker import ProgressTracker
 from managers.ai_manager.rate_limiter import DELAY_BUFFER_S, FALLBACK_DELAY_S, MIN_DELAY_S, RateLimiter
+from managers.ai_manager.request_runner import BACKOFF_BASE_S, MAX_ATTEMPTS, RequestRunner
 from managers.ai_manager.summary_task import (
     MAX_ACTION_WORDS, SUMMARY_MAX_COMPLETION_TOKENS, SUMMARY_TOKEN_MARGIN, SummaryTask
 )
@@ -98,7 +100,7 @@ def prompts():
 @pytest.fixture
 def sleeps(monkeypatch):
     waits = []
-    monkeypatch.setattr(ai_manager_module.time, "sleep", waits.append)
+    monkeypatch.setattr(request_runner_module.time, "sleep", waits.append)
     return waits
 
 
@@ -477,6 +479,31 @@ def test_non_retryable_error_stops_after_one_call(prompts, token_log, sleeps, en
     assert build_manager(client, prompts, token_log).classify_entries([entry], [], discard) == ([], [entry], False)
     assert len(client.calls) == 1
     assert sleeps == []
+
+
+# RequestRunner on its own: the retry policy without AIManager
+def test_request_runner_returns_validated_output_and_records_tokens(prompts, token_log, sleeps, entry):
+    client = StubLLMClient(["not json", json.dumps(classification())])
+    ledger = TokenLedger(client.model, token_log.load, token_log.save)
+    runner = RequestRunner(client, RecordingProgressReporter(), ledger, "test-key")
+    tracker = ProgressTracker(1)
+
+    result = runner.run(ClassificationTask(entry, prompts.system_prompt, prompts.themes, []), tracker)
+
+    assert result == classification()
+    assert tracker.record_retries == 1
+    assert sleeps[0] == BACKOFF_BASE_S
+    assert today_usage(token_log)["requests"][0]["feedback_id"] == entry.feedback_id
+
+
+def test_request_runner_stops_the_batch_on_a_rejected_key(prompts, token_log, sleeps, entry):
+    client = StubLLMClient([error(LLMRequestError.AUTH, retryable=False)])
+    runner = RequestRunner(client, RecordingProgressReporter(), TokenLedger(client.model, token_log.load, token_log.save), "k")
+    tracker = ProgressTracker(1)
+
+    assert runner.run(ClassificationTask(entry, prompts.system_prompt, prompts.themes, []), tracker) is None
+    assert tracker.stopped is True
+    assert tracker.failed_ids == [entry.feedback_id]
 
 
 # AITask hands out a copy of its schema

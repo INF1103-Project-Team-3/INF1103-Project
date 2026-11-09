@@ -6,10 +6,11 @@ from types import SimpleNamespace
 import pytest
 
 from managers.ai_manager import (
-    AIManager, BatchProgress, ConsoleProgressReporter, ProgressReporter, PromptLibrary, ai_manager as ai_manager_module
+    AIManager, BatchProgress, ConsoleProgressReporter, ProgressReporter, PromptLibrary
 )
+from managers.ai_manager import request_runner as request_runner_module
 from managers.ai_manager.progress_tracker import ProgressTracker
-from managers.ai_manager.ai_manager import BACKOFF_BASE_S, MAX_ATTEMPTS
+from managers.ai_manager.request_runner import BACKOFF_BASE_S, MAX_ATTEMPTS
 from managers.ai_manager.console_progress_reporter import CLEAR_LINE
 from managers.ai_manager.llm_request_error import LLMRequestError
 from managers.ai_manager.token_ledger import TokenLedger
@@ -48,7 +49,7 @@ def entry():
 @pytest.fixture
 def sleeps(monkeypatch):
     waits = []
-    monkeypatch.setattr(ai_manager_module.time, "sleep", waits.append)
+    monkeypatch.setattr(request_runner_module.time, "sleep", waits.append)
     return waits
 
 

@@ -9,6 +9,7 @@ from in_memory_token_log import InMemoryTokenLog
 from live_summary_run import NAMES, OUTAGE_EVERY, LiveSummaryRun
 from managers.ai_manager import AIManager, PromptLibrary
 from managers.ai_manager import ai_manager as ai_manager_module
+from managers.ai_manager import request_runner as request_runner_module
 from managers.ai_manager.summary_task import SummaryTask
 from managers.logic_manager import LogicManager
 from recording_progress_reporter import RecordingProgressReporter
@@ -34,7 +35,7 @@ def summary(overall="This summary covers 21 of 25 entries. One Well-being entry 
 
 @pytest.fixture
 def live_run(monkeypatch):
-    monkeypatch.setattr(ai_manager_module.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(request_runner_module.time, "sleep", lambda seconds: None)
     prompts = PromptLibrary("Themes: {themes}", "Summarise.", ["Facilities"])
 
     def build(replies):
