@@ -516,6 +516,25 @@ def test_task_schema_cannot_be_changed_from_outside(prompts, entry):
 
 
 # Call 2
+def test_summary_input_limit_is_injected_into_the_manager(prompts, token_log, sleeps):
+    records = []
+    for index in range(40):
+        record = make_record(f"fb_{index:03d}")
+        record.set_ai("Facilities", "negative", "low", "word " * 15)
+        record.set_final("Facilities", "negative", "low", MATCHED)
+        records.append(record)
+    stats = {**STATS, "themes": [{**STATS["themes"][0], "count": 40}]}
+    reply = {"overall_summary": "Overall.", "theme_actions": [{"theme": "Facilities", "suggested_action": "Act."}]}
+    client = StubLLMClient([json.dumps(reply)])
+    manager = AIManager(client, "test-key", prompts, RecordingProgressReporter(), token_log.load, token_log.save, 1_000)
+
+    manager.summarise(SimpleNamespace(to_dict=lambda: stats), records)
+
+    sent = client.calls[0]["messages"][1]["content"]
+    assert len(sent) <= 1_000
+    assert json.loads(sent)["examples_total"] == 40
+
+
 def test_summarise_sends_its_own_limits(prompts, token_log, sleeps):
     client = StubLLMClient([json.dumps(summary_output())])
 

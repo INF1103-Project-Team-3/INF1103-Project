@@ -21,6 +21,7 @@ from .progress_reporter import ProgressReporter
 from .progress_tracker import ProgressTracker
 from .prompt_library import PromptLibrary
 from .request_runner import RequestRunner
+from .summary_input import MAX_INPUT_CHARS
 from .summary_task import SummaryTask
 from .token_ledger import TokenLedger
 
@@ -40,11 +41,16 @@ class AIManager:
         reporter: ProgressReporter,
         load_token_log: Callable[[], dict | None],
         save_token_log: Callable[[dict], object],
+        summary_input_chars: int | None = MAX_INPUT_CHARS,
     ):
+        """summary_input_chars caps call 2's input (D19); None sends every
+        example. The default is the limit measured live; a caller can pass
+        another, e.g. to probe Groq's limit."""
         self.__client = client
         self.__key_label = key_label
         self.__prompts = prompts
         self.__reporter = reporter
+        self.__summary_input_chars = summary_input_chars
         self.__ledger = TokenLedger(client.model, load_token_log, save_token_log)
         self.__runner = RequestRunner(client, reporter, self.__ledger, key_label)
 
@@ -96,13 +102,13 @@ class AIManager:
 
         Sends result's counts and, per theme, the one-liner of every counted
         record in records (its raw text, cut short, if it has none), as
-        Part 1 did (D18). Over the size limit, the least severe examples
+        Part 1 did (D18). Over summary_input_chars, the least severe examples
         are left out (D19). Returns an AISummary with one action per theme in
         result's order, or None if every attempt failed, so the caller keeps
         the last summary. The pipeline skips this call when classify_entries
         stopped, as the API is then unlikely to answer (D20).
         """
-        task = SummaryTask(result.to_dict(), records, self.__prompts.summary_prompt)
+        task = SummaryTask(result.to_dict(), records, self.__prompts.summary_prompt, self.__summary_input_chars)
         tracker = ProgressTracker(1)
         self.__reporter.on_batch_start(
             "Summarising this run", [self.__client.model, f"key: {self.__key_label}"], tracker.progress

@@ -8,9 +8,7 @@ import requests
 from in_memory_token_log import InMemoryTokenLog
 from live_summary_run import NAMES, OUTAGE_EVERY, LiveSummaryRun
 from managers.ai_manager import AIManager, PromptLibrary
-from managers.ai_manager import ai_manager as ai_manager_module
 from managers.ai_manager import request_runner as request_runner_module
-from managers.ai_manager.summary_task import SummaryTask
 from managers.logic_manager import LogicManager
 from recording_progress_reporter import RecordingProgressReporter
 from stub_llm_client import StubLLMClient
@@ -40,8 +38,12 @@ def live_run(monkeypatch):
 
     def build(replies):
         log = InMemoryTokenLog()
-        manager = AIManager(StubLLMClient(replies), "test-key", prompts, RecordingProgressReporter(), log.load, log.save)
-        return LiveSummaryRun(manager, prompts.summary_prompt)
+        client = StubLLMClient(replies)
+
+        def make_manager(max_input_chars):
+            return AIManager(client, "test-key", prompts, RecordingProgressReporter(), log.load, log.save, max_input_chars)
+
+        return LiveSummaryRun(make_manager)
 
     return build
 
@@ -99,8 +101,6 @@ def test_trimmed_run_case_sends_the_trimmed_input(live_run):
     assert len(json.dumps(payload)) <= 12_000
     assert payload["examples_shown"] < payload["examples_total"]
     assert result is not None
-    # The swap is undone, so later calls use the real SummaryTask again.
-    assert ai_manager_module.SummaryTask is SummaryTask
 
 
 def test_routing_word_after_the_window_does_not_count(live_run):

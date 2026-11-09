@@ -13,7 +13,7 @@ import json
 import os
 import re
 import sys
-from functools import partial
+from collections.abc import Callable
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -25,9 +25,7 @@ from dotenv import load_dotenv  # noqa: E402
 from live_test_run import CONFIG_DIR, SAMPLES_DIR, load_token_log, save_token_log  # noqa: E402
 from usage_recorder import UsageRecorder  # noqa: E402
 from managers.ai_manager import AIManager, ConsoleProgressReporter, GroqClient, PromptLibrary  # noqa: E402
-from managers.ai_manager import ai_manager as ai_manager_module  # noqa: E402
-from managers.ai_manager.summary_input import MAX_INPUT_CHARS  # noqa: E402
-from managers.ai_manager.summary_task import SummaryTask  # noqa: E402
+from managers.ai_manager.summary_input import MAX_INPUT_CHARS, SummaryInput  # noqa: E402
 from managers.logic_manager import LogicManager  # noqa: E402
 from managers.models import CRITICAL, FeedbackRecord, THEMES  # noqa: E402
 
@@ -70,9 +68,10 @@ STATUS_QUO_WORDS = ("maintain", "keep", "continue")
 class LiveSummaryRun:
     """Live call 2 runs over the saved call 1 outputs, with the checks."""
 
-    def __init__(self, manager: AIManager, system_prompt: str, samples_dir: Path = SAMPLES_DIR):
-        self.__manager = manager
-        self.__system_prompt = system_prompt
+    def __init__(self, make_manager: Callable[[int | None], AIManager], samples_dir: Path = SAMPLES_DIR):
+        """make_manager builds an AIManager with a given call 2 input limit,
+        so a probe can use another limit than the measured one."""
+        self.__make_manager = make_manager
         self.__samples_dir = samples_dir
 
     # Building each case's records
@@ -111,20 +110,14 @@ class LiveSummaryRun:
     ) -> tuple[dict, str | None]:
         """Run Logic then call 2 once. Returns (the call 2 input, the summary as a dict or None).
 
-        max_input_chars replaces MAX_INPUT_CHARS for a probe, by swapping the
-        SummaryTask that AIManager builds for one with this limit.
+        max_input_chars is the call 2 input limit for this run, passed to the
+        AIManager the way AppEngine would pass it.
         """
         logic = LogicManager()
         logic.apply_rules(records)
         result = logic.aggregate(records)
-        task = partial(SummaryTask, max_input_chars=max_input_chars)
-        payload = json.loads(task(result.to_dict(), records, self.__system_prompt).build_messages()[1]["content"])
-        original = ai_manager_module.SummaryTask
-        ai_manager_module.SummaryTask = task
-        try:
-            summary = self.__manager.summarise(result, records)
-        finally:
-            ai_manager_module.SummaryTask = original
+        payload = SummaryInput(result.to_dict(), records, max_input_chars).payload
+        summary = self.__make_manager(max_input_chars).summarise(result, records)
         return payload, summary.to_dict() if summary is not None else None
 
     # Checks, each from a rule in summary_prompt.txt
@@ -246,7 +239,7 @@ def recheck(live_run: LiveSummaryRun) -> None:
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["recheck"]:
-        recheck(LiveSummaryRun(None, ""))
+        recheck(LiveSummaryRun(None))
         sys.exit()
     load_dotenv(CONFIG_DIR / ".env")
     api_key = os.environ.get("GROQ_API_KEY")
@@ -260,8 +253,13 @@ if __name__ == "__main__":
     )
     usage = UsageRecorder()
     usage.install()
-    manager = AIManager(GroqClient(api_key), key_label, prompts, ConsoleProgressReporter(), load_token_log, save_token_log)
-    live = LiveSummaryRun(manager, prompts.summary_prompt)
+    client = GroqClient(api_key)
+    reporter = ConsoleProgressReporter()
+
+    def make_manager(max_input_chars: int | None) -> AIManager:
+        return AIManager(client, key_label, prompts, reporter, load_token_log, save_token_log, max_input_chars)
+
+    live = LiveSummaryRun(make_manager)
     mode = sys.argv[1] if len(sys.argv) > 1 else "cases"
     saved = []
     if mode in ("cases", "all", "cases+trimmed"):
