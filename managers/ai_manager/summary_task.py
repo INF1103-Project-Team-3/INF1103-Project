@@ -1,8 +1,11 @@
-"""SummaryTask: call 2, summarising one run's aggregated stats."""
+"""SummaryTask: call 2, summarising one run's stats and the counted records' one-liners."""
 
 import json
 
+from managers.models import FeedbackRecord
+
 from .ai_task import AITask
+from .summary_input import MAX_INPUT_CHARS, SummaryInput
 
 MAX_OVERALL_SUMMARY_WORDS = 120  # overall_summary; the prompt aims for ~80
 MAX_ACTION_WORDS = 30  # each suggested_action
@@ -39,22 +42,29 @@ SUMMARY_SCHEMA = {
 
 
 class SummaryTask(AITask):
-    """One summary request for one run's stats."""
+    """One summary request for one run: what to send, and how to check the
+    reply. Building the input itself is SummaryInput's job."""
 
-    def __init__(self, stats: dict, system_prompt: str):
-        """stats is AggregationResult.to_dict()'s output."""
+    def __init__(
+        self,
+        stats: dict,
+        records: list[FeedbackRecord],
+        system_prompt: str,
+        max_input_chars: int | None = MAX_INPUT_CHARS,
+    ):
+        """stats is AggregationResult.to_dict()'s output; records are the
+        run's records, of which only the counted ones become examples."""
         super().__init__(
             SUMMARY_REQUEST_ID, "feedback_summary", SUMMARY_SCHEMA, SUMMARY_TOKEN_MARGIN, SUMMARY_MAX_COMPLETION_TOKENS
         )
-        self.__stats = stats
         self.__system_prompt = system_prompt
-        self.__theme_names = [theme["theme"] for theme in stats["themes"]]
+        self.__input = SummaryInput(stats, records, max_input_chars)
 
     def build_messages(self) -> list[dict[str, str]]:
         """Return the chat messages for the summary request."""
         return [
             {"role": "system", "content": self.__system_prompt},
-            {"role": "user", "content": json.dumps(self.__stats)},
+            {"role": "user", "content": json.dumps(self.__input.payload)},
         ]
 
     def validate(self, result: object) -> bool:
@@ -78,7 +88,7 @@ class SummaryTask(AITask):
                 and isinstance(action.get("suggested_action"), str)
                 for action in actions
             )
-            and [action["theme"] for action in actions] == self.__theme_names
+            and [action["theme"] for action in actions] == self.__input.theme_names
             and all(action["suggested_action"].strip() != "" for action in actions)
             and all(len(action["suggested_action"].split()) <= MAX_ACTION_WORDS for action in actions)
         )

@@ -10,15 +10,16 @@ INPUT
   - severity_counts: entries at each severity.
   - avg_sentiment: mean sentiment, from -1.0 (all negative) to +1.0 (all positive).
   - examples: a one-line summary of each entry in the theme, with its severity, most severe first.
+- examples_shown, examples_total: present only when there were too many entries to list every example. The least severe examples were left out, so only examples_shown of examples_total appear; every count above still covers all entries.
 Severity: low = minor inconvenience; medium = recurring friction, but the student can still do the work; high = blocks a task or essential access, or an unfair burden; critical = safety concern, harassment, or severe distress needing immediate human intervention.
 
 NUMBERS
 Every number in the input is exact and already computed. State numbers only as they appear in the input. Never count, add, average, or convert to percentages yourself.
 
-overall_summary: about 80 words (120 maximum), for staff who have not read the feedback. A mix of sentences and short lists is fine.
+overall_summary: about 80 words and no more than 100, for staff who have not read the feedback; output over 120 words is rejected. A mix of sentences and short lists is fine.
 - Open with the basis: counted_entries out of total_entries.
 - Then every critical entry, however few - these need immediate attention. Combine two only if they describe the same problem.
-- Then any high-severity entries.
+- Then any high-severity entries, grouped by theme. When there are many, give only each theme's main problem; theme_actions carry the rest.
 - Name the theme of each critical and high-severity item, in the sentence or in brackets after it.
 - Then the most frequent or most negative themes and the problems their examples describe, if not already covered.
 - Positive feedback, if any, briefly and last. Praise is never an issue: do not mention it among the problems.
@@ -32,7 +33,7 @@ suggested_action: one sentence, 30 words maximum - concrete steps staff could ta
 - If a theme has critical examples, the action starts by getting those cases to the team responsible (e.g. student welfare, campus safety, estates) for immediate follow-up, rather than proposing a fix yourself.
 - Base every step on a problem or suggestion in the examples. Where a student suggests a fix, use it. Do not invent features, policies, or measures the examples do not point to.
 - Be specific to what the examples describe (for complaints about weekend closures, "extend weekend library opening hours", not "improve facilities").
-- If a theme's examples are only praise, the action is to keep doing what is praised.
+- If a theme's examples are only praise, the action is to keep doing what is praised. If they mix praise and complaints, the action deals with the complaints; never tell staff to keep doing something a student complained about.
 - No figures, deadlines, or amounts that the examples do not contain.
 - Do not promise outcomes, assign blame, or name individuals.
 

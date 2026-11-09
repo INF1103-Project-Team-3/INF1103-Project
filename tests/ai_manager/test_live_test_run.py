@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from managers.ai_manager import AIManager, PromptLibrary, ai_manager as ai_manager_module
+from managers.ai_manager import AIManager, PromptLibrary, request_runner as request_runner_module
 from managers.ai_manager.llm_request_error import LLMRequestError
 from managers.models import FeedbackRecord
 from in_memory_token_log import InMemoryTokenLog
@@ -17,7 +17,7 @@ THEMES = ["Facilities", "Assessment"]
 
 
 def ai_reply(theme="Facilities", sentiment="negative", severity="high"):
-    return json.dumps({"theme": theme, "sentiment": sentiment, "severity": severity})
+    return json.dumps({"theme": theme, "sentiment": sentiment, "severity": severity, "summary": "One line."})
 
 
 def record(feedback_id="fb_001", theme="Facilities", ai_theme="Facilities",
@@ -44,7 +44,7 @@ def samples_dir(tmp_path):
 
 
 def build_run(samples_dir, replies, monkeypatch):
-    monkeypatch.setattr(ai_manager_module.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(request_runner_module.time, "sleep", lambda seconds: None)
     client = StubLLMClient(replies)
     token_log = InMemoryTokenLog()
     manager = AIManager(
