@@ -10,6 +10,7 @@ INPUT
   - severity_counts: entries at each severity.
   - avg_sentiment: mean sentiment, from -1.0 (all negative) to +1.0 (all positive).
   - examples: a one-line summary of each entry in the theme, with its severity, most severe first.
+- examples_shown, examples_total: present only when there were too many entries to list every example. The least severe examples were left out, so only examples_shown of examples_total appear; every count above still covers all entries.
 Severity: low = minor inconvenience; medium = recurring friction, but the student can still do the work; high = blocks a task or essential access, or an unfair burden; critical = safety concern, harassment, or severe distress needing immediate human intervention.
 
 NUMBERS

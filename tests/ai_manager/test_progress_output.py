@@ -18,7 +18,11 @@ from recording_progress_reporter import RecordingProgressReporter
 from stub_llm_client import StubLLMClient
 
 USER = {"theme": "Assessment", "sentiment": "neutral", "severity": "low"}
-RESULT = SimpleNamespace(to_dict=lambda: {"themes": [{"theme": "Facilities"}]})  # stands in for AggregationResult
+RESULT = SimpleNamespace(to_dict=lambda: {  # stands in for AggregationResult
+    "total_entries": 1, "counted_entries": 1, "sentiment_counts": {"positive": 0, "neutral": 0, "negative": 1},
+    "themes": [{"theme": "Facilities", "count": 1, "severity_counts": {"low": 0, "medium": 0, "high": 1, "critical": 0},
+                "avg_sentiment": -1.0}],
+})
 GOOD = json.dumps({"theme": "Facilities", "sentiment": "negative", "severity": "high", "summary": "Lift broken."})
 GOOD_SUMMARY = json.dumps({"overall_summary": "All.",
                            "theme_actions": [{"theme": "Facilities", "suggested_action": "Fix."}]})

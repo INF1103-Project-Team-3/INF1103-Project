@@ -21,13 +21,23 @@ from managers.ai_manager.summary_task import (
     MAX_ACTION_WORDS, SUMMARY_MAX_COMPLETION_TOKENS, SUMMARY_TOKEN_MARGIN, SummaryTask
 )
 from managers.ai_manager.token_ledger import TokenLedger
-from managers.models import FeedbackRecord, PENDING, Serializable, THEMES
+from managers.models import FeedbackRecord, MATCHED, PENDING, Serializable, THEMES
 from in_memory_token_log import InMemoryTokenLog
 from recording_progress_reporter import RecordingProgressReporter
 from stub_llm_client import StubLLMClient
 
 CONFIG_DIR = Path(__file__).resolve().parents[2] / "managers" / "config"
-STATS = {"themes": [{"theme": "Facilities"}, {"theme": "Assessment"}]}
+STATS = {
+    "total_entries": 2, "counted_entries": 2, "negative_percent": 50, "unverified_count": 0,
+    "sentiment_counts": {"positive": 0, "neutral": 1, "negative": 1},
+    "themes": [
+        {"theme": theme, "count": 1, "severity_counts": {"low": 0, "medium": 0, "high": 1, "critical": 0},
+         "sentiment_counts": {"positive": 0, "neutral": 0, "negative": 1}, "avg_sentiment": -1.0,
+         "priority": 2, "unverified": 0}
+        for theme in ("Facilities", "Assessment")
+    ],
+    "pending_themes": {},
+}
 RESULT = SimpleNamespace(to_dict=lambda: STATS)  # stands in for AggregationResult
 USER = {"theme": "Assessment", "sentiment": "neutral", "severity": "low"}
 
@@ -126,7 +136,7 @@ def test_stub_substitutes_for_groq_client(prompts, token_log, sleeps, entry):
 
 def test_both_tasks_are_ai_tasks(prompts, entry):
     assert isinstance(ClassificationTask(entry, prompts.system_prompt, prompts.themes, []), AITask)
-    assert isinstance(SummaryTask(STATS, prompts.summary_prompt), AITask)
+    assert isinstance(SummaryTask(STATS, [], prompts.summary_prompt), AITask)
 
 
 # Call 1: the record contract
@@ -478,7 +488,7 @@ def test_summarise_sends_its_own_limits(prompts, token_log, sleeps):
     call = client.calls[0]
     assert call["token_margin"] == SUMMARY_TOKEN_MARGIN
     assert call["max_completion_tokens"] == SUMMARY_MAX_COMPLETION_TOKENS
-    assert json.loads(call["messages"][1]["content"]) == STATS
+    assert json.loads(call["messages"][1]["content"])["total_entries"] == STATS["total_entries"]
     assert today_usage(token_log)["requests"][0]["feedback_id"] == "summary"
 
 
@@ -493,11 +503,17 @@ def test_summarise_returns_an_ai_summary(prompts, token_log, sleeps):
     assert summary.created_at
 
 
-def test_summarise_does_not_send_the_records_yet(prompts, token_log, sleeps):
+def test_summarise_sends_the_counted_records_one_liners(prompts, token_log, sleeps):
+    record = make_record()
+    record.set_ai("Facilities", "negative", "high", "Lift broken for weeks.")
+    record.set_final("Facilities", "negative", "high", MATCHED)
     client = StubLLMClient([json.dumps(summary_output())])
 
-    build_manager(client, prompts, token_log).summarise(RESULT, [make_record()])
+    build_manager(client, prompts, token_log).summarise(RESULT, [record])
 
+    payload = json.loads(client.calls[0]["messages"][1]["content"])
+    assert payload["themes"][0]["examples"] == [{"severity": "high", "summary": "Lift broken for weeks."}]
+    # The one-liner goes, not the text it restates.
     assert "slides" not in json.dumps(client.calls[0]["messages"])
 
 
@@ -615,7 +631,7 @@ def test_classification_schema_requires_a_string_summary(prompts, entry):
     ]},
 ])
 def test_summary_rejects_bad_output(prompts, bad_result):
-    assert SummaryTask(STATS, prompts.summary_prompt).validate(bad_result) is False
+    assert SummaryTask(STATS, [], prompts.summary_prompt).validate(bad_result) is False
 
 
 def test_parse_raises_on_non_json(prompts, entry):

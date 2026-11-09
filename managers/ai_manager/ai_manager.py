@@ -1,7 +1,8 @@
 """AI manager: every LLM API call goes through here.
 
-Call 1 (classify_entries) classifies feedback entries; call 2 (summarise)
-summarises a run's aggregated stats. Both share one retry loop, which works
+Call 1 (classify_entries) classifies feedback entries and writes each a
+one-line summary; call 2 (summarise) summarises a run's aggregated stats from
+those one-liners. Both share one retry loop, which works
 with any AITask and any LLMClient. API only: no print(), no domain rules;
 progress goes to a ProgressReporter as events.
 """
@@ -104,13 +105,17 @@ class AIManager:
         return classified, pending, progress.stopped
 
     def summarise(self, result: AggregationResult, records: list[FeedbackRecord]) -> AISummary | None:
-        """Summarise one run's aggregated stats (call 2).
+        """Summarise one run (call 2).
 
-        Returns an AISummary with one action per theme in result's order, or
-        None if every attempt failed. records is not sent yet: the changes to
-        call 2's input are on hold.
+        Sends result's counts and, per theme, the one-liner of every counted
+        record in records (its raw text, cut short, if it has none), as
+        Part 1 did (D18). Over the size limit, the least severe examples are
+        left out (D19). Returns an AISummary with one action per theme in
+        result's order, or None if every attempt failed, so the caller keeps
+        the last summary. The pipeline skips this call when classify_entries
+        stopped, as the API is then unlikely to answer (D20).
         """
-        task = SummaryTask(result.to_dict(), self.__prompts.summary_prompt)
+        task = SummaryTask(result.to_dict(), records, self.__prompts.summary_prompt)
         progress = BatchProgress(1)
         self.__reporter.on_batch_start(
             "Summarising this run", [self.__client.model, f"key: {self.__key_label}"], progress
