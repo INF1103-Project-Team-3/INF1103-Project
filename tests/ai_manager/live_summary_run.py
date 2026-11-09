@@ -20,10 +20,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import requests  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 
 from live_test_run import CONFIG_DIR, SAMPLES_DIR, load_token_log, save_token_log  # noqa: E402
+from usage_recorder import UsageRecorder  # noqa: E402
 from managers.ai_manager import AIManager, ConsoleProgressReporter, GroqClient, PromptLibrary  # noqa: E402
 from managers.ai_manager import ai_manager as ai_manager_module  # noqa: E402
 from managers.ai_manager.summary_task import MAX_INPUT_CHARS, SummaryTask  # noqa: E402
@@ -64,29 +64,6 @@ OVERALL_TARGET_WORDS = 100
 # An action that opens with one of these keeps the status quo, which is only
 # right for a theme whose examples are all praise (summary prompt).
 STATUS_QUO_WORDS = ("maintain", "keep", "continue")
-
-
-class UsageRecorder:
-    """Records every Groq response's status and token usage by wrapping
-    requests.Session.post, so the measurement needs no change to GroqClient."""
-
-    def __init__(self):
-        self.responses = []
-        self.__post = requests.Session.post
-
-    def install(self) -> None:
-        recorder = self
-
-        def post(session, *args, **kwargs):
-            response = recorder.__post(session, *args, **kwargs)
-            try:
-                usage = response.json().get("usage", {})
-            except ValueError:
-                usage = {}
-            recorder.responses.append({"status": response.status_code, "usage": usage, "body": response.text[:300]})
-            return response
-
-        requests.Session.post = post
 
 
 class LiveSummaryRun:

@@ -3,6 +3,7 @@
 import json
 
 import pytest
+import requests
 
 from in_memory_token_log import InMemoryTokenLog
 from live_summary_run import NAMES, OUTAGE_EVERY, LiveSummaryRun
@@ -12,6 +13,7 @@ from managers.ai_manager.summary_task import SummaryTask
 from managers.logic_manager import LogicManager
 from recording_progress_reporter import RecordingProgressReporter
 from stub_llm_client import StubLLMClient
+from usage_recorder import UsageRecorder
 
 PAYLOAD = {
     "total_entries": 25, "counted_entries": 21,
@@ -150,3 +152,38 @@ def test_run_case_runs_logic_then_call_2(live_run):
     assert payload["counted_entries"] == sum(theme["count"] for theme in payload["themes"])
     # A record with no one-liner sends its raw text: fb_019's text reaches the input.
     assert any("wifi in the library" in example["summary"] for theme in payload["themes"] for example in theme["examples"])
+
+
+# UsageRecorder
+def test_usage_recorder_records_status_usage_and_body(monkeypatch):
+    def fake_post(session, *args, **kwargs):
+        response = requests.Response()
+        response.status_code = 413
+        response._content = json.dumps({"error": "too large", "usage": {"prompt_tokens": 5}}).encode()
+        return response
+
+    # monkeypatch puts the real post back after the test, undoing install() too.
+    monkeypatch.setattr(requests.Session, "post", fake_post)
+    recorder = UsageRecorder()
+    recorder.install()
+
+    response = requests.Session().post("https://example.invalid")
+
+    assert response.status_code == 413
+    assert recorder.responses == [{"status": 413, "usage": {"prompt_tokens": 5}, "body": response.text[:300]}]
+
+
+def test_usage_recorder_copes_with_a_non_json_body(monkeypatch):
+    def fake_post(session, *args, **kwargs):
+        response = requests.Response()
+        response.status_code = 502
+        response._content = b"<html>Bad gateway</html>"
+        return response
+
+    monkeypatch.setattr(requests.Session, "post", fake_post)
+    recorder = UsageRecorder()
+    recorder.install()
+
+    requests.Session().post("https://example.invalid")
+
+    assert recorder.responses[0]["usage"] == {}
