@@ -14,6 +14,16 @@ except ImportError:
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
+def _read_list_strict(path: Union[str, Path]) -> List[Any]:
+    """Module-level compatibility helper for older I/O tests."""
+    store = JsonFileStore()
+    data = store.load(Path(path))
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict) and "records" in data:
+        return data["records"]
+    raise ValueError("Expected a list or records container.")
+
 class DataManager:
     """
     Core Data Manager class for v1.2 architecture. Encapsulates all file operations[cite: 8].
