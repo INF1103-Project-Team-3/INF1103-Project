@@ -4,7 +4,7 @@ import re
 import textwrap
 from typing import Any, Callable, Sequence
 
-from ..models import CRITICAL, HIGH, LABEL_FIELDS, UNCLEAR_THEME, FeedbackRecord
+from managers.models import CRITICAL, HIGH, LABEL_FIELDS, UNCLEAR_THEME, FeedbackRecord
 
 from .feedback_view import FeedbackView
 

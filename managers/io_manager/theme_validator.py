@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from .input_validator import InputValidator
 
 if TYPE_CHECKING:
-    from ..logic_manager import LogicManager
+    from managers.logic_manager import LogicManager
 
 
 class ThemeValidator(InputValidator):

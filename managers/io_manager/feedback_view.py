@@ -3,11 +3,11 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Sequence
 
-from ..models import FeedbackRecord
+from managers.models import FeedbackRecord
 
 if TYPE_CHECKING:
-    from ..ai_manager import AISummary
-    from ..logic_manager import AggregationResult, TrendReport
+    from managers.ai_manager import AISummary
+    from managers.logic_manager import AggregationResult, TrendReport
 
 
 class FeedbackView(ABC):

@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Callable, Mapping
 
-from ..models import LABEL_FIELDS, TIMESTAMP_FORMAT, Action, FeedbackRecord
+from managers.models import LABEL_FIELDS, TIMESTAMP_FORMAT, Action, FeedbackRecord
 
 
 class RecordBuilder:
