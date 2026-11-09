@@ -6,7 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from managers.ai_manager.summary_task import MAX_INPUT_CHARS, MAX_TEXT_CHARS, SummaryTask
+from managers.ai_manager.summary_input import MAX_INPUT_CHARS, MAX_TEXT_CHARS, SummaryInput
+from managers.ai_manager.summary_task import SummaryTask
 from managers.logic_manager import LogicManager
 from managers.models import FeedbackRecord, MATCHED, UNVERIFIED
 
@@ -58,6 +59,23 @@ def padded(label):
 
 def labels(built, theme_index=0):
     return [example["summary"].split()[0] for example in examples(built, theme_index)]
+
+
+# SummaryInput on its own
+def test_summary_input_payload_and_theme_names_are_copies():
+    built = SummaryInput(stats(theme_stats("Facilities"), theme_stats("Workload")), [record("fb_1", "Facilities", "high")])
+
+    built.payload["themes"].clear()
+    built.theme_names.clear()
+
+    assert len(built.payload["themes"]) == 2
+    assert built.theme_names == ["Facilities", "Workload"]
+
+
+def test_summary_task_sends_what_summary_input_builds():
+    records = [record("fb_1", "Facilities", "high", "Lift.")]
+
+    assert payload(stats(theme_stats("Facilities")), records) == SummaryInput(stats(theme_stats("Facilities")), records, None).payload
 
 
 # Part 1's shape

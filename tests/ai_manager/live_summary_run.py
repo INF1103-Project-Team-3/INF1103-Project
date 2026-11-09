@@ -26,7 +26,8 @@ from live_test_run import CONFIG_DIR, SAMPLES_DIR, load_token_log, save_token_lo
 from usage_recorder import UsageRecorder  # noqa: E402
 from managers.ai_manager import AIManager, ConsoleProgressReporter, GroqClient, PromptLibrary  # noqa: E402
 from managers.ai_manager import ai_manager as ai_manager_module  # noqa: E402
-from managers.ai_manager.summary_task import MAX_INPUT_CHARS, SummaryTask  # noqa: E402
+from managers.ai_manager.summary_input import MAX_INPUT_CHARS  # noqa: E402
+from managers.ai_manager.summary_task import SummaryTask  # noqa: E402
 from managers.logic_manager import LogicManager  # noqa: E402
 from managers.models import CRITICAL, FeedbackRecord, THEMES  # noqa: E402
 
