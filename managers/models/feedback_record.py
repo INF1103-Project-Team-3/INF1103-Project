@@ -67,7 +67,8 @@ class FeedbackRecord(Serializable):
 
     @property
     def ai(self) -> dict[str, str] | None:
-        """The AI's theme, sentiment and severity (a copy), or None if the AI failed or has not run."""
+        """The AI's theme, sentiment and severity (a copy), plus its "summary" if it
+        has one. None if the AI failed or has not run."""
         return dict(self.__ai) if self.__ai is not None else None
 
     @property
@@ -102,10 +103,15 @@ class FeedbackRecord(Serializable):
         """True once Logic has checked the record and no reason excludes it from statistics."""
         return self.__verification != PENDING and not self.__excluded
 
-    def set_ai(self, theme: str, sentiment: str, severity: str) -> None:
-        """AI: stores the AI's values. Raises ValueError for a value not in the constants."""
+    def set_ai(self, theme: str, sentiment: str, severity: str, summary: str | None = None) -> None:
+        """AI: stores the AI's values, including its one-line summary of the text.
+        Raises ValueError for a value not in the constants or a blank summary."""
         self.__check_values(theme, sentiment, severity)
+        if summary is not None and (not isinstance(summary, str) or not summary.strip()):
+            raise ValueError(f"summary must be non-empty text or None, got {summary!r}")
         self.__ai = {"theme": theme, "sentiment": sentiment, "severity": severity}
+        if summary is not None:
+            self.__ai["summary"] = summary
 
     def set_final(self, theme: str, sentiment: str, severity: str, verification: str) -> None:
         """Logic: stores the final values and the verification result

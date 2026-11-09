@@ -44,6 +44,26 @@ def test_set_ai_stores_the_ai_values():
     assert record.ai == {"theme": "Wi-Fi", "sentiment": NEGATIVE, "severity": CRITICAL}
 
 
+def test_set_ai_stores_a_summary_when_given():
+    record = make_record()
+    record.set_ai("Wi-Fi", NEGATIVE, CRITICAL, "Library wifi keeps dropping.")
+    assert record.ai["summary"] == "Library wifi keeps dropping."
+
+
+@pytest.mark.parametrize("summary", ["", "   ", 1])
+def test_a_bad_summary_is_rejected_and_stores_nothing(summary):
+    record = make_record()
+    with pytest.raises(ValueError):
+        record.set_ai("Wi-Fi", NEGATIVE, CRITICAL, summary)
+    assert record.ai is None
+
+
+def test_round_trip_keeps_the_summary():
+    record = make_record()
+    record.set_ai("Wi-Fi", NEGATIVE, CRITICAL, "Library wifi keeps dropping.")
+    assert FeedbackRecord.from_dict(record.to_dict()).ai["summary"] == "Library wifi keeps dropping."
+
+
 @pytest.mark.parametrize("theme, sentiment, severity", [
     ("", NEGATIVE, HIGH),
     ("Facilities", "angry", HIGH),
