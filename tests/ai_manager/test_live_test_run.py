@@ -17,7 +17,7 @@ THEMES = ["Facilities", "Assessment"]
 
 
 def ai_reply(theme="Facilities", sentiment="negative", severity="high"):
-    return json.dumps({"theme": theme, "sentiment": sentiment, "severity": severity})
+    return json.dumps({"theme": theme, "sentiment": sentiment, "severity": severity, "summary": "One line."})
 
 
 def record(feedback_id="fb_001", theme="Facilities", ai_theme="Facilities",

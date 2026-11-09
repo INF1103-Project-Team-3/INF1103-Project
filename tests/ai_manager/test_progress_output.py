@@ -19,7 +19,7 @@ from stub_llm_client import StubLLMClient
 
 USER = {"theme": "Assessment", "sentiment": "neutral", "severity": "low"}
 RESULT = SimpleNamespace(to_dict=lambda: {"themes": [{"theme": "Facilities"}]})  # stands in for AggregationResult
-GOOD = json.dumps({"theme": "Facilities", "sentiment": "negative", "severity": "high"})
+GOOD = json.dumps({"theme": "Facilities", "sentiment": "negative", "severity": "high", "summary": "Lift broken."})
 GOOD_SUMMARY = json.dumps({"overall_summary": "All.",
                            "theme_actions": [{"theme": "Facilities", "suggested_action": "Fix."}]})
 

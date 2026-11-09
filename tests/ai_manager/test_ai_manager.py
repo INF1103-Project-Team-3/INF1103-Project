@@ -12,7 +12,7 @@ from managers.ai_manager import AIManager, AISummary, GroqClient, LLMClient, Pro
 from managers.ai_manager.ai_manager import BACKOFF_BASE_S, MAX_ATTEMPTS
 from managers.ai_manager.ai_task import AITask
 from managers.ai_manager.classification_task import (
-    CLASSIFY_TOKEN_MARGIN, ClassificationTask, MAX_COINED_THEME_WORDS
+    CLASSIFY_TOKEN_MARGIN, ClassificationTask, MAX_COINED_THEME_WORDS, MAX_SUMMARY_WORDS
 )
 from managers.ai_manager.groq_client import MODEL
 from managers.ai_manager.llm_request_error import LLMRequestError
@@ -47,8 +47,12 @@ def with_ai(theme, user=None):
     return record
 
 
-def classification(theme="Facilities", sentiment="negative", severity="high"):
-    return {"theme": theme, "sentiment": sentiment, "severity": severity}
+def classification(theme="Facilities", sentiment="negative", severity="high", summary="Slides move too fast."):
+    return {"theme": theme, "sentiment": sentiment, "severity": severity, "summary": summary}
+
+
+def without(result, field):
+    return {key: value for key, value in result.items() if key != field}
 
 
 def discard(record):
@@ -138,6 +142,37 @@ def test_success_sets_ai_and_leaves_everything_else(prompts, token_log, sleeps, 
     assert entry.verification == PENDING
     assert pending == []
     assert stopped is False
+
+
+def test_summary_is_stored_in_ai_through_set_ai(prompts, token_log, sleeps, entry):
+    saved = []
+    client = StubLLMClient([json.dumps(classification(summary="Student cannot keep up with the slides."))])
+
+    build_manager(client, prompts, token_log).classify_entries([entry], [], saved.append)
+
+    assert entry.ai["summary"] == "Student cannot keep up with the slides."
+    # The record handed to on_classified already carries it, so Data saves it.
+    assert saved[0].ai["summary"] == "Student cannot keep up with the slides."
+    assert FeedbackRecord.from_dict(entry.to_dict()).ai["summary"] == "Student cannot keep up with the slides."
+
+
+def test_summary_over_the_word_limit_is_retried(prompts, token_log, sleeps, entry):
+    too_long = classification(summary="word " * (MAX_SUMMARY_WORDS + 1))
+    client = StubLLMClient([json.dumps(too_long), json.dumps(classification())])
+
+    classified, pending, stopped = build_manager(client, prompts, token_log).classify_entries([entry], [], discard)
+
+    assert len(client.calls) == 2
+    assert classified == [entry]
+    assert entry.ai["summary"] == classification()["summary"]
+
+
+def test_summary_over_the_word_limit_every_attempt_leaves_record_pending(prompts, token_log, sleeps, entry):
+    too_long = classification(summary="word " * (MAX_SUMMARY_WORDS + 1))
+    client = StubLLMClient([json.dumps(too_long)] * MAX_ATTEMPTS)
+
+    assert build_manager(client, prompts, token_log).classify_entries([entry], [], discard) == ([], [entry], False)
+    assert entry.ai is None
 
 
 def test_only_the_text_reaches_the_model(prompts, token_log, sleeps):
@@ -516,7 +551,12 @@ def test_classification_uses_its_own_limits(prompts, entry):
     "not a dict",
     {"theme": "missing fields"},
     {**classification(), "extra": 1},
-    {**classification(), "summary": "Removed field."},
+    without(classification(), "summary"),
+    classification(summary=" "),
+    classification(summary=""),
+    classification(summary=None),
+    classification(summary=15),
+    classification(summary="word " * (MAX_SUMMARY_WORDS + 1)),
     {**classification(), "confidence": 0.9},
     classification(theme=" "),
     classification(theme="word " * (MAX_COINED_THEME_WORDS + 1)),
@@ -534,6 +574,8 @@ def test_classification_rejects_bad_output(prompts, bad_result, entry):
     classification(theme="Unclear"),
     classification(theme="Catering"),
     classification(theme="word " * MAX_COINED_THEME_WORDS),
+    classification(summary="word " * MAX_SUMMARY_WORDS),
+    classification(summary="One."),
 ])
 def test_classification_accepts_valid_output(prompts, good_result, entry):
     assert ClassificationTask(entry, prompts.system_prompt, prompts.themes, []).validate(good_result) is True
@@ -543,7 +585,15 @@ def test_classification_schema_lets_theme_be_coined(prompts, entry):
     properties = ClassificationTask(entry, prompts.system_prompt, prompts.themes, []).schema["properties"]
 
     assert "enum" not in properties["theme"]
-    assert set(properties) == {"theme", "sentiment", "severity"}
+    assert set(properties) == {"theme", "sentiment", "severity", "summary"}
+
+
+def test_classification_schema_requires_a_string_summary(prompts, entry):
+    schema = ClassificationTask(entry, prompts.system_prompt, prompts.themes, []).schema
+
+    assert schema["properties"]["summary"] == {"type": "string"}
+    assert "summary" in schema["required"]
+    assert schema["additionalProperties"] is False
 
 
 @pytest.mark.parametrize("bad_result", [
@@ -792,8 +842,21 @@ def test_prompt_library_works_with_the_real_prompts_and_base_themes():
     assert "{themes}" not in prompts.system_prompt
     assert prompts.summary_prompt
     assert "existing_new_themes" in prompts.system_prompt
-    for removed in ("confidence", "summary", "alternative_themes"):
+    assert f"summary: one-line restatement, {MAX_SUMMARY_WORDS} words maximum." in prompts.system_prompt
+    for removed in ("confidence", "alternative_themes"):
         assert removed not in prompts.system_prompt
+
+
+def test_real_prompt_examples_pass_classification_validation(entry):
+    # Every few-shot output must itself be valid, or the prompt teaches the model
+    # an answer validation would reject (e.g. a summary over the word limit).
+    prompts = PromptLibrary((CONFIG_DIR / "system_prompt.txt").read_text(encoding="utf-8"), "Summarise.", THEMES)
+    task = ClassificationTask(entry, prompts.system_prompt, prompts.themes, [])
+    outputs = [line.removeprefix("Output: ") for line in prompts.system_prompt.splitlines() if line.startswith("Output: ")]
+
+    assert len(outputs) == 7
+    for output in outputs:
+        assert task.validate(json.loads(output)) is True, output
 
 
 @pytest.mark.parametrize("themes", ["Facilities", [], [""], [1], None])

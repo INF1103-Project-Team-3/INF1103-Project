@@ -138,7 +138,9 @@ class AIManager:
         if result is None:
             return None
         try:
-            record.set_ai(result["theme"], result["sentiment"], result["severity"])
+            # The summary rides along in record.ai, so Data saves it with the
+            # record and call 2 can read it later without another request.
+            record.set_ai(result["theme"], result["sentiment"], result["severity"], result["summary"])
         except ValueError as exc:
             progress.finish_failed(task.request_id)
             self.__reporter.on_record_failed(task.request_id, str(exc), progress)
