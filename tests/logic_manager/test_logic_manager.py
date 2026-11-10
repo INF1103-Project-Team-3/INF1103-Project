@@ -1,11 +1,12 @@
 import json
+from datetime import date
 
 import pytest
 
-from managers.logic_manager import AggregationResult, LogicManager, ReviewRule, TrendReport
+from managers.logic_manager import AggregationResult, ImpactReport, LogicManager, ReviewRule, TrendReport
 from managers.models import (
     CRITICAL, HIGH, LOW, MATCHED, MISMATCH, NEGATIVE, POSITIVE, REVIEWED, THEMES, UNCLEAR_THEME, UNVERIFIED,
-    FeedbackRecord,
+    Action, FeedbackRecord,
 )
 
 
@@ -234,3 +235,32 @@ def test_a_whole_run_produces_results_that_can_be_saved_as_json(logic):
     rebuilt = AggregationResult.from_dict(json.loads(json.dumps(result.to_dict())))
     assert rebuilt == result
     assert TrendReport.from_dict(json.loads(json.dumps(trend.to_dict()))) == trend
+
+
+# ------------------------------------------------------------------ action impact
+def make_dated_record(feedback_id, day, theme="Facilities"):
+    return FeedbackRecord(feedback_id, "The library wifi keeps dropping.", f"{day}T10:00:00", None,
+                          {"theme": theme, "sentiment": NEGATIVE, "severity": HIGH})
+
+
+def make_action(action_id, theme, action_date):
+    return Action(action_id, theme, "An action", action_date, None, f"{action_date}T09:00:00")
+
+
+def test_evaluate_actions_gives_one_report_per_action_in_order(logic):
+    records = logic.apply_rules([make_dated_record(f"fb_{d}", f"2026-10-{d:02d}") for d in range(1, 13)])
+    actions = [make_action("act_1", "Facilities", "2026-10-05"), make_action("act_2", "Facilities", "2026-10-08"),
+               make_action("act_3", "Assessment", "2026-12-01")]
+    reports = logic.evaluate_actions(actions, records, date(2026, 10, 20))
+    assert [report.action.action_id for report in reports] == ["act_1", "act_2", "act_3"]
+    assert reports[2].label == ImpactReport.TOO_EARLY
+    # the two Facilities actions overlap, and the AI never ran, so the entries are unverified
+    assert len(reports[0].warnings) == 2
+    assert reports[1].warnings[0].startswith("Another action on Facilities (An action, 2026-10-05)")
+
+
+def test_evaluate_actions_uses_the_confirmed_themes(logic):
+    logic.set_known_themes([*THEMES, "CCA Clubs"])
+    records = logic.apply_rules([make_dated_record(f"fb_{d}", f"2026-10-{d:02d}", "CCA Clubs") for d in range(1, 9)])
+    [report] = logic.evaluate_actions([make_action("act_1", "cca clubs", "2026-10-05")], records, date(2026, 10, 20))
+    assert report.before["entries"] + report.after["entries"] == 8
