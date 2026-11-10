@@ -2,13 +2,15 @@ import json
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
 from dotenv import load_dotenv
 import logging
 
 import io_manager
 import data_manager
 import logic_manager
-import ai_manager
+# The AI Manager is a package now (D8); the flat ai_manager module is gone.
+from managers.ai_manager import AIManager, ConsoleProgressReporter, GroqClient, PromptLibrary
 
 
 def refresh_aggregated_output(data_dir):
@@ -44,13 +46,20 @@ def refresh_dashboard(data_dir):
 if __name__ == "__main__":
 
     # AI Manager config init
+    # D20: the app must keep working with the AI down, so a missing key or key
+    # label no longer exits. Either one makes this an AI-down run: Call 1 and
+    # Call 2 are skipped, records keep the user's values and are marked
+    # unverified by Logic, and the AI retries them on the next run that has both.
+    # The label is needed as well as the key because the token ledger counts
+    # each key's daily use under it.
     logging.basicConfig(level=logging.WARNING)
-    load_dotenv(os.path.join(ai_manager.BASE_DIR, "config", ".env"))
+    load_dotenv(Path(__file__).resolve().parents[1] / "config" / ".env")  # managers/config/.env
     api_key = os.environ.get("GROQ_API_KEY")
     key_label = os.environ.get("GROQ_KEY_LABEL")
-    if not api_key or not key_label:
-        logging.error("GROQ_API_KEY and GROQ_KEY_LABEL must be set in config/.env")
-        raise SystemExit(1)
+    ai_configured = bool(api_key and key_label)
+    if not ai_configured:
+        logging.error("GROQ_API_KEY and GROQ_KEY_LABEL must both be set in managers/config/.env. "
+                      "The AI is skipped this run and records keep the user's values.")
 
     # Every data_manager call below is pointed at the same folder the I/O manager uses.
     # (data_manager's own default is "/data", which on Windows is C:\data, a different folder.)
@@ -135,36 +144,50 @@ if __name__ == "__main__":
 #####################End of Prevent duplicate entries###############################
     
 
-    # --- AI Manager Initialisation ---
-    themes = ai_manager.load_canonical_themes()
-    prompt = ai_manager.load_system_prompt(themes)
-    summary_prompt = ai_manager.load_summary_prompt()
+    # --- AI Manager Initialisation (section 6, step 0) ---
+    # HANDOVER TO THE PIPELINE OWNER (A20, A25): this block and Call 2 below are
+    # written against the Part 2 interfaces (sections 6 and 8). The code around
+    # them is still Part 1's (dict entries, data_manager / logic_manager module
+    # functions), so it needs, from the pipeline:
+    #   data           a DataManager (load_prompts, load_known_themes, load_records,
+    #                  update_pending, load_token_log, save_token_log)
+    #   records        this run's new and unverified records, as FeedbackRecord objects
+    #   stored_records every stored FeedbackRecord, so the AI reuses labels it coined
+    #   result         LogicManager.aggregate(...)'s AggregationResult for this run
+    # Moving these lines into AIClassificationStep and SummaryStep keeps the
+    # control flow below unchanged.
+    system_template, summary_prompt = data.load_prompts()
+    prompts = PromptLibrary(system_template, summary_prompt, data.load_known_themes())
+    ai = AIManager(
+        GroqClient(api_key), key_label, prompts, ConsoleProgressReporter(), data.load_token_log, data.save_token_log
+    )
 
-    # Seed the theme tracking list from any previously classified entries
-    known = ai_manager.find_new_themes(data_manager.load_feedback_records(base_dir=DATA_DIR), themes)
+    # --- Call 1: classify every new or unverified record (section 6, step 3) ---
+    # classify_entries never exits: it returns (classified, pending, stopped).
+    # stopped is True when the API is down for the whole batch (a rejected key,
+    # every attempt lost to connection errors, or a rate-limit wait over a
+    # minute), after about 96 seconds at worst; the records not reached are left
+    # pending. Each classified record is saved at once through on_classified, so
+    # paid work survives a crash.
+    if ai_configured:
+        # Tell user, that main.py is calling the API
+        io_manager.print_connection_notice()
+        classified_records, pending_records, ai_stopped = ai.classify_entries(
+            records, stored_records, on_classified=data.update_pending
+        )
+    else:
+        # AI-down run (no key or label): nothing is sent, every record stays pending.
+        classified_records, pending_records, ai_stopped = [], list(records), True
+    # --- End of Call 1 ---
 
-    # Tell user, that main.py is calling the API
-    io_manager.print_connection_notice()
-
-    # --- Call 1: Dynamic Entry Classification ---
-    # CONNECTED TO LIVE API: Loops through entries and requests classifications via live endpoints
-    classified_records = []
-    for entry in entries:
-        record = ai_manager.classify_entry(entry, prompt, api_key, key_label, known)
-        if record is None:  
-            continue
-        # Immediately feed back any newly coined theme into the 'known' list for the next loop
-        known = ai_manager.find_new_themes([record], themes, known)
-        classified_records.append(record)
-    # --- End of Call 1: Dynamic Entry Classification ---
-
-    # If the AI could not classify anything (API down, bad key), stop here. Saving a "run" with
-    # no new data would replace the real trend with an all-Steady one. The entries stay in
-    # feedback_before_ai.json and are retried on the next import.
-    if not classified_records:
-        logging.error("The AI could not classify any of the %d new entries. They were kept and "
-                      "will be retried on the next import.", len(entries))
-        sys.exit(1)
+    # D20: an AI failure never stops the run. Part 1 exited here when nothing was
+    # classified; now the run carries on to the Logic Manager. A record whose
+    # Call 1 failed keeps ai = None, so Logic gives it the user's values, marks
+    # it unverified and still counts it (section 7.1), and it is sent to the AI
+    # again on the next run. The trend is updated as normal (C20).
+    if ai_stopped:
+        logging.warning("The AI is unavailable: %d of %d records keep the user's values and will be "
+                        "retried on the next run.", len(pending_records), len(records))
 
 
     # Produces classified.json
@@ -213,21 +236,24 @@ if __name__ == "__main__":
         data_manager.append_history({"run_at": run_at, "source_file": source_file, "stats": logic_output},
                                     base_dir=DATA_DIR)
 
-    # Tell user AI summary is being requested from API
-    io_manager.print_ai_request_notice()
+    # --- Call 2: the run's summary (section 6, step 5) ---
+    # Skipped when Call 1 stopped: the API is then unlikely to answer, and each
+    # attempt would add up to 30 seconds. summarise also returns None when every
+    # attempt fails, including Groq refusing an oversized request (HTTP 413).
+    # Either way the last saved summary stays, with its created_at date, and
+    # Logic's keyword-matched actions stand in for the AI's (D21, A24, A25:
+    # logic.suggest_actions(result, records), not built yet).
+    summary = None
+    if not ai_stopped:
+        # Tell user AI summary is being requested from API
+        io_manager.print_ai_request_notice()
+        summary = ai.summarise(result, records)
+    # --- End of Call 2 ---
 
-        # # --- Call 2: Final Run Summary ---
-    # CONNECTED TO LIVE API: Generates overall executive summaries using live stats data
-    summary = ai_manager.summarise(logic_output, summary_prompt, api_key, key_label)
-        # # --- End of Call 2: Final Run Summary ---
-
-        # Create summary.json or replace summary.json with new summary
+    # Save the new summary over summary.json only when Call 2 succeeded, so a
+    # failed or skipped Call 2 never erases the last good one (section 9).
     if summary is not None:
-        data_manager.update_summary_fields(
-            root_updates={"overall_summary": summary.get("overall_summary")},
-            item_updates=summary.get("theme_actions"),
-            base_dir=DATA_DIR,
-        )
+        data.save_object("summary", summary)
 
 
     # === CALL: Final exit notice ===

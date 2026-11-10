@@ -21,32 +21,27 @@ Judge severity strictly by the impact described, never by tone or delivery. A ca
 
 summary: one-line restatement, 15 words maximum.
 
-confidence: 0.0-1.0, your certainty that theme, sentiment, and severity are correct.
-- Below 0.5 if vague, sarcastic, or could plausibly fit more than one theme.
-- Below 0.6 if the choice is a close call against one specific named alternative (a near-neighbour theme, or a severity level one step away) - don't default to high confidence just because you committed to an answer.
-- 0.0 if the text has no meaningful feedback (gibberish, spam, off-topic) - use theme "Unclear".
-
 EXAMPLES
 
 Input: {"text": "Someone in my project group keeps sending me threatening messages and I don't feel safe coming to campus."}
-Output: {"theme":"Social Environment","sentiment":"negative","severity":"critical","summary":"Student receives threatening messages from a groupmate and feels unsafe on campus.","confidence":0.93}
+Output: {"theme":"Social Environment","sentiment":"negative","severity":"critical","summary":"Student receives threatening messages from a groupmate and feels unsafe on campus."}
 
 Input: {"text": "Everything feels like too much lately and the deadlines keep piling up."}
-Output: {"theme":"Well-being","sentiment":"negative","severity":"high","summary":"Student feels overwhelmed by accumulating deadlines.","confidence":0.45}
+Output: {"theme":"Well-being","sentiment":"negative","severity":"high","summary":"Student feels overwhelmed by accumulating deadlines."}
 
 Input: {"text": "The library printers have been down for three weeks and I can't submit my assignment without a printed cover sheet."}
-Output: {"theme":"Facilities","sentiment":"negative","severity":"high","summary":"Broken printers stop the student submitting an assignment requiring a printed cover sheet.","confidence":0.85}
+Output: {"theme":"Facilities","sentiment":"negative","severity":"high","summary":"Broken printers stop the student submitting an assignment requiring a printed cover sheet."}
 
 Input: {"text": "Not sure how the group project mark is decided, I guess we'll see when it comes back."}
-Output: {"theme":"Assessment","sentiment":"negative","severity":"medium","summary":"Student has no idea how the group project will be marked.","confidence":0.55}
+Output: {"theme":"Assessment","sentiment":"negative","severity":"medium","summary":"Student has no idea how the group project will be marked."}
 
 Input: {"text": "The revamped course portal looks great and is much easier to navigate, but it logs me out every ten minutes so I keep losing unsaved work."}
-Output: {"theme":"Administration","sentiment":"negative","severity":"high","summary":"Frequent portal logouts cause repeated loss of unsaved work despite an improved design.","confidence":0.7}
+Output: {"theme":"Administration","sentiment":"negative","severity":"high","summary":"Frequent portal logouts cause repeated loss of unsaved work despite an improved design."}
 
 Input: {"text": "wjeiof qpqp 3993 lolol xyzzy"}
-Output: {"theme":"Unclear","sentiment":"neutral","severity":"low","summary":"Text contains no meaningful feedback.","confidence":0.0}
+Output: {"theme":"Unclear","sentiment":"neutral","severity":"low","summary":"Text contains no meaningful feedback."}
 
 Input: {"text": "It's okay I suppose, some days better than others."}
-Output: {"theme":"Unclear","sentiment":"neutral","severity":"low","summary":"Vague feedback with no identifiable theme.","confidence":0.3}
+Output: {"theme":"Unclear","sentiment":"neutral","severity":"low","summary":"Vague feedback with no identifiable theme."}
 
 Return only the JSON object, no other text.
