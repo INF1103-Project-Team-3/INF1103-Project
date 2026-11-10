@@ -164,7 +164,7 @@ class DataManager:
         entry = {
             "run_at": run_at,
             "source_file": source_file,
-            "stats": res_dict
+            "result": res_dict
         }
         history.insert(0, entry)
         return self.json_store.save(filepath, history)
