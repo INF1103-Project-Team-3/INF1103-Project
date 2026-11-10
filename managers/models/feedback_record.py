@@ -1,8 +1,12 @@
 """FeedbackRecord: one piece of feedback and what each manager adds to it."""
 
+from datetime import datetime
 from typing import Self
 
-from .constants import MATCHED, MISMATCH, PENDING, REVIEWED, SENTIMENTS, SEVERITIES, UNVERIFIED
+from .constants import (
+    LABEL_FIELDS, MATCHED, MISMATCH, PENDING, REVIEWED, SENTIMENTS, SEVERITIES,
+    TIMESTAMP_FORMAT, UNVERIFIED,
+)
 from .serializable import Serializable
 
 
@@ -67,8 +71,7 @@ class FeedbackRecord(Serializable):
 
     @property
     def ai(self) -> dict[str, str] | None:
-        """The AI's theme, sentiment and severity (a copy), plus its "summary" if it
-        has one. None if the AI failed or has not run."""
+        """The AI's theme, sentiment and severity (a copy), or None if the AI failed or has not run."""
         return dict(self.__ai) if self.__ai is not None else None
 
     @property
@@ -83,6 +86,14 @@ class FeedbackRecord(Serializable):
     @property
     def severity(self) -> str | None:
         return self.__severity
+
+    @property
+    def current_labels(self) -> dict[str, str | None]:
+        """The theme, sentiment and severity to show for this record: the final
+        ones once Logic has set them, otherwise the writer's own."""
+        final = {"theme": self.__theme, "sentiment": self.__sentiment,
+                 "severity": self.__severity}
+        return {name: final[name] or self.__user.get(name) for name in LABEL_FIELDS}
 
     @property
     def verification(self) -> str:
@@ -103,15 +114,10 @@ class FeedbackRecord(Serializable):
         """True once Logic has checked the record and no reason excludes it from statistics."""
         return self.__verification != PENDING and not self.__excluded
 
-    def set_ai(self, theme: str, sentiment: str, severity: str, summary: str | None = None) -> None:
-        """AI: stores the AI's values, including its one-line summary of the text.
-        Raises ValueError for a value not in the constants or a blank summary."""
+    def set_ai(self, theme: str, sentiment: str, severity: str) -> None:
+        """AI: stores the AI's values. Raises ValueError for a value not in the constants."""
         self.__check_values(theme, sentiment, severity)
-        if summary is not None and (not isinstance(summary, str) or not summary.strip()):
-            raise ValueError(f"summary must be non-empty text or None, got {summary!r}")
         self.__ai = {"theme": theme, "sentiment": sentiment, "severity": severity}
-        if summary is not None:
-            self.__ai["summary"] = summary
 
     def set_final(self, theme: str, sentiment: str, severity: str, verification: str) -> None:
         """Logic: stores the final values and the verification result
@@ -178,6 +184,14 @@ class FeedbackRecord(Serializable):
 
     def __repr__(self) -> str:
         return f"FeedbackRecord({self.__feedback_id!r}, verification={self.__verification!r})"
+
+    @staticmethod
+    def is_valid_timestamp(text) -> bool:
+        """True only for a real date and time written exactly as YYYY-MM-DDTHH:MM:SS."""
+        try:
+            return datetime.strptime(text, TIMESTAMP_FORMAT).strftime(TIMESTAMP_FORMAT) == text
+        except (TypeError, ValueError):
+            return False
 
     @staticmethod
     def __check_values(theme: str, sentiment: str, severity: str) -> None:
