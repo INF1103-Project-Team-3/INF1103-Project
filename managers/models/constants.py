@@ -29,3 +29,11 @@ PENDING, MATCHED, MISMATCH, UNVERIFIED, REVIEWED = (
     "pending", "matched", "mismatch", "unverified", "reviewed"
 )
 VERIFICATION = (PENDING, MATCHED, MISMATCH, UNVERIFIED, REVIEWED)
+
+# The theme, sentiment and severity a record carries. FeedbackRecord keeps them three times:
+# the writer's own (user), the AI's (ai) and the final ones Logic decides.
+LABEL_FIELDS = ("theme", "sentiment", "severity")
+
+# FeedbackRecord.timestamp and Action.logged_at; Action.action_date uses the date format.
+TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S"   # e.g. 2026-09-29T10:30:00
+DATE_FORMAT = "%Y-%m-%d"                 # e.g. 2026-11-05
