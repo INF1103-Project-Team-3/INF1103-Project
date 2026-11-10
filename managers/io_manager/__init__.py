@@ -7,11 +7,12 @@ an internal helper. One class per file, named after the class.
   Entry point       : IOManager (runs one session, returns a SessionResult)
   What it returns   : SessionResult, ReviewDecision
   Display           : FeedbackView (interface), ConsoleView (terminal)
+  Input             : Prompter (AppEngine creates it and passes it in)
   Checking input    : EntryValidator, ThemeValidator
   Building objects  : RecordBuilder (feedback records and actions)
   Importing files   : FeedbackImporter (abstract), CsvImporter, JsonImporter
 
-Internal: EntryForm, ReviewSession, Prompter, InputValidator (interface),
+Internal: EntryForm, ReviewSession, InputValidator (interface),
 ChoiceValidator, TextValidator, PasswordValidator, ImportResult.
 """
 from .console_view import ConsoleView
@@ -21,13 +22,14 @@ from .feedback_importer import FeedbackImporter
 from .feedback_view import FeedbackView
 from .io_manager import IOManager
 from .json_importer import JsonImporter
+from .prompter import Prompter
 from .record_builder import RecordBuilder
 from .review_decision import ReviewDecision
 from .session_result import SessionResult
 from .theme_validator import ThemeValidator
 
 __all__ = [
-    "IOManager", "SessionResult", "ReviewDecision", "FeedbackView", "ConsoleView",
+    "IOManager", "SessionResult", "ReviewDecision", "FeedbackView", "ConsoleView", "Prompter",
     "FeedbackImporter", "CsvImporter", "JsonImporter", "EntryValidator",
     "RecordBuilder", "ThemeValidator",
 ]

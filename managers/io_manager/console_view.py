@@ -104,7 +104,8 @@ class ConsoleView(FeedbackView):
         if unverified:
             lines.append(f"{unverified} record(s) unverified (AI failed, retried next run)")
         if both_count:
-            lines.append(f"{both_count} critical entries are in both: counted and for review")
+            entries = "entry is" if both_count == 1 else "entries are"
+            lines.append(f"{both_count} critical {entries} in both: counted and for review")
         return lines + ["=" * self.WIDTH]
 
     def _overall(self, summary: Any) -> list[str]:
@@ -203,9 +204,13 @@ class ConsoleView(FeedbackView):
         return merged
 
     def _show_review_queue(self, queue: Sequence[FeedbackRecord]) -> None:
-        lines = ["REVIEW QUEUE", "-" * self.WIDTH]
         if not queue:
-            lines.append("Nothing waiting for review.")
+            self._block(["REVIEW QUEUE", "-" * self.WIDTH, "Nothing waiting for review."])
+            return
+        lines = ["REVIEW QUEUE",
+                 f"{'ID':<{self.REVIEW_ID_WIDTH}}{'THEME':<{self.COLUMN_THEME}}"
+                 f"{'REASON':<{self.REVIEW_REASON_WIDTH}}FEEDBACK",
+                 "-" * self.WIDTH]
         for r in queue:
             theme = str(r.current_labels["theme"] or "-")
             # I show the Logic Manager's own reason text rather than interpreting it
@@ -230,8 +235,14 @@ class ConsoleView(FeedbackView):
     @staticmethod
     def _display_text(record: FeedbackRecord) -> str:
         """The AI's short summary if it wrote one, otherwise the raw text.
-        It is never required: there is none while the AI is down."""
-        return (record.ai or {}).get("summary") or record.text
+
+        It is never required: there is none while the AI is down or for older
+        records, and a saved record is restored without checks, so anything that
+        is not real text (blank, a number, a list) also falls back to the text."""
+        summary = (record.ai or {}).get("summary")
+        if isinstance(summary, str) and summary.strip():
+            return summary.strip()
+        return record.text
 
     @staticmethod
     def _tags(values) -> str:
