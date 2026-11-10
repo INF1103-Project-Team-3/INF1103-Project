@@ -4,7 +4,8 @@ import time
 from datetime import date
 from types import SimpleNamespace
 
-from managers.ai_manager import BatchProgress, ProgressReporter
+from managers.ai_manager import ProgressReporter
+from managers.ai_manager.progress_tracker import ProgressTracker
 
 from .sample_data import fake_check
 
@@ -32,15 +33,16 @@ class FakePipeline:
             self.__data.add_record(record)
 
         pending = self.__data.load_pending()
-        progress = BatchProgress(len(pending))
+        tracker = ProgressTracker(len(pending))
+        progress = tracker.progress
         self.__reporter.on_batch_start("Classifying pending feedback (demo)", ["no API calls"], progress)
         for record in pending:
             request_id = record.feedback_id
-            progress.start_record()
+            tracker.start_record()
             self.__reporter.on_attempt_start(request_id, 1, 3)
             time.sleep(STEP_SECONDS)
             if request_id == RATE_LIMITED_ID:
-                progress.add_retry()
+                tracker.add_retry()
                 self.__reporter.on_attempt_failed(request_id, 1, 3, "429 rate limit")
                 self.__reporter.on_wait(2.0, "rate limit")
                 time.sleep(2.0)
@@ -51,8 +53,8 @@ class FakePipeline:
                 request_id, (user["theme"], user["sentiment"], user["severity"]))
             record.set_ai(theme, sentiment, severity)
             fake_check(record)
-            progress.add_tokens(1400)
-            progress.finish_ok()
+            tracker.add_tokens(1400)
+            tracker.finish_ok()
             self.__reporter.on_record_ok(request_id, f"{theme} · {sentiment} · {severity}", progress)
         self.__reporter.on_batch_end(progress, None, None)
         self.__save_run(pending)
