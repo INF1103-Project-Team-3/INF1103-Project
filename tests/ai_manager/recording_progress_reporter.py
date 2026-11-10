@@ -8,10 +8,16 @@ class RecordingProgressReporter(ProgressReporter):
 
     def __init__(self):
         self.__events = []
+        self.__last_progress = None
 
     @property
     def events(self) -> list[tuple]:
         return list(self.__events)
+
+    @property
+    def last_progress(self):
+        """The progress object the last batch_end event carried."""
+        return self.__last_progress
 
     @property
     def names(self) -> list[str]:
@@ -39,4 +45,5 @@ class RecordingProgressReporter(ProgressReporter):
         self.__events.append(("batch_stopped", progress.stop_reason, progress.stopped_after))
 
     def on_batch_end(self, progress, tokens_today, daily_limit):
+        self.__last_progress = progress
         self.__events.append(("batch_end", tokens_today, daily_limit))

@@ -7,6 +7,10 @@ from managers.models import FeedbackRecord, SENTIMENTS, SEVERITIES, UNCLEAR_THEM
 from .ai_task import AITask
 
 MAX_COINED_THEME_WORDS = 3  # a longer label would be sent back in every later request
+# The one-line restatement call 2 reads in place of the full text (D18). Part 1's
+# limit, enforced here because strict mode cannot express a word count; a longer
+# one fails validation and is retried, as in Part 1.
+MAX_SUMMARY_WORDS = 15
 # Wait for the reset once fewer tokens than this remain. Kept at the tested
 # value, although measured call 1 requests average ~1,700 tokens (max 2,295).
 CLASSIFY_TOKEN_MARGIN = 1600
@@ -41,8 +45,9 @@ class ClassificationTask(AITask):
     def validate(self, result: object) -> bool:
         """Return True if result is a valid classification.
 
-        Strict mode guarantees the shape, but not a non-empty theme or the length
-        of a coined theme, which its schema subset cannot express.
+        Strict mode guarantees the shape, but not a non-empty theme or summary,
+        the length of a coined theme or the summary's word limit, which its
+        schema subset cannot express.
         """
         if not isinstance(result, dict) or set(result) != set(self.schema["required"]):
             return False
@@ -52,6 +57,9 @@ class ClassificationTask(AITask):
             and (result["theme"] in self.__themes or len(result["theme"].split()) <= MAX_COINED_THEME_WORDS)
             and result["sentiment"] in SENTIMENTS
             and result["severity"] in SEVERITIES
+            and isinstance(result["summary"], str)
+            and result["summary"].strip() != ""
+            and len(result["summary"].split()) <= MAX_SUMMARY_WORDS
         )
 
     def _clean(self, result: object) -> object:
@@ -78,6 +86,8 @@ class ClassificationTask(AITask):
     def _build_schema(self) -> dict:
         """Return the output schema. theme is free text, so the model can coin one.
 
+        summary is the one-line restatement call 2 reads (D18); it is required
+        here, as it was in Part 1, even though set_ai treats it as optional.
         Strict mode requires every property in "required" and additionalProperties: false.
         """
         return {
@@ -86,7 +96,8 @@ class ClassificationTask(AITask):
                 "theme": {"type": "string"},
                 "sentiment": {"type": "string", "enum": list(SENTIMENTS)},
                 "severity": {"type": "string", "enum": list(SEVERITIES)},
+                "summary": {"type": "string"},
             },
-            "required": ["theme", "sentiment", "severity"],
+            "required": ["theme", "sentiment", "severity", "summary"],
             "additionalProperties": False,
         }

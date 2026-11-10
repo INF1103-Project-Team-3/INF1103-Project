@@ -8,26 +8,38 @@ import pytest
 import requests
 
 import managers.ai_manager
-from managers.ai_manager import AIManager, AISummary, GroqClient, LLMClient, PromptLibrary, ai_manager as ai_manager_module
-from managers.ai_manager.ai_manager import BACKOFF_BASE_S, MAX_ATTEMPTS
+from managers.ai_manager import AIManager, AISummary, GroqClient, LLMClient, PromptLibrary
+from managers.ai_manager import request_runner as request_runner_module
 from managers.ai_manager.ai_task import AITask
 from managers.ai_manager.classification_task import (
-    CLASSIFY_TOKEN_MARGIN, ClassificationTask, MAX_COINED_THEME_WORDS
+    CLASSIFY_TOKEN_MARGIN, ClassificationTask, MAX_COINED_THEME_WORDS, MAX_SUMMARY_WORDS
 )
 from managers.ai_manager.groq_client import MODEL
 from managers.ai_manager.llm_request_error import LLMRequestError
+from managers.ai_manager.progress_tracker import ProgressTracker
 from managers.ai_manager.rate_limiter import DELAY_BUFFER_S, FALLBACK_DELAY_S, MIN_DELAY_S, RateLimiter
+from managers.ai_manager.request_runner import BACKOFF_BASE_S, MAX_ATTEMPTS, RequestRunner
 from managers.ai_manager.summary_task import (
     MAX_ACTION_WORDS, SUMMARY_MAX_COMPLETION_TOKENS, SUMMARY_TOKEN_MARGIN, SummaryTask
 )
 from managers.ai_manager.token_ledger import TokenLedger
-from managers.models import FeedbackRecord, PENDING, Serializable, THEMES
+from managers.models import FeedbackRecord, MATCHED, PENDING, Serializable, THEMES
 from in_memory_token_log import InMemoryTokenLog
 from recording_progress_reporter import RecordingProgressReporter
 from stub_llm_client import StubLLMClient
 
 CONFIG_DIR = Path(__file__).resolve().parents[2] / "managers" / "config"
-STATS = {"themes": [{"theme": "Facilities"}, {"theme": "Assessment"}]}
+STATS = {
+    "total_entries": 2, "counted_entries": 2, "negative_percent": 50, "unverified_count": 0,
+    "sentiment_counts": {"positive": 0, "neutral": 1, "negative": 1},
+    "themes": [
+        {"theme": theme, "count": 1, "severity_counts": {"low": 0, "medium": 0, "high": 1, "critical": 0},
+         "sentiment_counts": {"positive": 0, "neutral": 0, "negative": 1}, "avg_sentiment": -1.0,
+         "priority": 2, "unverified": 0}
+        for theme in ("Facilities", "Assessment")
+    ],
+    "pending_themes": {},
+}
 RESULT = SimpleNamespace(to_dict=lambda: STATS)  # stands in for AggregationResult
 USER = {"theme": "Assessment", "sentiment": "neutral", "severity": "low"}
 
@@ -47,8 +59,12 @@ def with_ai(theme, user=None):
     return record
 
 
-def classification(theme="Facilities", sentiment="negative", severity="high"):
-    return {"theme": theme, "sentiment": sentiment, "severity": severity}
+def classification(theme="Facilities", sentiment="negative", severity="high", summary="Slides move too fast."):
+    return {"theme": theme, "sentiment": sentiment, "severity": severity, "summary": summary}
+
+
+def without(result, field):
+    return {key: value for key, value in result.items() if key != field}
 
 
 def discard(record):
@@ -84,7 +100,7 @@ def prompts():
 @pytest.fixture
 def sleeps(monkeypatch):
     waits = []
-    monkeypatch.setattr(ai_manager_module.time, "sleep", waits.append)
+    monkeypatch.setattr(request_runner_module.time, "sleep", waits.append)
     return waits
 
 
@@ -122,7 +138,7 @@ def test_stub_substitutes_for_groq_client(prompts, token_log, sleeps, entry):
 
 def test_both_tasks_are_ai_tasks(prompts, entry):
     assert isinstance(ClassificationTask(entry, prompts.system_prompt, prompts.themes, []), AITask)
-    assert isinstance(SummaryTask(STATS, prompts.summary_prompt), AITask)
+    assert isinstance(SummaryTask(STATS, [], prompts.summary_prompt), AITask)
 
 
 # Call 1: the record contract
@@ -138,6 +154,37 @@ def test_success_sets_ai_and_leaves_everything_else(prompts, token_log, sleeps, 
     assert entry.verification == PENDING
     assert pending == []
     assert stopped is False
+
+
+def test_summary_is_stored_in_ai_through_set_ai(prompts, token_log, sleeps, entry):
+    saved = []
+    client = StubLLMClient([json.dumps(classification(summary="Student cannot keep up with the slides."))])
+
+    build_manager(client, prompts, token_log).classify_entries([entry], [], saved.append)
+
+    assert entry.ai["summary"] == "Student cannot keep up with the slides."
+    # The record handed to on_classified already carries it, so Data saves it.
+    assert saved[0].ai["summary"] == "Student cannot keep up with the slides."
+    assert FeedbackRecord.from_dict(entry.to_dict()).ai["summary"] == "Student cannot keep up with the slides."
+
+
+def test_summary_over_the_word_limit_is_retried(prompts, token_log, sleeps, entry):
+    too_long = classification(summary="word " * (MAX_SUMMARY_WORDS + 1))
+    client = StubLLMClient([json.dumps(too_long), json.dumps(classification())])
+
+    classified, pending, stopped = build_manager(client, prompts, token_log).classify_entries([entry], [], discard)
+
+    assert len(client.calls) == 2
+    assert classified == [entry]
+    assert entry.ai["summary"] == classification()["summary"]
+
+
+def test_summary_over_the_word_limit_every_attempt_leaves_record_pending(prompts, token_log, sleeps, entry):
+    too_long = classification(summary="word " * (MAX_SUMMARY_WORDS + 1))
+    client = StubLLMClient([json.dumps(too_long)] * MAX_ATTEMPTS)
+
+    assert build_manager(client, prompts, token_log).classify_entries([entry], [], discard) == ([], [entry], False)
+    assert entry.ai is None
 
 
 def test_only_the_text_reaches_the_model(prompts, token_log, sleeps):
@@ -434,7 +481,60 @@ def test_non_retryable_error_stops_after_one_call(prompts, token_log, sleeps, en
     assert sleeps == []
 
 
+# RequestRunner on its own: the retry policy without AIManager
+def test_request_runner_returns_validated_output_and_records_tokens(prompts, token_log, sleeps, entry):
+    client = StubLLMClient(["not json", json.dumps(classification())])
+    ledger = TokenLedger(client.model, token_log.load, token_log.save)
+    runner = RequestRunner(client, RecordingProgressReporter(), ledger, "test-key")
+    tracker = ProgressTracker(1)
+
+    result = runner.run(ClassificationTask(entry, prompts.system_prompt, prompts.themes, []), tracker)
+
+    assert result == classification()
+    assert tracker.record_retries == 1
+    assert sleeps[0] == BACKOFF_BASE_S
+    assert today_usage(token_log)["requests"][0]["feedback_id"] == entry.feedback_id
+
+
+def test_request_runner_stops_the_batch_on_a_rejected_key(prompts, token_log, sleeps, entry):
+    client = StubLLMClient([error(LLMRequestError.AUTH, retryable=False)])
+    runner = RequestRunner(client, RecordingProgressReporter(), TokenLedger(client.model, token_log.load, token_log.save), "k")
+    tracker = ProgressTracker(1)
+
+    assert runner.run(ClassificationTask(entry, prompts.system_prompt, prompts.themes, []), tracker) is None
+    assert tracker.stopped is True
+    assert tracker.failed_ids == [entry.feedback_id]
+
+
+# AITask hands out a copy of its schema
+def test_task_schema_cannot_be_changed_from_outside(prompts, entry):
+    task = ClassificationTask(entry, prompts.system_prompt, prompts.themes, [])
+    task.schema["required"].append("extra")
+
+    assert "extra" not in task.schema["required"]
+    assert task.validate(classification()) is True
+
+
 # Call 2
+def test_summary_input_limit_is_injected_into_the_manager(prompts, token_log, sleeps):
+    records = []
+    for index in range(40):
+        record = make_record(f"fb_{index:03d}")
+        record.set_ai("Facilities", "negative", "low", "word " * 15)
+        record.set_final("Facilities", "negative", "low", MATCHED)
+        records.append(record)
+    stats = {**STATS, "themes": [{**STATS["themes"][0], "count": 40}]}
+    reply = {"overall_summary": "Overall.", "theme_actions": [{"theme": "Facilities", "suggested_action": "Act."}]}
+    client = StubLLMClient([json.dumps(reply)])
+    manager = AIManager(client, "test-key", prompts, RecordingProgressReporter(), token_log.load, token_log.save, 1_000)
+
+    manager.summarise(SimpleNamespace(to_dict=lambda: stats), records)
+
+    sent = client.calls[0]["messages"][1]["content"]
+    assert len(sent) <= 1_000
+    assert json.loads(sent)["examples_total"] == 40
+
+
 def test_summarise_sends_its_own_limits(prompts, token_log, sleeps):
     client = StubLLMClient([json.dumps(summary_output())])
 
@@ -443,7 +543,7 @@ def test_summarise_sends_its_own_limits(prompts, token_log, sleeps):
     call = client.calls[0]
     assert call["token_margin"] == SUMMARY_TOKEN_MARGIN
     assert call["max_completion_tokens"] == SUMMARY_MAX_COMPLETION_TOKENS
-    assert json.loads(call["messages"][1]["content"]) == STATS
+    assert json.loads(call["messages"][1]["content"])["total_entries"] == STATS["total_entries"]
     assert today_usage(token_log)["requests"][0]["feedback_id"] == "summary"
 
 
@@ -458,11 +558,17 @@ def test_summarise_returns_an_ai_summary(prompts, token_log, sleeps):
     assert summary.created_at
 
 
-def test_summarise_does_not_send_the_records_yet(prompts, token_log, sleeps):
+def test_summarise_sends_the_counted_records_one_liners(prompts, token_log, sleeps):
+    record = make_record()
+    record.set_ai("Facilities", "negative", "high", "Lift broken for weeks.")
+    record.set_final("Facilities", "negative", "high", MATCHED)
     client = StubLLMClient([json.dumps(summary_output())])
 
-    build_manager(client, prompts, token_log).summarise(RESULT, [make_record()])
+    build_manager(client, prompts, token_log).summarise(RESULT, [record])
 
+    payload = json.loads(client.calls[0]["messages"][1]["content"])
+    assert payload["themes"][0]["examples"] == [{"severity": "high", "summary": "Lift broken for weeks."}]
+    # The one-liner goes, not the text it restates.
     assert "slides" not in json.dumps(client.calls[0]["messages"])
 
 
@@ -516,7 +622,12 @@ def test_classification_uses_its_own_limits(prompts, entry):
     "not a dict",
     {"theme": "missing fields"},
     {**classification(), "extra": 1},
-    {**classification(), "summary": "Removed field."},
+    without(classification(), "summary"),
+    classification(summary=" "),
+    classification(summary=""),
+    classification(summary=None),
+    classification(summary=15),
+    classification(summary="word " * (MAX_SUMMARY_WORDS + 1)),
     {**classification(), "confidence": 0.9},
     classification(theme=" "),
     classification(theme="word " * (MAX_COINED_THEME_WORDS + 1)),
@@ -534,6 +645,8 @@ def test_classification_rejects_bad_output(prompts, bad_result, entry):
     classification(theme="Unclear"),
     classification(theme="Catering"),
     classification(theme="word " * MAX_COINED_THEME_WORDS),
+    classification(summary="word " * MAX_SUMMARY_WORDS),
+    classification(summary="One."),
 ])
 def test_classification_accepts_valid_output(prompts, good_result, entry):
     assert ClassificationTask(entry, prompts.system_prompt, prompts.themes, []).validate(good_result) is True
@@ -543,7 +656,15 @@ def test_classification_schema_lets_theme_be_coined(prompts, entry):
     properties = ClassificationTask(entry, prompts.system_prompt, prompts.themes, []).schema["properties"]
 
     assert "enum" not in properties["theme"]
-    assert set(properties) == {"theme", "sentiment", "severity"}
+    assert set(properties) == {"theme", "sentiment", "severity", "summary"}
+
+
+def test_classification_schema_requires_a_string_summary(prompts, entry):
+    schema = ClassificationTask(entry, prompts.system_prompt, prompts.themes, []).schema
+
+    assert schema["properties"]["summary"] == {"type": "string"}
+    assert "summary" in schema["required"]
+    assert schema["additionalProperties"] is False
 
 
 @pytest.mark.parametrize("bad_result", [
@@ -565,7 +686,7 @@ def test_classification_schema_lets_theme_be_coined(prompts, entry):
     ]},
 ])
 def test_summary_rejects_bad_output(prompts, bad_result):
-    assert SummaryTask(STATS, prompts.summary_prompt).validate(bad_result) is False
+    assert SummaryTask(STATS, [], prompts.summary_prompt).validate(bad_result) is False
 
 
 def test_parse_raises_on_non_json(prompts, entry):
@@ -792,8 +913,21 @@ def test_prompt_library_works_with_the_real_prompts_and_base_themes():
     assert "{themes}" not in prompts.system_prompt
     assert prompts.summary_prompt
     assert "existing_new_themes" in prompts.system_prompt
-    for removed in ("confidence", "summary", "alternative_themes"):
+    assert f"summary: one-line restatement, {MAX_SUMMARY_WORDS} words maximum." in prompts.system_prompt
+    for removed in ("confidence", "alternative_themes"):
         assert removed not in prompts.system_prompt
+
+
+def test_real_prompt_examples_pass_classification_validation(entry):
+    # Every few-shot output must itself be valid, or the prompt teaches the model
+    # an answer validation would reject (e.g. a summary over the word limit).
+    prompts = PromptLibrary((CONFIG_DIR / "system_prompt.txt").read_text(encoding="utf-8"), "Summarise.", THEMES)
+    task = ClassificationTask(entry, prompts.system_prompt, prompts.themes, [])
+    outputs = [line.removeprefix("Output: ") for line in prompts.system_prompt.splitlines() if line.startswith("Output: ")]
+
+    assert len(outputs) == 7
+    for output in outputs:
+        assert task.validate(json.loads(output)) is True, output
 
 
 @pytest.mark.parametrize("themes", ["Facilities", [], [""], [1], None])

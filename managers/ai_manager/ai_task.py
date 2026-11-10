@@ -1,5 +1,6 @@
 """AITask: one kind of LLM request, independent of the provider and the retry loop."""
 
+import copy
 import json
 from abc import ABC, abstractmethod
 
@@ -32,7 +33,8 @@ class AITask(ABC):
 
     @property
     def schema(self) -> dict:
-        return self.__schema
+        """A copy, so a caller cannot change what validation checks against."""
+        return copy.deepcopy(self.__schema)
 
     @property
     def token_margin(self) -> int:
