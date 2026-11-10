@@ -11,9 +11,16 @@ CHECKED_COUNT = 6
 
 
 # feedback_id -> the AI's (theme, sentiment, severity) from the saved stress run.
+# Reads both layouts: a saved FeedbackRecord ("ai": {...}) and the older flat "ai_theme" fields.
 def load_ai_answers() -> dict[str, tuple[str, str, str]]:
     output = json.loads((SAMPLES / "stress-output.json").read_text(encoding="utf-8"))
-    return {row["feedback_id"]: (row["ai_theme"], row["ai_sentiment"], row["ai_severity"]) for row in output}
+    answers = {}
+    for row in output:
+        ai = row.get("ai") or {"theme": row.get("ai_theme"), "sentiment": row.get("ai_sentiment"),
+                               "severity": row.get("ai_severity")}
+        if all(ai.get(field) for field in ("theme", "sentiment", "severity")):
+            answers[row["feedback_id"]] = (ai["theme"], ai["sentiment"].lower(), ai["severity"].lower())
+    return answers
 
 
 # Stress-test text with the hand labels as the student's values.
