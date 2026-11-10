@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 from managers.models import FeedbackRecord
@@ -23,8 +22,6 @@ from .theme_validator import ThemeValidator
 if TYPE_CHECKING:
     from managers.data_manager import DataManager
     from managers.logic_manager import LogicManager
-
-logger = logging.getLogger(__name__)
 
 
 class IOManager:
@@ -50,11 +47,11 @@ class IOManager:
     ROLE_ADMIN = "admin"
     ROLES = (ROLE_USER, ROLE_ADMIN)
 
-    # status notices AppEngine asks me to show (through show_notice) while the pipeline runs
+    # notices AppEngine shows through show_notice() in terminal mode, around one
+    # pipeline run: nothing collected, about to run, and the end of the program.
+    # Progress during the run is the ProgressReporter's job, not the view's.
     NOTICE_NOTHING_NEW = "NOTICE: Nothing new to process. Exiting runtime."
     NOTICE_CONNECTING = "CONNECTING TO API & RUNNING"
-    NOTICE_COMPILING = "COMPILING RESULTS AND AGGREGATING THEMES"
-    NOTICE_SUMMARY = "REQUESTING SUMMARY FROM AI"
     NOTICE_GOODBYE = "Thank you for using Feedback Manager. Goodbye."
 
     def __init__(self, view: FeedbackView, prompter: Prompter,
@@ -216,7 +213,7 @@ class IOManager:
                                   self._rebuild("summary", AISummary), queue)
         # only offer a review if something is still undecided in this session
         waiting = [r for r in queue if r.feedback_id not in session.decided_ids()]
-        if waiting and self._prompter.confirm("Review them now? (y/n): "):
+        if waiting and self._prompter.confirm("\nReview them now? (y/n): "):
             session.decisions.extend(self._review.run(queue, session.decided_ids()))
         return False
 
@@ -256,13 +253,15 @@ class IOManager:
 
     def _rebuild(self, name: str, cls: Any) -> Any:
         """Load one saved result from Data and turn the dictionary back into an
-        object with its from_dict() (the Serializable contract). Missing or
-        corrupt data gives None, so the dashboard shows "no data" instead of crashing."""
+        object with its from_dict() (the Serializable contract). Missing data
+        gives None. Corrupt data also gives None, so the dashboard shows "no
+        data" instead of crashing, and I say so through the view (only the
+        view displays anything)."""
         raw = self._data.load_object(name)
         if not raw:
             return None
         try:
             return cls.from_dict(raw)
-        except (KeyError, TypeError, ValueError) as exc:
-            logger.warning("Could not rebuild %s: %s", name, exc)
+        except (KeyError, TypeError, ValueError):
+            self._view.show_message(f"  Note: the saved {name} could not be read, so it is left out.")
             return None
