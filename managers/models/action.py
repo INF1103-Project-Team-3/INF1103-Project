@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Self
 
+from .constants import DATE_FORMAT
 from .serializable import Serializable
 
 
@@ -25,7 +26,7 @@ class Action(Serializable):
                             ("description", description), ("logged_at", logged_at)):
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{name} must be non-empty text, got {value!r}")
-        if not self.__is_date(action_date):
+        if not self.is_valid_date(action_date):
             raise ValueError(f"action_date must be a real date as YYYY-MM-DD, got {action_date!r}")
         if keyword is not None:
             if not isinstance(keyword, str):
@@ -89,9 +90,10 @@ class Action(Serializable):
         return f"Action({self.__action_id!r}, {self.__theme!r}, {self.__action_date!r})"
 
     @staticmethod
-    def __is_date(text) -> bool:
-        """True only for a real calendar date written exactly as YYYY-MM-DD."""
+    def is_valid_date(text) -> bool:
+        """True only for a real calendar date written exactly as YYYY-MM-DD.
+        Public so a form can re-ask for a bad date before building the Action."""
         try:
-            return datetime.strptime(text, "%Y-%m-%d").strftime("%Y-%m-%d") == text
+            return datetime.strptime(text, DATE_FORMAT).strftime(DATE_FORMAT) == text
         except (TypeError, ValueError):
             return False
