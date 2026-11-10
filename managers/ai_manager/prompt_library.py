@@ -12,6 +12,7 @@ class PromptLibrary:
     """
 
     def __init__(self, system_template: str, summary_prompt: str, themes: list[str]):
+        self.__template = system_template
         self.__themes = self._check_themes(themes)
         self.__system_prompt = self._fill_system_prompt(system_template)
         self.__summary_prompt = self._check_summary_prompt(summary_prompt)
@@ -30,6 +31,15 @@ class PromptLibrary:
     def summary_prompt(self) -> str:
         """The call 2 system prompt."""
         return self.__summary_prompt
+
+    def set_themes(self, themes: list[str]) -> None:
+        """Replace the known themes and refill the call 1 system prompt.
+
+        Raises ValueError, keeping the old themes, unless themes is a non-empty
+        list of names.
+        """
+        self.__themes = self._check_themes(themes)
+        self.__system_prompt = self._fill_system_prompt(self.__template)
 
     def find_new_themes(self, records: list[FeedbackRecord], known_themes: list[str] | None = None) -> list[str]:
         """Return known_themes extended with any labels the model coined in records.

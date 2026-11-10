@@ -279,6 +279,42 @@ def test_failed_record_does_not_change_the_known_themes(prompts, token_log, slee
     assert json.loads(client.calls[-1]["messages"][1]["content"]) == {"text": entry.text}
 
 
+# Call 1: confirmed themes (7.4)
+def test_confirmed_theme_reaches_the_next_classification(prompts, token_log, sleeps, entry):
+    client = StubLLMClient([json.dumps(classification())])
+    manager = build_manager(client, prompts, token_log)
+
+    manager.set_known_themes(["Parking Fees"])
+    manager.classify_entries([entry], [], discard)
+
+    assert client.calls[0]["messages"][0]["content"] == "Themes: " + ", ".join([*THEMES, "Parking Fees"])
+
+
+def test_set_known_themes_keeps_base_themes_without_duplicates(prompts, token_log):
+    build_manager(StubLLMClient([]), prompts, token_log).set_known_themes([*THEMES, "Parking Fees"])
+
+    assert prompts.themes == [*THEMES, "Parking Fees"]
+
+
+def test_confirmed_theme_is_no_longer_offered_as_coined(prompts, token_log, sleeps, entry):
+    client = StubLLMClient([json.dumps(classification())])
+    manager = build_manager(client, prompts, token_log)
+
+    manager.set_known_themes(["Parking Fees"])
+    manager.classify_entries([entry], [with_ai("Parking Fees")], discard)
+
+    assert json.loads(client.calls[0]["messages"][1]["content"]) == {"text": entry.text}
+
+
+def test_set_known_themes_rejects_a_blank_theme_and_keeps_the_old(prompts, token_log):
+    manager = build_manager(StubLLMClient([]), prompts, token_log)
+
+    with pytest.raises(ValueError):
+        manager.set_known_themes([""])
+
+    assert prompts.themes == ["Facilities", "Assessment"]
+
+
 # Call 1: failure behaviour
 def test_invalid_output_leaves_record_pending_and_batch_continues(prompts, token_log, sleeps, entry):
     second = make_record("fb_002")
@@ -945,6 +981,23 @@ def test_prompt_library_rejects_bad_placeholder(prompt):
 def test_prompt_library_rejects_empty_summary_prompt():
     with pytest.raises(ValueError):
         PromptLibrary("Themes: {themes}", "  \n", ["Facilities"])
+
+
+def test_prompt_library_set_themes_refills_the_prompt(prompts):
+    prompts.set_themes(["Facilities", "Parking Fees"])
+
+    assert prompts.themes == ["Facilities", "Parking Fees"]
+    assert prompts.system_prompt == "Themes: Facilities, Parking Fees"
+    assert prompts.summary_prompt == "Summarise."
+
+
+@pytest.mark.parametrize("themes", ["Facilities", [], [""], [1], None])
+def test_prompt_library_set_themes_rejects_bad_themes_and_keeps_the_old(prompts, themes):
+    with pytest.raises(ValueError):
+        prompts.set_themes(themes)
+
+    assert prompts.themes == ["Facilities", "Assessment"]
+    assert prompts.system_prompt == "Themes: Facilities, Assessment"
 
 
 def test_find_new_themes(prompts):
