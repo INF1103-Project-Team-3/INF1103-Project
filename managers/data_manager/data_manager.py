@@ -1,4 +1,5 @@
 import logging
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -15,7 +16,6 @@ except ImportError:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 def _read_list_strict(path: Union[str, Path]) -> List[Any]:
-    """Module-level compatibility helper for older I/O tests."""
     store = JsonFileStore()
     data = store.load(Path(path))
     if isinstance(data, list):
@@ -25,10 +25,6 @@ def _read_list_strict(path: Union[str, Path]) -> List[Any]:
     raise ValueError("Expected a list or records container.")
 
 class DataManager:
-    """
-    Core Data Manager class for v1.2 architecture. Encapsulates all file operations[cite: 8].
-    """
-
     def __init__(self, data_dir: str = "data", store: Optional[StorageBackend] = None) -> None:
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -181,7 +177,6 @@ class DataManager:
         return None
 
     def load_history(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        """v1.1/v1.2: Returns last N history entries, newest first[cite: 8]."""
         filepath = self._get_path("aggregated_history.json")
         history = self.json_store.load(filepath)
         if not isinstance(history, list):
@@ -191,7 +186,6 @@ class DataManager:
         return history
 
     def load_known_themes(self) -> List[str]:
-        """v1.2: Returns base THEMES plus any confirmed new themes from known_themes.json[cite: 8]."""
         filepath = self._get_path("known_themes.json")
         data = self.json_store.load(filepath)
         confirmed = []
@@ -208,7 +202,6 @@ class DataManager:
         return known
 
     def add_known_theme(self, name: str) -> bool:
-        """v1.2: Confirms and adds a new theme into known_themes.json[cite: 8]."""
         filepath = self._get_path("known_themes.json")
         data = self.json_store.load(filepath)
         
@@ -255,17 +248,26 @@ class DataManager:
             return data
         return [data] if isinstance(data, dict) else []
 
+    def load_token_log(self) -> Optional[Dict[str, Any]]:
+        filepath = self._get_path("token_log.json")
+        if not filepath.exists() or filepath.stat().st_size == 0:
+            return None
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, dict) else None
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            logging.error("Corrupt token log at '%s': %s. Returning None safely.", filepath, e)
+            return None
+
     def load_prompts(self) -> tuple[str, str]:
-        prompt_path = self.data_dir / "prompts" / "system_prompt.txt"
-        summary_path = self.data_dir / "prompts" / "summary_prompt.txt"
-        sys_prompt = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else "Analyze feedback accurately."
+        config_dir = self.data_dir.parent / "config"
+        prompt_path = config_dir / "system_prompt.txt"
+        summary_path = config_dir / "summary_prompt.txt"
+        
+        sys_prompt = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else "Analyze feedback accurately using themes: {themes}."
         sum_prompt = summary_path.read_text(encoding="utf-8") if summary_path.exists() else "Summarize key themes."
         return sys_prompt, sum_prompt
-
-    def load_token_log(self) -> Dict[str, Any]:
-        filepath = self._get_path("token_log.json")
-        data = self.json_store.load(filepath)
-        return data if isinstance(data, dict) else {}
 
     def save_token_log(self, log: Dict[str, Any]) -> bool:
         filepath = self._get_path("token_log.json")

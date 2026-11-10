@@ -7,7 +7,6 @@ from .file_store import FileStore
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 class CsvFileStore(FileStore):
-    """Concrete implementation for CSV parsing and persistence. Fully implements StorageBackend for LSP[cite: 8]."""
 
     def load(self, path: Path) -> Any:
         if not path.exists() or path.stat().st_size == 0:
@@ -24,7 +23,6 @@ class CsvFileStore(FileStore):
             raise ValueError(f"Unreadable CSV file: {e}")
 
     def save(self, path: Path, data: Any) -> bool:
-        """Fully functional save to satisfy LSP since it implements StorageBackend[cite: 8]."""
         if not isinstance(data, list):
             logging.error("CsvFileStore expects a list of dicts to save.")
             return False
