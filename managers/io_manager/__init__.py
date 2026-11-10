@@ -12,7 +12,7 @@ an internal helper. One class per file, named after the class.
   Building objects  : RecordBuilder (feedback records and actions)
   Importing files   : FeedbackImporter (abstract), CsvImporter, JsonImporter
 
-Internal: EntryForm, ReviewSession, InputValidator (interface),
+Internal: EntryForm, ReviewSession, Prompter, InputValidator (interface),
 ChoiceValidator, TextValidator, PasswordValidator, ImportResult.
 """
 from .console_view import ConsoleView
