@@ -20,27 +20,67 @@ class ImpactAnalyser:
     __CHANGE_PERCENT = 30       # negative per week must move this much to count
     __PRIORITY_POINTS = 5       # priority must move this much to count
 
-    def __init__(self, normaliser: ThemeNormaliser, aggregator: ThemeAggregator):
+    def __init__(self, normaliser: ThemeNormaliser, aggregator: ThemeAggregator, weeks: int = 4):
+        """weeks: how many weeks either side of the action date the chart data covers."""
         self.__normaliser = normaliser
         self.__aggregator = aggregator
+        self.__weeks = weeks
 
-    def evaluate(self, action: Action, records: list[FeedbackRecord], today: date) -> ImpactReport:
+    def evaluate(self, action: Action, records: list[FeedbackRecord], today: date,
+                 other_actions: list[Action] = ()) -> ImpactReport:
         """Expects records that have been through the rules. Today's feedback
-        counts, so a report can change on a later run the same day."""
+        counts, so a report can change on a later run the same day.
+        other_actions are checked for overlap; the action itself is skipped."""
         start = date.fromisoformat(action.action_date)
+        theme = self.__normaliser.normalise(action.theme)
+        matching = [r for r in records if r.counted and r.theme == theme and self.__mentions(r, action.keyword)]
+        weekly = self.__weekly(matching, start, today)
         if start >= today:
             return ImpactReport(action, ImpactReport.TOO_EARLY,
                                 f"Too early to tell: the action is dated {action.action_date}, so there is no "
-                                f"feedback after it yet.")
+                                f"feedback after it yet.", weekly=weekly)
 
         days = min((today - start).days + 1, self.__WINDOW_DAYS)
-        theme = self.__normaliser.normalise(action.theme)
-        matching = [r for r in records if r.counted and r.theme == theme and self.__mentions(r, action.keyword)]
         before = self.__measure(theme, matching, records, start - timedelta(days=days), days)
         after = self.__measure(theme, matching, records, start, days)
 
         label, message = self.__judge(action, theme, before, after)
-        return ImpactReport(action, label, message, before, after)
+        warnings = self.__overlaps(action, theme, before, after, other_actions) + self.__unverified(before, after)
+        return ImpactReport(action, label, message, before, after, weekly, warnings)
+
+    def __weekly(self, matching: list[FeedbackRecord], start: date, today: date) -> list[dict]:
+        """{week_start, negative, total} for each week either side of the action
+        date. Weeks are counted from the action date, and weeks that have not
+        started yet are left out, so a chart shows a gap rather than zeros."""
+        weeks = []
+        for offset in range(-self.__weeks, self.__weeks):
+            first_day = start + timedelta(weeks=offset)
+            if first_day > today:
+                break
+            inside = [r for r in matching if first_day <= self.__day(r) < first_day + timedelta(weeks=1)]
+            weeks.append({"week_start": first_day.isoformat(),
+                          "negative": sum(r.sentiment == NEGATIVE for r in inside),
+                          "total": len(inside)})
+        return weeks
+
+    def __overlaps(self, action: Action, theme: str, before: dict, after: dict,
+                   other_actions: list[Action]) -> list[str]:
+        """A warning for each other action on the same theme dated inside the two windows."""
+        first_day, last_day = before["start"], after["end"]
+        return [f"Another action on {theme} ({other.description}, {other.action_date}) falls inside these "
+                f"windows, so this change can't be put down to one action."
+                for other in other_actions
+                if other.action_id != action.action_id
+                and self.__normaliser.normalise(other.theme) == theme
+                and first_day <= other.action_date <= last_day]
+
+    @staticmethod
+    def __unverified(before: dict, after: dict) -> list[str]:
+        count = before["unverified"] + after["unverified"]
+        if not count:
+            return []
+        entries = "entry is" if count == 1 else "entries are"
+        return [f"{count} of the measured {entries} unverified: the AI hasn't checked them yet."]
 
     def __measure(self, theme: str, matching: list[FeedbackRecord], records: list[FeedbackRecord],
                   first_day: date, days: int) -> dict:

@@ -120,3 +120,51 @@ def test_a_small_move_is_no_change():
     records = [make_record("2026-10-09"), make_record("2026-10-10"),
                make_record("2026-10-20"), make_record("2026-10-21"), make_record("2026-10-22", sentiment=POSITIVE)]
     assert evaluate(records).label == ImpactReport.NO_CHANGE
+
+
+def test_weekly_covers_four_weeks_either_side_and_stops_at_this_week():
+    records = [make_record("2026-09-20"), make_record("2026-10-09", sentiment=POSITIVE),
+               make_record("2026-10-16"), make_record("2026-10-23"), make_record("2026-10-29"),
+               make_record("2026-10-16", theme="Assessment")]                  # another theme: not counted
+    assert evaluate(records).weekly == [
+        {"week_start": "2026-09-17", "negative": 1, "total": 1},
+        {"week_start": "2026-09-24", "negative": 0, "total": 0},
+        {"week_start": "2026-10-01", "negative": 0, "total": 0},
+        {"week_start": "2026-10-08", "negative": 0, "total": 1},
+        {"week_start": "2026-10-15", "negative": 1, "total": 1},
+        {"week_start": "2026-10-22", "negative": 1, "total": 1},
+        {"week_start": "2026-10-29", "negative": 1, "total": 1},    # started today; 2026-11-05 hasn't
+    ]
+
+
+def test_the_number_of_weeks_can_be_set():
+    normaliser = ThemeNormaliser()
+    analyser = ImpactAnalyser(normaliser, ThemeAggregator(normaliser), weeks=2)
+    report = analyser.evaluate(make_action(), [], date(2026, 11, 30))
+    assert [week["week_start"] for week in report.weekly] == ["2026-10-01", "2026-10-08", "2026-10-15", "2026-10-22"]
+
+
+def test_an_action_in_the_future_still_has_the_weeks_before_it():
+    report = evaluate([make_record("2026-10-01")], today="2026-10-10")
+    assert [week["week_start"] for week in report.weekly] == ["2026-09-17", "2026-09-24", "2026-10-01", "2026-10-08"]
+
+
+def test_another_action_on_the_same_theme_inside_the_windows_gives_a_warning():
+    others = [
+        make_action(),                                                                  # the action itself
+        Action("act_002", "facilities", "Moved the printers", "2026-10-20", None, "2026-10-20T09:00:00"),
+        Action("act_003", "Facilities", "Repainted the lab", "2026-12-01", None, "2026-12-01T09:00:00"),
+        Action("act_004", "Assessment", "New rubric", "2026-10-20", None, "2026-10-20T09:00:00"),
+    ]
+    normaliser = ThemeNormaliser()
+    analyser = ImpactAnalyser(normaliser, ThemeAggregator(normaliser))
+    report = analyser.evaluate(make_action(), [make_record("2026-10-10")] * 3, date(2026, 10, 29), others)
+    assert report.warnings == ["Another action on Facilities (Moved the printers, 2026-10-20) falls inside these "
+                               "windows, so this change can't be put down to one action."]
+
+
+def test_unverified_entries_give_a_warning():
+    records = [make_record("2026-10-10", verification=UNVERIFIED), make_record("2026-10-20", verification=UNVERIFIED),
+               make_record("2026-10-21")]
+    assert evaluate(records).warnings == ["2 of the measured entries are unverified: the AI hasn't checked them yet."]
+    assert evaluate(window(1, 3)).warnings == []
