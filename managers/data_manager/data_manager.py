@@ -255,17 +255,28 @@ class DataManager:
             return data
         return [data] if isinstance(data, dict) else []
 
+    def load_token_log(self) -> Optional[Dict[str, Any]]:
+        """v1.6: Returns None for a corrupt or missing log instead of empty dict."""
+        filepath = self._get_path("token_log.json")
+        if not filepath.exists() or filepath.stat().st_size == 0:
+            return None
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, dict) else None
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            logging.error("Corrupt token log at '%s': %s. Returning None safely.", filepath, e)
+            return None
+
     def load_prompts(self) -> tuple[str, str]:
-        prompt_path = self.data_dir / "prompts" / "system_prompt.txt"
-        summary_path = self.data_dir / "prompts" / "summary_prompt.txt"
-        sys_prompt = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else "Analyze feedback accurately."
+        """v1.6: Loads prompts from config/ directory instead of data/prompts/."""
+        config_dir = self.data_dir.parent / "config"
+        prompt_path = config_dir / "system_prompt.txt"
+        summary_path = config_dir / "summary_prompt.txt"
+        
+        sys_prompt = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else "Analyze feedback accurately using themes: {themes}."
         sum_prompt = summary_path.read_text(encoding="utf-8") if summary_path.exists() else "Summarize key themes."
         return sys_prompt, sum_prompt
-
-    def load_token_log(self) -> Dict[str, Any]:
-        filepath = self._get_path("token_log.json")
-        data = self.json_store.load(filepath)
-        return data if isinstance(data, dict) else {}
 
     def save_token_log(self, log: Dict[str, Any]) -> bool:
         filepath = self._get_path("token_log.json")
