@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from managers.models import FeedbackRecord
+from managers.models import THEMES, FeedbackRecord
 
 from .ai_summary import AISummary
 from .classification_task import ClassificationTask
@@ -53,6 +53,15 @@ class AIManager:
         self.__summary_input_chars = summary_input_chars
         self.__ledger = TokenLedger(client.model, load_token_log, save_token_log)
         self.__runner = RequestRunner(client, reporter, self.__ledger, key_label)
+
+    def set_known_themes(self, themes: list[str]) -> None:
+        """Update the themes call 1 offers the model, e.g. after an admin
+        confirms a new one (7.4). The 8 base themes are always kept, so themes
+        may be the full list from data.load_known_themes() or only the
+        confirmed ones. Raises ValueError, keeping the old themes, if a theme
+        is not a non-empty name.
+        """
+        self.__prompts.set_themes(list(dict.fromkeys([*THEMES, *themes])))
 
     def classify_entries(
         self,
@@ -106,7 +115,9 @@ class AIManager:
         are left out (D19). Returns an AISummary with one action per theme in
         result's order, or None if every attempt failed, so the caller keeps
         the last summary. The pipeline skips this call when classify_entries
-        stopped, as the API is then unlikely to answer (D20).
+        stopped, as the API is then unlikely to answer (D20), and when it
+        classified nothing (e.g. a review-only run), to save a call; the last
+        summary then stays until the next run that classifies a record.
         """
         task = SummaryTask(result.to_dict(), records, self.__prompts.summary_prompt, self.__summary_input_chars)
         tracker = ProgressTracker(1)
