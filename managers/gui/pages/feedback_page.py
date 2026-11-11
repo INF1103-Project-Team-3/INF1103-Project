@@ -5,15 +5,22 @@ from PySide6.QtWidgets import (
     QButtonGroup, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout,
 )
 
+from managers.models import SEVERITIES
+
 from ..widgets.card import Card
+from ..widgets.combo_box import ComboBox
 from ..widgets.entry_card import EntryCard
 from ..widgets.entry_detail_panel import EntryDetailPanel
 from .base_page import BasePage
 
 
+RECOMMENDED = "Recommended"
+SORTS = (RECOMMENDED, "Newest first", "Oldest first", "Most severe first", "Theme (A-Z)")
+
+
 # A list of entry cards on the left and EntryDetailPanel on the right.
 class FeedbackPage(BasePage):
-    decision_made = Signal(str, str, object)
+    decision_made = Signal(object)
 
     def __init__(self, data, parent=None):
         super().__init__("Feedback", "", parent)
@@ -51,6 +58,15 @@ class FeedbackPage(BasePage):
         self.__search.returnPressed.connect(self.refresh)
         self.__search.textChanged.connect(lambda text: None if text else self.refresh())
         bar.addWidget(self.__search, 1)
+        sort_label = QLabel("Sort by")
+        sort_label.setObjectName("fieldLabel")
+        self.__sort = ComboBox()
+        self.__sort.setObjectName("sortBox")
+        self.__sort.addItems(list(SORTS))
+        self.__sort.setToolTip("Recommended keeps the review queue's order: critical entries first.")
+        self.__sort.currentTextChanged.connect(lambda _text: self.refresh())
+        bar.addWidget(sort_label)
+        bar.addWidget(self.__sort)
         search_card.body.addLayout(bar)
         self.content_layout.addWidget(search_card)
 
@@ -94,6 +110,7 @@ class FeedbackPage(BasePage):
         else:
             records = self.__data.load_records()
 
+        records = self.sort_records(records, self.__sort.currentText())
         self.__review_button.setText(f"Needs review · {self.review_count()}")
         self.__all_button.setText(f"All feedback · {len(self.__data.load_records())}")
         self.__records = {r.feedback_id: r for r in records}
@@ -114,6 +131,26 @@ class FeedbackPage(BasePage):
         self.__detail.clear()
         if records:
             self.__select(records[0].feedback_id)
+
+    def set_sort(self, name: str) -> None:
+        self.__sort.setCurrentText(name)
+
+    # Records in the chosen order. Recommended keeps Data's order (the review queue is critical
+    # first); the others break ties newest first. Severity and theme use the final values when
+    # Logic has set them, otherwise the student's.
+    @staticmethod
+    def sort_records(records: list, name: str) -> list:
+        newest = sorted(records, key=lambda r: r.timestamp or "", reverse=True)
+        if name == "Newest first":
+            return newest
+        if name == "Oldest first":
+            return newest[::-1]
+        if name == "Most severe first":
+            rank = {severity: index for index, severity in enumerate(SEVERITIES)}
+            return sorted(newest, key=lambda r: -rank.get(r.current_labels.get("severity"), -1))
+        if name == "Theme (A-Z)":
+            return sorted(newest, key=lambda r: (r.current_labels.get("theme") or "").lower())
+        return list(records)
 
     def __on_card_clicked(self, feedback_id: str) -> None:
         if feedback_id == self.__current:

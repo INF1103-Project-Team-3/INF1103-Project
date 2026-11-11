@@ -6,27 +6,30 @@ from types import SimpleNamespace
 
 from managers.ai_manager import ProgressReporter
 from managers.ai_manager.progress_tracker import ProgressTracker
-
-from .sample_data import fake_check
+from managers.io_manager import ReviewDecision, SessionResult
+from managers.logic_manager import LogicManager
 
 STEP_SECONDS = 0.8
 RATE_LIMITED_ID = "st_010"
 
 
+# Applies the session, fakes the AI, then runs the real LogicManager rules.
 class FakePipeline:
-    def __init__(self, reporter: ProgressReporter, data, ai_answers: dict[str, tuple[str, str, str]]):
+    def __init__(self, reporter: ProgressReporter, data, ai_answers: dict[str, tuple[str, str, str]],
+                 logic: LogicManager | None = None):
         self.__reporter = reporter
         self.__data = data
         self.__answers = ai_answers
+        self.__logic = logic or LogicManager()
 
-    def execute_pipeline(self, session):
+    def execute_pipeline(self, session: SessionResult):
         for decision in session.decisions:
-            if decision.action == "delete":
+            if decision.action == ReviewDecision.DELETE:
                 self.__data.delete_record(decision.feedback_id)
             else:
                 record = self.__data.get_record(decision.feedback_id)
                 if record is not None:
-                    record.mark_reviewed(*decision.values)
+                    record.mark_reviewed(decision.theme, decision.sentiment, decision.severity)
         for action in session.actions:
             self.__data.save_action(action)
         for record in session.records:
@@ -52,21 +55,20 @@ class FakePipeline:
             theme, sentiment, severity = self.__answers.get(
                 request_id, (user["theme"], user["sentiment"], user["severity"]))
             record.set_ai(theme, sentiment, severity)
-            fake_check(record)
             tracker.add_tokens(1400)
             tracker.finish_ok()
             self.__reporter.on_record_ok(request_id, f"{theme} · {sentiment} · {severity}", progress)
         self.__reporter.on_batch_end(progress, None, None)
+        self.__logic.apply_rules(self.__data.load_records())
         self.__save_run(pending)
         return SimpleNamespace(records=self.__data.load_records(), stopped=False)
 
+    # A history row with every stored record's totals and priority, as the real history keeps.
     def __save_run(self, records) -> None:
         if not records:
             return
-        counts = {}
-        for record in records:
-            theme = record.theme or record.ai["theme"]
-            counts[theme] = counts.get(theme, 0) + 1
+        result = self.__logic.aggregate(self.__data.load_records())
         history = self.__data.load_history()
         self.__data.save_history({"run": len(history) + 1, "finished_at": date.today().isoformat(),
-                                  "theme_counts": counts})
+                                  "theme_counts": {stats.theme: stats.count for stats in result.themes},
+                                  "theme_priority": {stats.theme: stats.priority for stats in result.themes}})

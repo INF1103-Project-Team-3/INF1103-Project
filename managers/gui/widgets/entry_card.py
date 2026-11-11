@@ -28,7 +28,9 @@ class EntryCard(QFrame):
             tags.addWidget(Pill(text, kind))
         tags.addStretch()
 
-        preview = record.text[:PREVIEW_CHARS].rstrip() + ("…" if len(record.text) > PREVIEW_CHARS else "")
+        # The AI's one-liner when there is one (D18), otherwise the student's text.
+        shown = (record.ai or {}).get("summary") or record.text
+        preview = shown[:PREVIEW_CHARS].rstrip() + ("…" if len(shown) > PREVIEW_CHARS else "")
         text = QLabel(preview)
         text.setObjectName("entryText")
         text.setWordWrap(True)
