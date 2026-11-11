@@ -72,6 +72,13 @@ class AddFeedbackPage(BasePage):
     def import_panel(self) -> ImportPanel:
         return self.__import
 
+    # Switches to the Import file tab (QtFeedbackView.show_rejected_rows).
+    def show_import_tab(self) -> None:
+        self.__tabs.setCurrentWidget(self.__import)
+        for button in self.findChildren(QPushButton):
+            if button.objectName() == "segment":
+                button.setChecked(button.text() == "Import file")
+
     # Disables Process while a run is going, so only one run happens at a time.
     def set_busy(self, busy: bool) -> None:
         self.__busy = busy

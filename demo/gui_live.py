@@ -14,8 +14,9 @@ from managers.data_manager import DataManager
 from managers.gui import MainWindow, QtProgressReporter
 from managers.gui.data_reader import DataReader
 from managers.gui.style import app_font, light_palette
-from managers.io_manager import CsvImporter, EntryValidator, JsonImporter, RecordBuilder, SessionResult, ThemeValidator
-from managers.io_manager.password_validator import PasswordValidator
+from managers.io_manager import (
+    CsvImporter, EntryValidator, JsonImporter, PasswordValidator, RecordBuilder, SessionResult, ThemeValidator,
+)
 from managers.logic_manager import LogicManager
 
 from .interim_pipeline import InterimPipeline

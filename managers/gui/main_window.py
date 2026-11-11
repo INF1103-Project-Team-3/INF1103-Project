@@ -2,8 +2,7 @@
 
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QMessageBox, QStackedWidget, QWidget
 
-from managers.io_manager import EntryValidator, RecordBuilder, ReviewDecision, SessionResult
-from managers.io_manager.password_validator import PasswordValidator
+from managers.io_manager import EntryValidator, PasswordValidator, RecordBuilder, ReviewDecision, SessionResult
 
 from .pages.add_feedback_page import AddFeedbackPage
 from .pages.dashboard_page import DashboardPage
@@ -12,6 +11,7 @@ from .pages.start_page import StartPage
 from .pages.student_form_page import StudentFormPage
 from .pages.trends_page import TrendsPage
 from .pipeline_worker import PipelineWorker
+from .qt_feedback_view import QtFeedbackView
 from .qt_progress_reporter import QtProgressReporter
 from .style import STYLE, app_font, light_palette
 from .widgets.sidebar import Sidebar
@@ -83,9 +83,16 @@ class MainWindow(QMainWindow):
         self.__feedback.decision_made.connect(self.__on_decision)
         self.__trends.action_logged.connect(self.__on_action_logged)
 
+        self.__view = QtFeedbackView(self, self.__dashboard, self.__feedback, self.__add_feedback)
+
         self.__refresh_all()
         self.show_page(DASHBOARD)
         self.show_start()
+
+    # I/O's FeedbackView for this window, for AppEngine and I/O classes to show results with.
+    @property
+    def view(self) -> QtFeedbackView:
+        return self.__view
 
     def show_start(self) -> None:
         self.__start.reset()
@@ -93,6 +100,7 @@ class MainWindow(QMainWindow):
         self.statusBar().hide()
 
     def show_student_form(self) -> None:
+        self.__student.set_themes(self.__data.load_known_themes())
         self.__student.reset()
         self.__screens.setCurrentWidget(self.__student)
         self.statusBar().hide()

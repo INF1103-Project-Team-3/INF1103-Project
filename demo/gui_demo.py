@@ -6,8 +6,9 @@ from PySide6.QtWidgets import QApplication
 
 from managers.gui import MainWindow, QtProgressReporter
 from managers.gui.style import app_font, light_palette
-from managers.io_manager import CsvImporter, EntryValidator, JsonImporter, RecordBuilder, ThemeValidator
-from managers.io_manager.password_validator import PasswordValidator
+from managers.io_manager import (
+    CsvImporter, EntryValidator, JsonImporter, PasswordValidator, RecordBuilder, ThemeValidator,
+)
 from managers.logic_manager import LogicManager
 
 from .fake_data_manager import FakeDataManager

@@ -37,8 +37,11 @@ def single_form(qtbot):
 
 def fill(form, text, theme, sentiment="negative", severity="medium", other=""):
     form.findChild(QPlainTextEdit, "entryTextBox").setPlainText(text)
-    form.findChild(QLineEdit, "entryOtherTheme").setText(other)
-    for name, value in (("entryTheme", theme), ("entrySentiment", sentiment), ("entrySeverity", severity)):
+    if theme == OTHER:
+        form.theme_picker.type_other(other)
+    else:
+        form.theme_picker.choose(theme)
+    for name, value in (("entrySentiment", sentiment), ("entrySeverity", severity)):
         box = [w for w in form.findChildren(object) if w.objectName() == name][0]
         box.setCurrentText(value)
 
@@ -63,7 +66,7 @@ def test_single_entry_builds_a_record(qtbot):
 def test_other_theme_goes_through_the_theme_validator(qtbot):
     form = single_form(qtbot)
     fill(form, "Parking costs too much", OTHER, other="  parking fees ")
-    assert form.findChild(QLineEdit, "entryOtherTheme").isVisibleTo(form)
+    assert form.findChild(QLineEdit, "entryThemeOther").isVisibleTo(form)
     with qtbot.waitSignal(form.record_added, timeout=1000) as blocker:
         button(form, "Add to queue").click()
     assert blocker.args[0].user["theme"] == "Parking Fees"
