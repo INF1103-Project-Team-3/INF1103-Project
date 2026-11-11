@@ -27,14 +27,32 @@ class TrendChart(QWidget):
         self.__colours = {}
         self.__markers = []
         self.__hidden = set()
+        self.__top = None
 
-    def set_data(self, run_labels: list[str], series: dict[str, list[float]],
-                 markers: list[tuple[float, str]] | None = None) -> None:
+    # A None value is a run with no data for that series: the line breaks there instead of
+    # dropping to zero. top fixes the y-axis maximum (100 for priority); None fits the data.
+    def set_data(self, run_labels: list[str], series: dict[str, list[float | None]],
+                 markers: list[tuple[float, str]] | None = None, top: int | None = None) -> None:
         self.__labels = list(run_labels)
         self.__series = {name: list(values) for name, values in series.items()}
         self.__colours = {name: SERIES_COLOURS[i % len(SERIES_COLOURS)] for i, name in enumerate(self.__series)}
         self.__markers = list(markers or [])
+        self.__top = top
         self.update()
+
+    # The (run index, value) stretches of one series between its gaps.
+    def segments(self, name: str) -> list[list[tuple[int, float]]]:
+        parts, current = [], []
+        for index, value in enumerate(self.__series.get(name, [])):
+            if value is None:
+                if current:
+                    parts.append(current)
+                current = []
+            else:
+                current.append((index, value))
+        if current:
+            parts.append(current)
+        return parts
 
     def colour(self, name: str) -> str:
         return self.__colours.get(name, MUTED)
@@ -64,14 +82,18 @@ class TrendChart(QWidget):
         self.__draw_markers(painter, area)
         ends = []
         for name in self.visible_series():
-            points = [self.__point(area, index, value, top_value)
-                      for index, value in enumerate(self.__series[name]) if value is not None]
-            self.__draw_line(painter, points, QColor(self.colour(name)), self.shape(name))
+            points = []
+            for part in self.segments(name):
+                stretch = [self.__point(area, index, value, top_value) for index, value in part]
+                self.__draw_line(painter, stretch, QColor(self.colour(name)), self.shape(name))
+                points += stretch
             if points:
                 ends.append([points[-1].y(), name, points[-1].x()])
         self.__draw_end_labels(painter, ends, area)
 
     def __nice_max(self) -> int:
+        if self.__top:
+            return self.__top
         values = [v for name in self.visible_series() for v in self.__series[name] if v is not None]
         highest = max(values, default=1)
         step = max(1, math.ceil(highest / 3))
@@ -94,7 +116,7 @@ class TrendChart(QWidget):
 
     def __draw_grid(self, painter: QPainter, area: QRectF, top_value: int) -> None:
         painter.setFont(self.__small_font())
-        step = top_value // 3
+        step = max(top_value // (4 if top_value % 4 == 0 and top_value >= 20 else 3), 1)
         for tick in range(0, top_value + 1, step):
             y = area.bottom() - area.height() * tick / top_value
             painter.setPen(QPen(QColor(BORDER_SOFT if tick else "#BDBDB8"), 1))
