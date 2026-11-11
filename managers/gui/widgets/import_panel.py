@@ -90,6 +90,13 @@ class ImportPanel(Card):
         self.__add.setText(f"Add {len(new)} {'entry' if len(new) == 1 else 'entries'} to queue")
         self.__add.setEnabled(bool(new))
 
+    # Lists rows an import rejected (QtFeedbackView.show_rejected_rows); nothing to queue.
+    def show_rejected(self, rejected) -> None:
+        self.__clear()
+        rejected = list(rejected)
+        self.__summary.setText(f"{len(rejected)} {'row was' if len(rejected) == 1 else 'rows were'} rejected")
+        self.__details.setText(self.__describe([], rejected, 0))
+
     def __on_choose(self, *_args) -> None:
         path, _filter = QFileDialog.getOpenFileName(self, "Import feedback", "", FILE_FILTER)
         if path:

@@ -92,21 +92,31 @@ class DashboardPage(BasePage):
         self.content_layout.addStretch()
 
     def refresh(self) -> None:
-        records = self.__data.load_records()
-        result = self.__data.load_result()
-        summary = self.__data.load_summary()
-        counted = [r for r in records if r.counted]
+        self.show_values(self.__data.load_result(), self.__data.load_trend(), self.__data.load_summary(),
+                         self.__data.load_review_queue(), self.__data.load_records(),
+                         len(self.__data.load_pending()))
+
+    # Shows the given results (QtFeedbackView.show_dashboard). Without records, the number
+    # cards come from result and queue; the charts and actions are still read from Data.
+    def show_values(self, result, trend, summary, queue, records=None, pending: int | None = None) -> None:
+        queue = list(queue)
         unverified = result.unverified_count if result else 0
-        pending = len(self.__data.load_pending())
-        self.__values["Total entries"].setText(str(len(records)))
-        self.__values["Counted in statistics"].setText(str(len(counted)))
+        if records is not None:
+            total, counted = len(records), sum(1 for r in records if r.counted)
+            critical = sum(1 for r in records if r.severity == CRITICAL)
+        else:
+            total = result.total_entries if result else 0
+            counted = result.counted_entries if result else 0
+            critical = sum(1 for r in queue if r.current_labels.get("severity") == CRITICAL)
+        self.__values["Total entries"].setText(str(total))
+        self.__values["Counted in statistics"].setText(str(counted))
         self.__feet["Counted in statistics"].setText(f"incl. {unverified} unverified (AI retries next run)")
-        self.__values["Needs review"].setText(str(len(self.__data.load_review_queue())))
-        self.__values["Critical"].setText(str(sum(1 for r in records if r.severity == CRITICAL)))
-        self.set_subtitle(f"{pending} entries waiting for the AI" if pending else "Every entry has been processed")
+        self.__values["Needs review"].setText(str(len(queue)))
+        self.__values["Critical"].setText(str(critical))
+        if pending is not None:
+            self.set_subtitle(f"{pending} entries waiting for the AI" if pending else "Every entry has been processed")
 
         self.__fill_notice(unverified, summary)
-        trend = self.__data.load_trend()
         self.__fill_strip(trend)
         self.__fill_themes(result, trend)
         self.__fill_sentiment(result)

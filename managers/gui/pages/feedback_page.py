@@ -110,7 +110,31 @@ class FeedbackPage(BasePage):
         else:
             records = self.__data.load_records()
 
-        records = self.sort_records(records, self.__sort.currentText())
+        self.__display(self.sort_records(records, self.__sort.currentText()))
+
+    # Shows exactly these records (QtFeedbackView.show_search_results), in "All feedback".
+    def show_records(self, records) -> None:
+        self.__set_mode(review=False)
+        self.__search.blockSignals(True)
+        self.__search.clear()
+        self.__search.blockSignals(False)
+        self.__display(self.sort_records(list(records), self.__sort.currentText()))
+
+    # Opens "Needs review" with this record selected; shown on its own if it isn't queued.
+    def show_review_entry(self, record) -> None:
+        self.__set_mode(review=True)
+        self.__search.blockSignals(True)
+        self.__search.clear()
+        self.__search.blockSignals(False)
+        self.refresh()
+        if record.feedback_id not in self.__cards:
+            self.__display([record])
+        self.__select(record.feedback_id)
+
+    def __set_mode(self, review: bool) -> None:
+        (self.__review_button if review else self.__all_button).setChecked(True)
+
+    def __display(self, records: list) -> None:
         self.__review_button.setText(f"Needs review · {self.review_count()}")
         self.__all_button.setText(f"All feedback · {len(self.__data.load_records())}")
         self.__records = {r.feedback_id: r for r in records}
