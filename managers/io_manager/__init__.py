@@ -27,9 +27,11 @@ from .record_builder import RecordBuilder
 from .review_decision import ReviewDecision
 from .session_result import SessionResult
 from .theme_validator import ThemeValidator
+from .import_result import ImportResult
+from .password_validator import PasswordValidator  
 
 __all__ = [
     "IOManager", "SessionResult", "ReviewDecision", "FeedbackView", "ConsoleView", "Prompter",
     "FeedbackImporter", "CsvImporter", "JsonImporter", "EntryValidator",
-    "RecordBuilder", "ThemeValidator",
+    "RecordBuilder", "ThemeValidator", "ImportResult", "PasswordValidator"
 ]
