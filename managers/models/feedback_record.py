@@ -1,8 +1,12 @@
 """FeedbackRecord: one piece of feedback and what each manager adds to it."""
 
+from datetime import datetime
 from typing import Self
 
-from .constants import MATCHED, MISMATCH, PENDING, REVIEWED, SENTIMENTS, SEVERITIES, UNVERIFIED
+from .constants import (
+    LABEL_FIELDS, MATCHED, MISMATCH, PENDING, REVIEWED, SENTIMENTS, SEVERITIES,
+    TIMESTAMP_FORMAT, UNVERIFIED,
+)
 from .serializable import Serializable
 
 
@@ -83,6 +87,14 @@ class FeedbackRecord(Serializable):
     @property
     def severity(self) -> str | None:
         return self.__severity
+
+    @property
+    def current_labels(self) -> dict[str, str | None]:
+        """The theme, sentiment and severity to show for this record: the final
+        ones once Logic has set them, otherwise the writer's own."""
+        final = {"theme": self.__theme, "sentiment": self.__sentiment,
+                 "severity": self.__severity}
+        return {name: final[name] or self.__user.get(name) for name in LABEL_FIELDS}
 
     @property
     def verification(self) -> str:
@@ -178,6 +190,14 @@ class FeedbackRecord(Serializable):
 
     def __repr__(self) -> str:
         return f"FeedbackRecord({self.__feedback_id!r}, verification={self.__verification!r})"
+
+    @staticmethod
+    def is_valid_timestamp(text) -> bool:
+        """True only for a real date and time written exactly as YYYY-MM-DDTHH:MM:SS."""
+        try:
+            return datetime.strptime(text, TIMESTAMP_FORMAT).strftime(TIMESTAMP_FORMAT) == text
+        except (TypeError, ValueError):
+            return False
 
     @staticmethod
     def __check_values(theme: str, sentiment: str, severity: str) -> None:

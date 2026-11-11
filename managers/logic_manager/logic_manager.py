@@ -1,9 +1,12 @@
 """LogicManager: everything the other parts ask of Logic."""
 
-from managers.models import MATCHED, REVIEWED, THEMES, UNVERIFIED, FeedbackRecord
+from datetime import date
 
+from managers.models import MATCHED, REVIEWED, THEMES, UNVERIFIED, Action, FeedbackRecord
+
+from .impact_analyser import ImpactAnalyser
 from .record_validator import RecordValidator
-from .results import AggregationResult, TrendReport
+from .results import AggregationResult, ImpactReport, TrendReport
 from .rule_engine import RuleEngine
 from .rules import CriticalSeverityRule, NewThemeRule, ReviewRule, UnclearThemeRule, UserAIMismatchRule
 from .theme_aggregator import ThemeAggregator
@@ -23,6 +26,7 @@ class LogicManager:
         self.__engine = RuleEngine(self.__default_rules() if rules is None else rules)
         self.__aggregator = ThemeAggregator(self.__normaliser)
         self.__analyser = TrendAnalyser()
+        self.__impact = ImpactAnalyser(self.__normaliser, self.__aggregator)
 
     def set_known_themes(self, themes) -> None:
         """Updates the themes treated as known, e.g. after an admin confirms a new one."""
@@ -56,6 +60,12 @@ class LogicManager:
     def compare_runs(self, current: AggregationResult, previous: AggregationResult | None) -> TrendReport:
         """Compares any two runs; previous is None on the first run."""
         return self.__analyser.compare(current, previous)
+
+    def evaluate_actions(self, actions: list[Action], records: list[FeedbackRecord], today: date) -> list[ImpactReport]:
+        """One ImpactReport per action, in the same order. Expects records that
+        have been through the rules. Each action is checked against the others
+        for overlap on the same theme."""
+        return [self.__impact.evaluate(action, records, today, actions) for action in actions]
 
     def __default_rules(self) -> list[ReviewRule]:
         return [
