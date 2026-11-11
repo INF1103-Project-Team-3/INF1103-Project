@@ -23,9 +23,13 @@ def student_form(qtbot):
     return page
 
 
+# A known theme is picked from the dropdown; anything else is typed under "Other…".
 def fill(page, text, theme, chosen):
     page.findChild(QPlainTextEdit, "feedbackBox").setPlainText(text)
-    page.findChild(QLineEdit, "studentTheme").setText(theme)
+    if theme in THEMES:
+        page.theme_picker.choose(theme)
+    else:
+        page.theme_picker.type_other(theme)
     for card in page.findChildren(OptionCard):
         if card.value in chosen:
             card.radio.setChecked(True)
@@ -80,3 +84,38 @@ def test_typed_new_theme_is_normalised_by_the_theme_validator(qtbot):
     with qtbot.waitSignal(page.feedback_submitted, timeout=1000) as blocker:
         button(page, "Submit feedback").click()
     assert blocker.args[0].user["theme"] == "Parking Fees"
+
+
+def test_picking_a_known_theme_builds_the_record_with_it(qtbot):
+    page = student_form(qtbot)
+    fill(page, "The tutorials are paced really well", "Teaching Quality", ("positive", "low"))
+    with qtbot.waitSignal(page.feedback_submitted, timeout=1000) as blocker:
+        button(page, "Submit feedback").click()
+    assert blocker.args[0].user["theme"] == "Teaching Quality"
+
+
+def test_other_with_a_known_name_in_other_case_ends_up_as_the_known_theme(qtbot):
+    page = student_form(qtbot)
+    fill(page, "The lab aircon is broken", "fACILITIES", ("negative", "medium"))
+    assert page.theme_picker.is_other()
+    with qtbot.waitSignal(page.feedback_submitted, timeout=1000) as blocker:
+        button(page, "Submit feedback").click()
+    assert blocker.args[0].user["theme"] == "Facilities"
+
+
+def test_other_left_empty_shows_an_error_and_builds_nothing(qtbot):
+    page = student_form(qtbot)
+    fill(page, "The lab aircon is broken", "", ("negative", "medium"))
+    assert page.theme_picker.is_other()
+    with qtbot.assertNotEmitted(page.feedback_submitted):
+        button(page, "Submit feedback").click()
+    assert "theme" in page.findChild(QLabel, "errorText").text()
+
+
+def test_theme_list_is_a_dropdown_and_refreshes_with_new_themes(qtbot):
+    from managers.gui.widgets.combo_box import ComboBox
+    page = student_form(qtbot)
+    assert not [b for b in page.findChildren(QPushButton) if b.objectName() == "chip"]
+    page.set_themes([*THEMES, "Parking Fees"])
+    box = page.findChild(ComboBox, "studentTheme")
+    assert [box.itemText(i) for i in range(box.count())][-2:] == ["Parking Fees", "Other…"]

@@ -3,7 +3,7 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
-    QButtonGroup, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QPushButton,
+    QButtonGroup, QFrame, QGridLayout, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton,
     QScrollArea, QVBoxLayout, QWidget,
 )
 
@@ -11,10 +11,10 @@ from managers.io_manager import EntryValidator, RecordBuilder
 from managers.models import CRITICAL, SENTIMENTS, SEVERITIES
 
 from ..widgets.option_card import OptionCard
+from ..widgets.theme_picker import ThemePicker
 
 WIDTH = 760
 MAX_CHARS = 2000
-CHIPS_PER_ROW = 5
 SEVERITY_TEXT = {
     "low": "Minor annoyance or a suggestion",
     "medium": "Affects your studies or daily routine",
@@ -81,6 +81,15 @@ class StudentFormPage(QWidget):
         layout.addWidget(self.__scroll, 1)
         self.reset()
 
+    @property
+    def theme_picker(self) -> ThemePicker:
+        return self.__theme
+
+    # Refreshed when the form opens, so themes confirmed since start-up are listed.
+    def set_themes(self, themes: list[str]) -> None:
+        self.__themes = list(themes)
+        self.__theme.set_themes(self.__themes)
+
     def reset(self) -> None:
         self.__banner.hide()
         self.__clear_form()
@@ -141,23 +150,15 @@ class StudentFormPage(QWidget):
         below.addWidget(self.__counter)
         layout.addLayout(self.__question("Your feedback", self.__text, below))
 
-        self.__theme = QLineEdit()
-        self.__theme.setObjectName("studentTheme")
-        self.__theme.setPlaceholderText("e.g. Facilities, lectures, wifi, assignments")
-        chips = QVBoxLayout()
-        chips.setSpacing(8)
-        for start in range(0, len(self.__themes), CHIPS_PER_ROW):
-            chip_row = QHBoxLayout()
-            chip_row.setSpacing(8)
-            for theme in self.__themes[start:start + CHIPS_PER_ROW]:
-                chip = QPushButton(theme)
-                chip.setObjectName("chip")
-                chip.setCursor(Qt.CursorShape.PointingHandCursor)
-                chip.clicked.connect(lambda _checked=False, value=theme: self.__theme.setText(value))
-                chip_row.addWidget(chip)
-            chip_row.addStretch()
-            chips.addLayout(chip_row)
-        layout.addLayout(self.__question("What is it about?", self.__theme, chips))
+        self.__theme = ThemePicker("studentTheme", "Choose a topic…",
+                                   "Describe the topic in a few words, e.g. parking")
+        self.__theme.set_themes(self.__themes)
+        hint = QLabel("Not listed? Choose \"Other…\" and type it in.")
+        hint.setObjectName("statusLine")
+        below = QHBoxLayout()
+        below.addWidget(hint)
+        below.addStretch()
+        layout.addLayout(self.__question("What is it about?", self.__theme, below))
 
         self.__sentiment_group = QButtonGroup(self)
         sentiments = QGridLayout()
@@ -238,7 +239,7 @@ class StudentFormPage(QWidget):
         self.__counter.setText(f"{len(text)} / {MAX_CHARS}")
 
     def __on_submit(self, *_args) -> None:
-        typed_theme = self.__theme.text().strip()
+        typed_theme = self.__theme.theme()
         raw = {"text": self.__text.toPlainText(), "theme": typed_theme,
                "sentiment": self.__checked(self.__sentiment_cards),
                "severity": self.__checked(self.__severity_cards)}
