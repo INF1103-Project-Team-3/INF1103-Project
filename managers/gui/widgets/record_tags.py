@@ -1,8 +1,9 @@
 # Which tags (pills) a record shows, and the plain-English line for each review reason.
 
 from datetime import datetime
+from html import escape
 
-from managers.models import CRITICAL, MATCHED, MISMATCH, PENDING, REVIEWED, SEVERITIES, UNVERIFIED
+from managers.models import CRITICAL, MATCHED, MISMATCH, PENDING, REVIEWED, UNVERIFIED
 
 STATUS_TAGS = {
     MATCHED: ("Matched", "good"),
@@ -18,15 +19,21 @@ def is_critical(record) -> bool:
     return CRITICAL in (record.user.get("severity"), ai.get("severity"), record.severity)
 
 
-# (text, pill kind) for one review reason.
+# How each of Logic's reasons starts -> (short pill text, pill kind).
+REASON_TAGS = (
+    ("critical", ("Critical", "critical")),
+    ("new theme", ("New theme", "info")),
+    ("unclear theme", ("Unclear theme", "caution")),
+    ("ai disagrees", ("AI disagrees", "warn")),
+)
+
+
+# (text, pill kind) for one review reason; an unknown reason shows as it is.
 def reason_tag(reason: str) -> tuple[str, str]:
     lowered = reason.lower()
-    if lowered.startswith("critical"):
-        return "Critical", "critical"
-    if "theme" in lowered and "unrecognised" in lowered:
-        return reason, "caution"
-    if "theme" in lowered:
-        return reason, "info"
+    for start, tag in REASON_TAGS:
+        if lowered.startswith(start):
+            return tag
     return reason, "warn"
 
 
@@ -38,21 +45,12 @@ def record_tags(record) -> list[tuple[str, str]]:
     return [STATUS_TAGS.get(record.verification, (record.verification.capitalize(), "neutral"))]
 
 
-# One bullet for the detail panel, e.g. "Severity gap: low vs critical is 3 levels apart.".
-def explain_reason(reason: str, record) -> str:
-    user, ai = record.user, record.ai or {}
-    lowered = reason.lower()
-    if lowered.startswith("critical"):
-        if ai.get("severity") == CRITICAL:
-            return f"<b>Critical:</b> the AI rated this critical (the student chose {user.get('severity')})."
-        return f"<b>Critical:</b> the student rated this critical (the AI chose {ai.get('severity', '—')})."
-    if "severity" in lowered and ai.get("severity"):
-        gap = abs(SEVERITIES.index(user["severity"]) - SEVERITIES.index(ai["severity"]))
-        return f"<b>{reason}:</b> {user['severity']} vs {ai['severity']} is {gap} levels apart."
-    for field in ("theme", "sentiment"):
-        if field in lowered and ai.get(field):
-            return f"<b>{reason}:</b> the student chose {user[field]}, the AI chose {ai[field]}."
-    return f"<b>{reason}</b>"
+# One bullet for the detail panel: the pill text, then Logic's reason exactly as it wrote it.
+def explain_reason(reason: str) -> str:
+    label, _kind = reason_tag(reason)
+    if label == reason:
+        return f"<b>{escape(reason)}</b>"
+    return f"<b>{escape(label)}:</b> {escape(reason)}"
 
 
 # "2026-10-05T09:15:00" -> "5 Oct"; anything else is shown as it is.

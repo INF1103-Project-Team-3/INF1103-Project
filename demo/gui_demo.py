@@ -6,6 +6,9 @@ from PySide6.QtWidgets import QApplication
 
 from managers.gui import MainWindow, QtProgressReporter
 from managers.gui.style import app_font, light_palette
+from managers.io_manager import CsvImporter, EntryValidator, JsonImporter, RecordBuilder, ThemeValidator
+from managers.io_manager.password_validator import PasswordValidator
+from managers.logic_manager import LogicManager
 
 from .fake_data_manager import FakeDataManager
 from .fake_pipeline import FakePipeline
@@ -21,9 +24,12 @@ def main() -> int:
     app.setFont(app_font())
     reporter = QtProgressReporter()
     data = FakeDataManager(build_sample_records(), build_sample_actions(), build_sample_history())
-    pipeline = FakePipeline(reporter, data, load_ai_answers())
-    window = MainWindow(pipeline, data, logic=None, validators=None, importers=None, reporter=reporter,
-                        check_password=lambda password: password == DEMO_PASSWORD)
+    logic = LogicManager()
+    pipeline = FakePipeline(reporter, data, load_ai_answers(), logic)
+    validator, builder = EntryValidator(ThemeValidator(logic)), RecordBuilder()
+    importers = [CsvImporter(data, validator, builder), JsonImporter(data, validator, builder)]
+    window = MainWindow(pipeline, data, logic, validator, importers=importers,
+                        reporter=reporter, password=PasswordValidator(DEMO_PASSWORD))
     window.resize(1440, 900)
     window.show()
     return app.exec()

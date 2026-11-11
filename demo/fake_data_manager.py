@@ -1,7 +1,12 @@
 # FakeDataManager: in-memory stand-in for DataManager, for the GUI demo and tests.
 
+import csv
+import json
 import threading
+from datetime import date
+from pathlib import Path
 
+from managers.logic_manager import LogicManager
 from managers.models import CRITICAL, THEMES, Action, FeedbackRecord
 
 
@@ -49,6 +54,19 @@ class FakeDataManager:
         with self.__lock:
             return [dict(run) for run in self.__history]
 
+    # What DataReader gives the dashboard and charts, worked out live from the sample records.
+    def load_result(self):
+        return LogicManager().aggregate(self.load_records())
+
+    def load_trend(self):
+        return None
+
+    def load_summary(self):
+        return None
+
+    def load_impacts(self):
+        return LogicManager().evaluate_actions(self.load_actions(), self.load_records(), date.today())
+
     def add_record(self, record: FeedbackRecord) -> None:
         with self.__lock:
             self.__records[record.feedback_id] = record
@@ -64,6 +82,15 @@ class FakeDataManager:
     def get_record(self, feedback_id: str) -> FeedbackRecord | None:
         with self.__lock:
             return self.__records.get(feedback_id)
+
+    # An import file's rows, as DataManager.read_rows gives them.
+    def read_rows(self, path) -> list[dict]:
+        path = Path(path)
+        if path.suffix.lower() == ".csv":
+            with path.open(newline="", encoding="utf-8-sig") as handle:
+                return list(csv.DictReader(handle))
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data["records"] if isinstance(data, dict) and "records" in data else list(data)
 
     def save_action(self, action: Action) -> None:
         with self.__lock:
