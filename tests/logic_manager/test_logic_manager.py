@@ -3,7 +3,9 @@ from datetime import date
 
 import pytest
 
-from managers.logic_manager import AggregationResult, ImpactReport, LogicManager, ReviewRule, TrendReport
+from managers.logic_manager import (
+    ActionSuggestions, AggregationResult, ImpactReport, LogicManager, ReviewRule, TrendReport,
+)
 from managers.models import (
     CRITICAL, HIGH, LOW, MATCHED, MISMATCH, NEGATIVE, POSITIVE, REVIEWED, THEMES, UNCLEAR_THEME, UNVERIFIED,
     Action, FeedbackRecord,
@@ -264,3 +266,12 @@ def test_evaluate_actions_uses_the_confirmed_themes(logic):
     records = logic.apply_rules([make_dated_record(f"fb_{d}", f"2026-10-{d:02d}", "CCA Clubs") for d in range(1, 9)])
     [report] = logic.evaluate_actions([make_action("act_1", "cca clubs", "2026-10-05")], records, date(2026, 10, 20))
     assert report.before["entries"] + report.after["entries"] == 8
+
+
+# ------------------------------------------------------------------ rule-based actions
+def test_suggest_actions_gives_one_action_per_theme_in_the_results_order(logic):
+    records = logic.apply_rules([make_record("fb_001", "Workload"), make_record("fb_002", "Workload"),
+                                 make_record("fb_003", "Facilities")])
+    suggestions = logic.suggest_actions(logic.aggregate(records), records)
+    assert isinstance(suggestions, ActionSuggestions)
+    assert [action["theme"] for action in suggestions.theme_actions] == ["Workload", "Facilities"]
