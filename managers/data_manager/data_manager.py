@@ -51,8 +51,6 @@ class DataManager:
         filepath = self._get_path("processed_feedback.json")
         payload = {"records": [r.to_dict() if hasattr(r, "to_dict") else r for r in records]}
         success = self.json_store.save(filepath, payload)
-        if success:
-            self.save_pending([])
         return success
 
     def delete_record(self, feedback_id: str) -> bool:
@@ -108,7 +106,11 @@ class DataManager:
                 break
         if not updated:
             processed.append(rec_dict)
-        self.save_records(processed)
+
+        # Save processed feedback
+        self.json_store.save(self._get_path("processed_feedback.json"), {"records": processed})
+        remaining = [r for r in self.load_pending() if r.get("feedback_id") != target_id]
+        self.save_pending(remaining)
 
     def search_records(self, query: str) -> List[Dict[str, Any]]:
         records = self.load_records("processed_feedback.json")
@@ -164,7 +166,7 @@ class DataManager:
         entry = {
             "run_at": run_at,
             "source_file": source_file,
-            "stats": res_dict
+            "result": res_dict
         }
         history.insert(0, entry)
         return self.json_store.save(filepath, history)
@@ -248,30 +250,54 @@ class DataManager:
             return data
         return [data] if isinstance(data, dict) else []
 
+    def _token_log_path(self) -> Path:
+        config_dir = Path(__file__).resolve().parents[1] / "config"
+        return config_dir / "token-usage-log.json"
+
     def load_token_log(self) -> Optional[Dict[str, Any]]:
-        filepath = self._get_path("token_log.json")
+        """Loads token usage log; returns {} if missing/empty, None if corrupt."""
+        filepath = self._token_log_path()
         if not filepath.exists() or filepath.stat().st_size == 0:
-            return None
+            return {}  # Missing file returns empty dict for fresh setup
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return data if isinstance(data, dict) else None
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             logging.error("Corrupt token log at '%s': %s. Returning None safely.", filepath, e)
-            return None
+            return None  # Corrupt file returns None so it is never overwritten
 
     def load_prompts(self) -> tuple[str, str]:
-        config_dir = self.data_dir.parent / "config"
+        """Loads system and summary prompts from config/ with fallback supporting {themes}."""
+        config_dir = Path(__file__).resolve().parents[1] / "config"
         prompt_path = config_dir / "system_prompt.txt"
         summary_path = config_dir / "summary_prompt.txt"
         
-        sys_prompt = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else "Analyze feedback accurately using themes: {themes}."
-        sum_prompt = summary_path.read_text(encoding="utf-8") if summary_path.exists() else "Summarize key themes."
+        # Fallback system prompt must include {themes} to prevent PromptLibrary startup failure
+        sys_prompt = (
+            prompt_path.read_text(encoding="utf-8")
+            if prompt_path.exists()
+            else "Analyze feedback accurately using known themes: {themes}."
+        )
+        sum_prompt = (
+            summary_path.read_text(encoding="utf-8")
+            if summary_path.exists()
+            else "Summarize key themes."
+        )
         return sys_prompt, sum_prompt
 
     def save_token_log(self, log: Dict[str, Any]) -> bool:
-        filepath = self._get_path("token_log.json")
+        filepath = self._token_log_path()
         if not log and filepath.exists() and filepath.stat().st_size > 0:
             logging.warning("Attempted to save empty token log over existing log. Skipped.")
             return False
-        return self.json_store.save(filepath, log)
+        temp_path = filepath.with_name(filepath.name + ".tmp")
+        try:
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(log, f, indent=2, ensure_ascii=False)
+            temp_path.replace(filepath)
+            return True
+        except OSError as e:
+            logging.error("Failed to write token log atomically to '%s': %s", filepath, e)
+            return False
