@@ -106,3 +106,7 @@ def test_show_settings_opens_the_settings_page_with_those_values(window):
     text = labels(window.findChild(SettingsPage))
     assert "Car Park" in text and "Parking Fees" in text and "Saved on the next run" in text
     assert "AI connection" in text and "ready" in text
+
+def test_main_window_opens_maximized(window):
+    from PySide6.QtCore import Qt
+    assert window.windowState() & Qt.WindowState.WindowMaximized

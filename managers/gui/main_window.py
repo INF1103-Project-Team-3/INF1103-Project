@@ -1,5 +1,6 @@
 # MainWindow: the admin window (sidebar, pages, background runs).
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QMessageBox, QStackedWidget, QWidget
 
 from managers.io_manager import (
@@ -47,6 +48,8 @@ class MainWindow(QMainWindow):
         self.__themes_to_add = []
 
         self.setWindowTitle("FeedbackLens")
+        # Opens maximized: AppEngine just calls show(), which keeps this state.
+        self.setWindowState(Qt.WindowState.WindowMaximized)
         self.setPalette(light_palette())
         self.setFont(app_font())
         self.setStyleSheet(STYLE)
