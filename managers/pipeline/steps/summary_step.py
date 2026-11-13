@@ -39,5 +39,15 @@ class SummaryStep(BaseStep):
         else:
             # D21: Rule-based keyword fallback whenever Call 2 is skipped or fails
             context.summary = None
-            context.fallback_actions = self._logic.suggest_actions(context.result, context.records)
+            context.fallback_actions = self._fallback(context)
         return True
+
+    def _fallback(self, context: PipelineContext):
+        # logic.suggest_actions is "not built yet" in v1.9 (A24). Until it lands,
+        # keep the last saved summary instead of crashing the run.
+        suggest = getattr(self._logic, "suggest_actions", None)
+        if suggest is None:
+            logger.warning("logic.suggest_actions is not available yet (A24); "
+                           "no fallback actions this run")
+            return None
+        return suggest(context.result, context.records)
