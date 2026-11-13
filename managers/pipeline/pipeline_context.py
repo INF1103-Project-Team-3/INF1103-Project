@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from managers.ai_manager import AISummary
@@ -29,4 +29,3 @@ class PipelineContext:
     fallback_actions: ActionSuggestions | None = None
     classified_count: int = 0
     stopped: bool = False
-    metadata: dict[str, Any] = field(default_factory=dict)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import TYPE_CHECKING
 
+from managers.models import Action
 from ..base_step import BaseStep
 
 if TYPE_CHECKING:
@@ -19,7 +20,7 @@ class ImpactStep(BaseStep):
         self._data = data
 
     def _run(self, context: PipelineContext) -> bool:
-        actions = self._data.load_actions()
+        actions = self._rebuild_all(self._data.load_actions(), Action)
         context.impacts = self._logic.evaluate_actions(
             actions,
             context.records,

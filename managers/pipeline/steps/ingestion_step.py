@@ -55,6 +55,12 @@ class IngestionStep(BaseStep):
                             known_themes.add(decision.theme)
                             themes_updated = True
 
+            for theme in getattr(session, "themes_to_add", []):
+                if theme and theme not in known_themes:
+                    self._data.add_known_theme(theme)
+                    known_themes.add(theme)
+                    themes_updated = True
+
             if themes_updated:
                 refreshed_themes = self._data.load_known_themes()
                 self._logic.set_known_themes(refreshed_themes)
