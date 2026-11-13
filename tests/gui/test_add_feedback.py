@@ -7,8 +7,8 @@ pytest.importorskip("pytestqt")
 
 from PySide6.QtWidgets import QLabel, QLineEdit, QPlainTextEdit, QPushButton  # noqa: E402
 
-from demo.fake_data_manager import FakeDataManager  # noqa: E402
-from demo.sample_data import build_sample_records  # noqa: E402
+from tests.gui.support.fake_data_manager import FakeDataManager  # noqa: E402
+from tests.gui.support.sample_data import build_sample_records  # noqa: E402
 from managers.gui.widgets.import_panel import ImportPanel  # noqa: E402
 from managers.gui.widgets.single_entry_form import OTHER, SingleEntryForm  # noqa: E402
 from managers.io_manager import (  # noqa: E402
@@ -108,13 +108,12 @@ def test_import_explains_an_unsupported_file(qtbot, tmp_path):
 
 
 def test_main_window_sends_imported_entries_with_their_source_file(qtbot, tmp_path):
-    from demo.fake_pipeline import FakePipeline
-    from demo.sample_data import load_ai_answers
+    from tests.gui.support.stub_pipeline import StubPipeline
     from managers.gui import MainWindow, QtProgressReporter
     data = FakeDataManager(build_sample_records())
     reporter = QtProgressReporter()
     check, builder = validator(), RecordBuilder()
-    window = MainWindow(FakePipeline(reporter, data, load_ai_answers()), data, LogicManager(), check,
+    window = MainWindow(StubPipeline(), data, LogicManager(), check,
                         [CsvImporter(data, check, builder)], reporter)
     qtbot.addWidget(window)
     path = tmp_path / "week6.csv"

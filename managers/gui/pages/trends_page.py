@@ -95,9 +95,10 @@ class TrendsPage(BasePage):
     def chart(self) -> TrendChart:
         return self.__chart
 
-    def open_log_dialog(self, theme: str | None = None) -> None:
+    # description pre-fills the dialog, e.g. from a suggested action on the dashboard.
+    def open_log_dialog(self, theme: str | None = None, description: str | None = None) -> None:
         dialog = LogActionDialog(self.__data.load_known_themes(), self,
-                                 theme=theme if isinstance(theme, str) else None)
+                                 theme=theme if isinstance(theme, str) else None, description=description)
         if dialog.exec() and dialog.action is not None:
             self.__unsaved.append(dialog.action)
             self.action_logged.emit(dialog.action)
@@ -168,7 +169,7 @@ class TrendsPage(BasePage):
     def __series(self, themes: list[str]) -> dict[str, list[float | None]]:
         return {theme: [self.__priorities(run).get(theme) for run in self.__history] for theme in themes}
 
-    # Older history rows (the demo's) may only have counts; those runs then show no priority.
+    # Older history rows (e.g. the test fakes') may only have counts; those runs then show no priority.
     @staticmethod
     def __priorities(run: dict) -> dict:
         return run.get("theme_priority", {})
