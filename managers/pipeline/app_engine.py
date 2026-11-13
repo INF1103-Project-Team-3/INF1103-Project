@@ -54,7 +54,6 @@ class AppEngine:
         self.logic: LogicManager | None = None
         self.ai: AIManager | None = None
         self.pipeline: PipelineManager | None = None
-        self._ai_ready = False      # set in bootstrap_system; shown in terminal Settings
 
     @staticmethod
     def _load_env() -> None:
@@ -66,10 +65,10 @@ class AppEngine:
         # D20: a missing key or key label never stops the run; the AI just reports it down
         api_key = os.getenv("GROQ_API_KEY", "")
         key_label = os.getenv("GROQ_KEY_LABEL", "")
+        self.ai_ready = bool(api_key and key_label)
         if not api_key or not key_label:
             logger.warning("GROQ_API_KEY or GROQ_KEY_LABEL is not set in %s; "
                            "the AI will be unavailable this session", ENV_FILE)
-        self._ai_ready = bool(api_key)
 
         store = JsonFileStore()
         self.data = DataManager(self._data_dir, store)
@@ -144,6 +143,7 @@ class AppEngine:
                 importers=importers,
                 reporter=reporter,
                 password=pw_validator,
+                ai_ready=self.ai_ready,
             )
             window.show()
             sys.exit(app.exec())
@@ -166,7 +166,7 @@ class AppEngine:
             data=self.data,
             logic=self.logic,
             admin_password=admin_password,
-            ai_ready=self._ai_ready,
+            ai_ready=self.ai_ready,
         )
 
         session = io_mgr.run_session()
