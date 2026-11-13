@@ -7,9 +7,9 @@ pytest.importorskip("pytestqt")
 
 from PySide6.QtWidgets import QLabel, QPushButton  # noqa: E402
 
-from demo.fake_data_manager import FakeDataManager  # noqa: E402
-from demo.fake_pipeline import FakePipeline  # noqa: E402
-from demo.sample_data import build_sample_records, load_ai_answers  # noqa: E402
+from tests.gui.support.fake_data_manager import FakeDataManager  # noqa: E402
+from tests.gui.support.sample_data import build_sample_records  # noqa: E402
+from tests.gui.support.stub_pipeline import StubPipeline  # noqa: E402
 from managers.gui import MainWindow, QtFeedbackView, QtProgressReporter  # noqa: E402
 from managers.gui.pages.add_feedback_page import AddFeedbackPage  # noqa: E402
 from managers.gui.pages.dashboard_page import DashboardPage  # noqa: E402
@@ -26,7 +26,7 @@ def window(qtbot):
     data = FakeDataManager(build_sample_records())
     reporter = QtProgressReporter()
     logic = LogicManager()
-    window = MainWindow(FakePipeline(reporter, data, load_ai_answers()), data, logic,
+    window = MainWindow(StubPipeline(), data, logic,
                         EntryValidator(ThemeValidator(logic)), [], reporter)
     qtbot.addWidget(window)
     window.data = data
@@ -98,3 +98,12 @@ def test_show_rejected_rows_lists_the_reasons_on_the_import_tab(window):
     text = labels(panel)
     assert "2 rows were rejected" in text
     assert "Row 3: missing field(s): severity" in text and "Row 7: duplicate feedback_id" in text
+
+
+def test_show_settings_opens_the_settings_page_with_those_values(window):
+    from managers.gui.pages.settings_page import SettingsPage
+    window.view.show_settings(["Facilities", "Car Park"], ["Parking Fees"], {"AI connection": "ready"})
+    assert showing(window, SettingsPage)
+    text = labels(window.findChild(SettingsPage))
+    assert "Car Park" in text and "Parking Fees" in text and "Saved on the next run" in text
+    assert "AI connection" in text and "ready" in text
