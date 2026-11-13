@@ -2,12 +2,10 @@
 
 from datetime import datetime
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QGridLayout, QHBoxLayout, QLabel, QProgressBar, QPushButton, QVBoxLayout, QWidget,
+    QGridLayout, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget,
 )
-
-from managers.logic_manager import ActionSuggestions
 
 from managers.models import CRITICAL, SENTIMENTS
 
@@ -31,8 +29,6 @@ LATEST_ACTIONS = 3
 # Number cards, AI notice, since-last-run strip, themes by priority, sentiment mix,
 # new themes waiting, AI summary and latest actions.
 class DashboardPage(BasePage):
-    log_action_requested = Signal(str, str)
-
     def __init__(self, data, parent=None):
         super().__init__("Dashboard", "", parent)
         self.__data = data
@@ -86,15 +82,12 @@ class DashboardPage(BasePage):
         columns.addLayout(side, 2)
         self.content_layout.addLayout(columns)
 
-        bottom = QHBoxLayout()
-        bottom.setSpacing(16)
-        self.__summary = Card("AI summary", padding=20, spacing=10)
-        self.__summary_body = self.__box(self.__summary)
         self.__actions = Card("Latest actions", padding=20, spacing=8)
         self.__actions_body = self.__box(self.__actions)
-        bottom.addWidget(self.__summary, 3, Qt.AlignmentFlag.AlignTop)
-        bottom.addWidget(self.__actions, 2, Qt.AlignmentFlag.AlignTop)
-        self.content_layout.addLayout(bottom)
+        hint = QLabel("The AI summary and suggested actions are on Trends & actions.")
+        hint.setObjectName("smallNote")
+        self.__actions.body.addWidget(hint)
+        self.content_layout.addWidget(self.__actions)
         self.content_layout.addStretch()
 
     def refresh(self) -> None:
@@ -127,7 +120,6 @@ class DashboardPage(BasePage):
         self.__fill_themes(result, trend)
         self.__fill_sentiment(result)
         self.__fill_waiting(result)
-        self.__fill_summary(summary)
         self.__fill_actions()
 
     # Shown when the AI couldn't check some counted entries (D20, A26).
@@ -242,45 +234,6 @@ class DashboardPage(BasePage):
             row.addStretch()
             body.addLayout(row)
         body.addWidget(self.__note("Not counted until confirmed. Confirm or change them in Feedback → Needs review."))
-
-    # The AI's overall summary and date; its actions, or the rule-based ones (D21) in their
-    # place when the pipeline saved some. Each action has a "Log this action" button.
-    def __fill_summary(self, summary) -> None:
-        body = self.__clear(self.__summary_body)
-        fallback = self.__data.load_fallback_actions()
-        if summary is None:
-            body.addWidget(self.__muted("No AI summary yet. It is written after a run that classifies new entries."))
-        else:
-            text = QLabel(summary.overall_summary)
-            text.setWordWrap(True)
-            body.addWidget(text)
-        if fallback is not None:
-            self.__add_actions(body, ActionSuggestions.LABEL, fallback.theme_actions)
-            body.addWidget(self.__note(f"Rule-based suggestions from {self.__date(fallback.created_at)}."))
-        elif summary is not None:
-            self.__add_actions(body, "Suggested actions", summary.theme_actions)
-        if summary is not None:
-            body.addWidget(self.__note(f"Summary written by the AI on {self.__date(summary.created_at)}."))
-
-    def __add_actions(self, body, title: str, theme_actions) -> None:
-        actions = [a for a in theme_actions if a.get("suggested_action")]
-        if not actions:
-            return
-        heading = QLabel(title)
-        heading.setObjectName("fieldLabel")
-        body.addWidget(heading)
-        for action in actions:
-            theme, text = action.get("theme", ""), action["suggested_action"]
-            row = QHBoxLayout()
-            line = QLabel(f"<b>{theme}:</b> {text}")
-            line.setWordWrap(True)
-            log = QPushButton("Log this action")
-            log.setObjectName("linkButton")
-            log.setCursor(Qt.CursorShape.PointingHandCursor)
-            log.clicked.connect(lambda _checked=False, t=theme, d=text: self.log_action_requested.emit(t, d))
-            row.addWidget(line, 1)
-            row.addWidget(log, 0, Qt.AlignmentFlag.AlignTop)
-            body.addLayout(row)
 
     def __fill_actions(self) -> None:
         body = self.__clear(self.__actions_body)

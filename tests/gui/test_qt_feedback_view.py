@@ -66,7 +66,6 @@ def test_show_dashboard_shows_the_given_results(window):
     text = labels(page)
     assert str(result.total_entries) in text and str(len(queue)) in text
     assert "First run: nothing to compare with yet." in text
-    assert "No AI summary yet" in text
 
 
 def test_show_search_results_lists_exactly_those_records(window):

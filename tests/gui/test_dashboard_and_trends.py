@@ -83,7 +83,7 @@ def test_dashboard_shows_the_ai_notice_strip_and_themes(qtbot, reader):
     assert "AI unavailable for 1 entry" in text
     assert "Compared with the run on" in text
     assert "Facilities" in text and "Parking Fees" in text
-    assert "All fine." in text
+    assert "All fine." not in text and "summary and suggested actions are on Trends" in text
 
 
 def test_confirm_new_theme_builds_an_update_that_keeps_the_theme(qtbot, monkeypatch):
@@ -127,7 +127,7 @@ def test_cards_and_detail_show_the_ai_summary_when_there_is_one(qtbot):
 
 def test_summary_card_shows_rule_based_actions_with_their_label(qtbot, reader):
     from managers.logic_manager import ActionSuggestions
-    page = DashboardPage(reader)
+    page = TrendsPage(reader)
     qtbot.addWidget(page)
     page.refresh()
     text = labels(page)
@@ -142,7 +142,7 @@ def test_summary_card_shows_the_ais_actions_after_a_fresh_summary(qtbot, tmp_pat
     data.save_object("summary", AISummary("Wifi is the main issue.",
                                           [{"theme": "Facilities", "suggested_action": "Fix the library wifi"}]))
     data.save_object("fallback_actions", [])
-    page = DashboardPage(DataReader(data))
+    page = TrendsPage(DataReader(data))
     qtbot.addWidget(page)
     page.refresh()
     text = labels(page)
@@ -150,28 +150,29 @@ def test_summary_card_shows_the_ais_actions_after_a_fresh_summary(qtbot, tmp_pat
     assert ActionSuggestions.LABEL not in text
 
 
-def test_log_this_action_asks_for_a_dialog_prefilled_with_the_suggestion(qtbot, tmp_path):
+def test_log_this_action_opens_the_log_dialog_prefilled_with_the_suggestion(qtbot, tmp_path, monkeypatch):
     from PySide6.QtWidgets import QLineEdit
     from managers.ai_manager import AISummary
     from managers.gui.dialogs.log_action_dialog import LogActionDialog
+    opened = []
+    monkeypatch.setattr(TrendsPage, "open_log_dialog", lambda self, theme=None, description=None:
+                        opened.append((theme, description)))
     data = DataManager(str(tmp_path / "data"))
     data.save_object("summary", AISummary("Summary.", [{"theme": "Facilities", "suggested_action": "Fix the wifi"}]))
-    page = DashboardPage(DataReader(data))
+    page = TrendsPage(DataReader(data))
     qtbot.addWidget(page)
     page.refresh()
-    with qtbot.waitSignal(page.log_action_requested, timeout=1000) as blocker:
-        [b for b in page.findChildren(QPushButton) if b.text() == "Log this action"][0].click()
-    assert blocker.args == ["Facilities", "Fix the wifi"]
+    [b for b in page.findChildren(QPushButton) if b.text() == "Log this action"][0].click()
+    assert opened == [("Facilities", "Fix the wifi")]
     dialog = LogActionDialog(list(THEMES), theme="Facilities", description="Fix the wifi")
     qtbot.addWidget(dialog)
     assert dialog.findChild(QLineEdit, "descriptionEdit").text() == "Fix the wifi"
-
 
 def test_summary_card_without_an_ai_summary_shows_rule_based_actions_below(qtbot, tmp_path):
     from managers.logic_manager import ActionSuggestions
     data = DataManager(str(tmp_path / "data"))
     data.save_object("fallback_actions", ActionSuggestions([{"theme": "Workload", "suggested_action": "Space out deadlines"}]))
-    page = DashboardPage(DataReader(data))
+    page = TrendsPage(DataReader(data))
     qtbot.addWidget(page)
     page.refresh()
     text = labels(page)

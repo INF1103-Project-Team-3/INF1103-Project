@@ -12,6 +12,7 @@ from ..widgets.card import Card
 from ..widgets.combo_box import ComboBox
 from ..widgets.pill import Pill
 from ..widgets.record_tags import short_date
+from ..widgets.summary_card import SummaryCard
 from ..widgets.trend_chart import TrendChart
 from .base_page import BasePage
 
@@ -83,6 +84,10 @@ class TrendsPage(BasePage):
         chart_card.body.addWidget(compare)
         self.content_layout.addWidget(chart_card)
 
+        self.__summary = SummaryCard()
+        self.__summary.log_action_requested.connect(self.open_log_dialog)
+        self.content_layout.addWidget(self.__summary)
+
         self.__actions_card = Card("Actions taken", spacing=0)
         self.__rows = QVBoxLayout()
         self.__rows.setSpacing(0)
@@ -112,6 +117,7 @@ class TrendsPage(BasePage):
         self.__refresh_chart()
         self.__refresh_pickers()
         self.__refresh_actions()
+        self.__summary.show_summary(self.__data.load_summary(), self.__data.load_fallback_actions())
 
     # Shows Run x vs Run y (1-based run numbers) in the comparison row.
     def compare(self, older: int, newer: int) -> None:

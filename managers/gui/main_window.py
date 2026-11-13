@@ -90,7 +90,6 @@ class MainWindow(QMainWindow):
         self.__add_feedback.import_ready.connect(self.__on_import)
         self.__feedback.decision_made.connect(self.__on_decision)
         self.__trends.action_logged.connect(self.__on_action_logged)
-        self.__dashboard.log_action_requested.connect(self.__trends.open_log_dialog)
         self.__settings.theme_added.connect(self.__queue_theme)
 
         self.__view = QtFeedbackView(self, self.__dashboard, self.__feedback, self.__add_feedback,
