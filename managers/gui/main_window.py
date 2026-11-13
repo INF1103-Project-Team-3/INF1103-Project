@@ -1,12 +1,16 @@
 # MainWindow: the admin window (sidebar, pages, background runs).
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QMessageBox, QStackedWidget, QWidget
 
-from managers.io_manager import EntryValidator, PasswordValidator, RecordBuilder, ReviewDecision, SessionResult
+from managers.io_manager import (
+    EntryValidator, PasswordValidator, RecordBuilder, ReviewDecision, SessionResult, ThemeValidator,
+)
 
 from .pages.add_feedback_page import AddFeedbackPage
 from .pages.dashboard_page import DashboardPage
 from .pages.feedback_page import FeedbackPage
+from .pages.settings_page import SettingsPage
 from .pages.start_page import StartPage
 from .pages.student_form_page import StudentFormPage
 from .pages.trends_page import TrendsPage
@@ -17,13 +21,16 @@ from .style import STYLE, app_font, light_palette
 from .widgets.sidebar import Sidebar
 
 DASHBOARD, ADD_FEEDBACK, FEEDBACK, TRENDS = "Dashboard", "Add feedback", "Feedback", "Trends & actions"
+SETTINGS = "Settings"
 
 
 # Holds the sidebar and pages, and runs the pipeline on a PipelineWorker.
 # validators is I/O's EntryValidator; with no PasswordValidator, admin login is off.
+# ai_ready (True/False, or None if not known) is shown in Settings' system status.
 class MainWindow(QMainWindow):
     def __init__(self, pipeline, data, logic, validators: EntryValidator, importers,
-                 reporter: QtProgressReporter, password: PasswordValidator | None = None):
+                 reporter: QtProgressReporter, password: PasswordValidator | None = None,
+                 ai_ready: bool | None = None):
         super().__init__()
         self.__pipeline = pipeline
         self.__data = data
@@ -38,8 +45,11 @@ class MainWindow(QMainWindow):
         self.__actions = []
         self.__new_records = []
         self.__sent_records = []
+        self.__themes_to_add = []
 
         self.setWindowTitle("FeedbackLens")
+        # Opens maximized: AppEngine just calls show(), which keeps this state.
+        self.setWindowState(Qt.WindowState.WindowMaximized)
         self.setPalette(light_palette())
         self.setFont(app_font())
         self.setStyleSheet(STYLE)
@@ -47,8 +57,9 @@ class MainWindow(QMainWindow):
         self.__add_feedback = AddFeedbackPage(data, reporter.signals, validators, self.__builder, importers)
         self.__feedback = FeedbackPage(data)
         self.__trends = TrendsPage(data, logic)
+        self.__settings = SettingsPage(data, ThemeValidator(logic), ai_ready)
         self.__pages = {DASHBOARD: self.__dashboard, ADD_FEEDBACK: self.__add_feedback,
-                        FEEDBACK: self.__feedback, TRENDS: self.__trends}
+                        FEEDBACK: self.__feedback, TRENDS: self.__trends, SETTINGS: self.__settings}
 
         self.__stack = QStackedWidget()
         for page in self.__pages.values():
@@ -82,8 +93,10 @@ class MainWindow(QMainWindow):
         self.__add_feedback.import_ready.connect(self.__on_import)
         self.__feedback.decision_made.connect(self.__on_decision)
         self.__trends.action_logged.connect(self.__on_action_logged)
+        self.__settings.theme_added.connect(self.__queue_theme)
 
-        self.__view = QtFeedbackView(self, self.__dashboard, self.__feedback, self.__add_feedback)
+        self.__view = QtFeedbackView(self, self.__dashboard, self.__feedback, self.__add_feedback,
+                                     self.__settings)
 
         self.__refresh_all()
         self.show_page(DASHBOARD)
@@ -147,7 +160,8 @@ class MainWindow(QMainWindow):
     def __build_session(self) -> SessionResult:
         self.__sent_records = list(self.__new_records)
         return SessionResult(records=list(self.__sent_records), source_file=self.__source_file,
-                             decisions=list(self.__decisions), actions=list(self.__actions))
+                             decisions=list(self.__decisions), actions=list(self.__actions),
+                             themes_to_add=list(self.__themes_to_add))
 
     def __on_login(self, password: str) -> None:
         accepted = self.__password is not None and self.__password.check(password)[0]
@@ -161,7 +175,21 @@ class MainWindow(QMainWindow):
         if any(r.feedback_id == record.feedback_id for r in self.__new_records):
             return
         self.__new_records.append(record)
-        self.__add_feedback.set_new_count(len(self.__new_records))
+        self.__update_queue()
+
+    # A theme added in Settings, saved by the pipeline on the next run.
+    def __queue_theme(self, theme: str) -> None:
+        self.__themes_to_add.append(theme)
+        self.__settings.set_queued(self.__themes_to_add)
+        self.__update_queue()
+        self.statusBar().showMessage(f"Theme '{theme}' added (saved on the next run)", 8000)
+
+    # Everything queued for the next run counts towards Process: entries, decisions,
+    # actions and new themes.
+    def __update_queue(self) -> None:
+        count = (len(self.__new_records) + len(self.__decisions) + len(self.__actions)
+                 + len(self.__themes_to_add))
+        self.__add_feedback.set_new_count(count)
 
     # An imported file's new records; the run records the file as its source.
     def __on_import(self, result) -> None:
@@ -174,6 +202,7 @@ class MainWindow(QMainWindow):
     def __on_decision(self, decision: ReviewDecision) -> None:
         self.__decisions = [d for d in self.__decisions if d.feedback_id != decision.feedback_id]
         self.__decisions.append(decision)
+        self.__update_queue()
         if decision.action == ReviewDecision.DELETE:
             what = "delete"
         else:
@@ -182,6 +211,7 @@ class MainWindow(QMainWindow):
 
     def __on_action_logged(self, action) -> None:
         self.__actions.append(action)
+        self.__update_queue()
         self.statusBar().showMessage(f"Action logged for {action.theme} (saved on the next run)", 8000)
 
     def __on_run_completed(self, context) -> None:
@@ -191,7 +221,9 @@ class MainWindow(QMainWindow):
         self.__new_records = [r for r in self.__new_records if r.feedback_id not in sent]
         self.__sent_records = []
         self.__source_file = None
-        self.__add_feedback.set_new_count(len(self.__new_records))
+        self.__themes_to_add.clear()
+        self.__settings.set_queued([])
+        self.__update_queue()
         self.__trends.forget_unsaved()
         self.__add_feedback.progress_panel.show_message("Run finished.")
         self.statusBar().showMessage("Run finished", 8000)

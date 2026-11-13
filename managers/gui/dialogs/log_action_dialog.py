@@ -14,7 +14,7 @@ from ..widgets.combo_box import ComboBox
 # Builds an Action through I/O's RecordBuilder, which makes its ID and logged time.
 class LogActionDialog(QDialog):
     def __init__(self, known_themes: list[str], parent=None, theme: str | None = None,
-                 builder: RecordBuilder | None = None):
+                 builder: RecordBuilder | None = None, description: str | None = None):
         super().__init__(parent)
         self.__builder = builder or RecordBuilder()
         self.setWindowTitle("Log an action")
@@ -29,6 +29,8 @@ class LogActionDialog(QDialog):
         self.__description = QLineEdit()
         self.__description.setObjectName("descriptionEdit")
         self.__description.setPlaceholderText("e.g. Upgraded the library Wi-Fi access points")
+        if description:
+            self.__description.setText(description)
         self.__date = QDateEdit(QDate.currentDate())
         self.__date.setObjectName("dateEdit")
         self.__date.setCalendarPopup(True)

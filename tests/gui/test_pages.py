@@ -5,8 +5,8 @@ pytest.importorskip("pytestqt")
 
 from PySide6.QtWidgets import QComboBox, QLabel, QPushButton  # noqa: E402
 
-from demo.fake_data_manager import FakeDataManager  # noqa: E402
-from demo.sample_data import build_sample_records  # noqa: E402
+from tests.gui.support.fake_data_manager import FakeDataManager  # noqa: E402
+from tests.gui.support.sample_data import build_sample_records  # noqa: E402
 from managers.gui.pages.base_page import BasePage  # noqa: E402
 from managers.gui.pages.feedback_page import FeedbackPage  # noqa: E402
 from managers.gui.widgets.entry_detail_panel import EMPTY, EntryDetailPanel  # noqa: E402

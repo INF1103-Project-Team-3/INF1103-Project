@@ -1,6 +1,5 @@
-# Dashboard, Trends page, chart gaps and the Confirm new theme button, on real Data in a temp folder.
-
-from datetime import date
+# Dashboard, Trends page, chart gaps and the Confirm new theme button, on real Data and the
+# real pipeline in a temp folder (with a stub AI).
 
 import pytest
 
@@ -9,8 +8,7 @@ pytest.importorskip("pytestqt")
 
 from PySide6.QtWidgets import QLabel, QPushButton  # noqa: E402
 
-from demo.interim_pipeline import InterimPipeline  # noqa: E402
-from demo.sample_data import build_sample_records  # noqa: E402
+from tests.gui.support.sample_data import build_sample_records  # noqa: E402
 from managers.data_manager import DataManager  # noqa: E402
 from managers.gui.data_reader import DataReader  # noqa: E402
 from managers.gui.pages.dashboard_page import DashboardPage  # noqa: E402
@@ -21,6 +19,8 @@ from managers.gui.widgets.trend_chart import TrendChart  # noqa: E402
 from managers.io_manager import RecordBuilder, ReviewDecision, SessionResult  # noqa: E402
 from managers.logic_manager import LogicManager  # noqa: E402
 from managers.models import THEMES  # noqa: E402
+from tests.gui.support.real_pipeline import build_pipeline  # noqa: E402
+from tests.gui.support.stub_ai import StubAI  # noqa: E402
 
 
 def entry(text, theme="Facilities", sentiment="negative", severity="medium"):
@@ -31,15 +31,16 @@ def labels(widget):
     return " ".join(label.text() for label in widget.findChildren(QLabel))
 
 
-# Two AI-down runs: Facilities in both, Parking Fees (a new theme) confirmed in the second.
+# Run 1 with the AI working (summary written), run 2 with it down (one unverified entry and
+# rule-based actions); Parking Fees, a new theme, is confirmed in run 2. A third run after an
+# AI-down run would hit the pipeline's leftover-pending bug (reported to Zheng Yi).
 @pytest.fixture
 def reader(tmp_path):
     data = DataManager(str(tmp_path / "data"))
     logic = LogicManager()
     parking = entry("Parking costs too much", theme="Parking Fees")
-    InterimPipeline(data, logic, today=lambda: date(2026, 11, 1)).execute_pipeline(
-        SessionResult(records=[entry("Wifi drops"), parking]))
-    InterimPipeline(data, logic, today=lambda: date(2026, 11, 8)).execute_pipeline(
+    build_pipeline(data, logic, StubAI()).execute_pipeline(SessionResult(records=[entry("Wifi drops"), parking]))
+    build_pipeline(data, logic, StubAI(down=True)).execute_pipeline(
         SessionResult(records=[entry("Lab is cold", severity="high")],
                       decisions=[ReviewDecision.update(parking.feedback_id, parking.user)]))
     return DataReader(data)
@@ -79,10 +80,10 @@ def test_dashboard_shows_the_ai_notice_strip_and_themes(qtbot, reader):
     qtbot.addWidget(page)
     page.refresh()
     text = labels(page)
-    assert "AI unavailable for 2 entries" in text
+    assert "AI unavailable for 1 entry" in text
     assert "Compared with the run on" in text
     assert "Facilities" in text and "Parking Fees" in text
-    assert "No AI summary yet" in text
+    assert "All fine." not in text and "summary and suggested actions are on Trends" in text
 
 
 def test_confirm_new_theme_builds_an_update_that_keeps_the_theme(qtbot, monkeypatch):
@@ -122,3 +123,57 @@ def test_cards_and_detail_show_the_ai_summary_when_there_is_one(qtbot):
     panel.show_record(record, list(THEMES))
     assert "AI summary: Basement wifi drops during quizzes" in labels(panel)
     assert record.text in labels(panel)
+
+
+def test_summary_card_shows_rule_based_actions_with_their_label(qtbot, reader):
+    from managers.logic_manager import ActionSuggestions
+    page = TrendsPage(reader)
+    qtbot.addWidget(page)
+    page.refresh()
+    text = labels(page)
+    assert ActionSuggestions.LABEL in text and "All fine." in text and "Keep going" not in text
+    assert [b for b in page.findChildren(QPushButton) if b.text() == "Log this action"]
+
+
+def test_summary_card_shows_the_ais_actions_after_a_fresh_summary(qtbot, tmp_path):
+    from managers.ai_manager import AISummary
+    from managers.logic_manager import ActionSuggestions
+    data = DataManager(str(tmp_path / "data"))
+    data.save_object("summary", AISummary("Wifi is the main issue.",
+                                          [{"theme": "Facilities", "suggested_action": "Fix the library wifi"}]))
+    data.save_object("fallback_actions", [])
+    page = TrendsPage(DataReader(data))
+    qtbot.addWidget(page)
+    page.refresh()
+    text = labels(page)
+    assert "Wifi is the main issue." in text and "Fix the library wifi" in text
+    assert ActionSuggestions.LABEL not in text
+
+
+def test_log_this_action_opens_the_log_dialog_prefilled_with_the_suggestion(qtbot, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QLineEdit
+    from managers.ai_manager import AISummary
+    from managers.gui.dialogs.log_action_dialog import LogActionDialog
+    opened = []
+    monkeypatch.setattr(TrendsPage, "open_log_dialog", lambda self, theme=None, description=None:
+                        opened.append((theme, description)))
+    data = DataManager(str(tmp_path / "data"))
+    data.save_object("summary", AISummary("Summary.", [{"theme": "Facilities", "suggested_action": "Fix the wifi"}]))
+    page = TrendsPage(DataReader(data))
+    qtbot.addWidget(page)
+    page.refresh()
+    [b for b in page.findChildren(QPushButton) if b.text() == "Log this action"][0].click()
+    assert opened == [("Facilities", "Fix the wifi")]
+    dialog = LogActionDialog(list(THEMES), theme="Facilities", description="Fix the wifi")
+    qtbot.addWidget(dialog)
+    assert dialog.findChild(QLineEdit, "descriptionEdit").text() == "Fix the wifi"
+
+def test_summary_card_without_an_ai_summary_shows_rule_based_actions_below(qtbot, tmp_path):
+    from managers.logic_manager import ActionSuggestions
+    data = DataManager(str(tmp_path / "data"))
+    data.save_object("fallback_actions", ActionSuggestions([{"theme": "Workload", "suggested_action": "Space out deadlines"}]))
+    page = TrendsPage(DataReader(data))
+    qtbot.addWidget(page)
+    page.refresh()
+    text = labels(page)
+    assert "No AI summary yet" in text and ActionSuggestions.LABEL in text and "Space out deadlines" in text

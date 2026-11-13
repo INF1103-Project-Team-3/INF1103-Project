@@ -3,7 +3,9 @@
 from datetime import datetime
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QGridLayout, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget,
+)
 
 from managers.models import CRITICAL, SENTIMENTS
 
@@ -80,15 +82,12 @@ class DashboardPage(BasePage):
         columns.addLayout(side, 2)
         self.content_layout.addLayout(columns)
 
-        bottom = QHBoxLayout()
-        bottom.setSpacing(16)
-        self.__summary = Card("AI summary", padding=20, spacing=10)
-        self.__summary_body = self.__box(self.__summary)
         self.__actions = Card("Latest actions", padding=20, spacing=8)
         self.__actions_body = self.__box(self.__actions)
-        bottom.addWidget(self.__summary, 3, Qt.AlignmentFlag.AlignTop)
-        bottom.addWidget(self.__actions, 2, Qt.AlignmentFlag.AlignTop)
-        self.content_layout.addLayout(bottom)
+        hint = QLabel("The AI summary and suggested actions are on Trends & actions.")
+        hint.setObjectName("smallNote")
+        self.__actions.body.addWidget(hint)
+        self.content_layout.addWidget(self.__actions)
         self.content_layout.addStretch()
 
     def refresh(self) -> None:
@@ -121,7 +120,6 @@ class DashboardPage(BasePage):
         self.__fill_themes(result, trend)
         self.__fill_sentiment(result)
         self.__fill_waiting(result)
-        self.__fill_summary(summary)
         self.__fill_actions()
 
     # Shown when the AI couldn't check some counted entries (D20, A26).
@@ -236,25 +234,6 @@ class DashboardPage(BasePage):
             row.addStretch()
             body.addLayout(row)
         body.addWidget(self.__note("Not counted until confirmed. Confirm or change them in Feedback → Needs review."))
-
-    def __fill_summary(self, summary) -> None:
-        body = self.__clear(self.__summary_body)
-        if summary is None:
-            body.addWidget(self.__muted("No AI summary yet. It is written after a run that classifies new entries."))
-            return
-        text = QLabel(summary.overall_summary)
-        text.setWordWrap(True)
-        body.addWidget(text)
-        actions = [a for a in summary.theme_actions if a.get("suggested_action")]
-        if actions:
-            heading = QLabel("Suggested actions")
-            heading.setObjectName("fieldLabel")
-            body.addWidget(heading)
-            for action in actions:
-                line = QLabel(f"<b>{action.get('theme', '')}:</b> {action['suggested_action']}")
-                line.setWordWrap(True)
-                body.addWidget(line)
-        body.addWidget(self.__note(f"Written by the AI on {self.__date(summary.created_at)}."))
 
     def __fill_actions(self) -> None:
         body = self.__clear(self.__actions_body)

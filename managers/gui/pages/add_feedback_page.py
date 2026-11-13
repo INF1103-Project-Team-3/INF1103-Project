@@ -4,6 +4,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButton, QStackedWidget, QVBoxLayout
 
 from managers.io_manager import EntryValidator, RecordBuilder
+from managers.models import UNVERIFIED
 
 from ..progress_signals import ProgressSignals
 from ..widgets.card import Card
@@ -90,10 +91,18 @@ class AddFeedbackPage(BasePage):
         self.__queued = count
         self.refresh()
 
+    # Waiting for the AI: pending entries plus saved ones the AI couldn't check (D4: unverified
+    # entries go to the AI again on the next run, so Process must be possible without new feedback).
     def refresh(self) -> None:
         self.__single.set_themes(self.__data.load_known_themes())
-        count = len(self.__data.load_pending()) + self.__queued
-        text = f"{count} {'entry' if count == 1 else 'entries'} waiting for the AI"
+        pending = {r.feedback_id for r in self.__data.load_pending()}
+        unverified = {r.feedback_id for r in self.__data.load_records()
+                      if r.ai is None and r.verification == UNVERIFIED} - pending
+        waiting = len(pending) + len(unverified)
+        count = waiting + self.__queued
+        text = f"{waiting} {'entry' if waiting == 1 else 'entries'} waiting for the AI"
+        if unverified:
+            text += f" ({len(unverified)} unverified, retried when you process)"
         if self.__queued:
             text += f" · {self.__queued} queued in this session"
         self.__pending.setText(text)

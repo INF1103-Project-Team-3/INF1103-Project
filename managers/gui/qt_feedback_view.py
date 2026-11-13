@@ -10,8 +10,9 @@ MESSAGE_MS = 8000
 # Call from the UI thread only. Pages are switched inside the admin area; if no admin is
 # logged in, the page is updated and appears after login (it never skips the login).
 class QtFeedbackView(FeedbackView):
-    def __init__(self, window, dashboard, feedback, add_feedback):
+    def __init__(self, window, dashboard, feedback, add_feedback, settings=None):
         self.__window = window
+        self.__settings = settings
         self.__dashboard = dashboard
         self.__feedback = feedback
         self.__add_feedback = add_feedback
@@ -47,6 +48,18 @@ class QtFeedbackView(FeedbackView):
         self.__window.show_page(self.__feedback.title)
         self.__feedback.show_review_entry(record)
         self.show_message(f"Reviewing {position} of {total}: {record.feedback_id}")
+
+    # Opens Settings with the given values; without a Settings page, the status bar.
+    def show_settings(self, known_themes, themes_to_add, status) -> None:
+        if self.__settings is not None:
+            self.__window.show_page(self.__settings.title)
+            self.__settings.show_values(known_themes, themes_to_add, status)
+            return
+        parts = [f"Known themes: {', '.join(known_themes) or 'none'}"]
+        if themes_to_add:
+            parts.append(f"To add: {', '.join(themes_to_add)}")
+        parts += [f"{label}: {value}" for label, value in status.items()]
+        self.show_message(" · ".join(parts))
 
     def show_rejected_rows(self, rejected) -> None:
         self.__window.show_page(self.__add_feedback.title)
