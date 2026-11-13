@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable, Sequence
 
-from managers.models import FeedbackRecord
+from managers.models import UNCLEAR_THEME, FeedbackRecord
 
 from .choice_validator import ChoiceValidator
 from .csv_importer import CsvImporter
@@ -54,9 +54,14 @@ class IOManager:
     NOTICE_CONNECTING = "CONNECTING TO API & RUNNING"
     NOTICE_GOODBYE = "Thank you for using Feedback Manager. Goodbye."
 
+    # what Settings shows for the AI connection; AppEngine knows (it reads the
+    # API key), I do not, because only AppEngine reads environment variables
+    AI_STATUS = {True: "ready", False: "not configured (no API key)", None: "not reported"}
+
     def __init__(self, view: FeedbackView, prompter: Prompter,
                  importers: Sequence[FeedbackImporter], data: "DataManager",
-                 logic: "LogicManager", admin_password: str | None):
+                 logic: "LogicManager", admin_password: str | None,
+                 ai_ready: bool | None = None):
         self._view = view
         self._prompter = prompter
         self._importers = list(importers)
@@ -65,7 +70,11 @@ class IOManager:
         # never written in the source code
         self._password = PasswordValidator(admin_password)
         self._roles = ChoiceValidator(self.ROLES, error="please enter 'user' or 'admin'")
-        self._form = EntryForm(prompter, view, data, ThemeValidator(logic), RecordBuilder())
+        self._ai_ready = ai_ready
+        # one theme validator, shared by the form and Settings, so a typed theme
+        # is cleaned up by Logic the same way wherever it is typed
+        self._theme_validator = ThemeValidator(logic)
+        self._form = EntryForm(prompter, view, data, self._theme_validator, RecordBuilder())
         # a reviewer may press Enter to keep a theme, so this theme validator allows blank
         self._review = ReviewSession(view, prompter, ThemeValidator(logic, allow_blank=True))
 
@@ -85,6 +94,7 @@ class IOManager:
             "Search Feedback": self._search,
             "Review flagged feedback": self._review_flagged,
             "Log an action": self._log_action,
+            "Settings": self._settings,
             "Finish and run analysis": self._finish,
         }
 
@@ -241,6 +251,47 @@ class IOManager:
             session.actions.append(action)
             self._view.show_message(f"Action logged. ID: {action.action_id}")
         return False
+
+    def _settings(self, session: SessionResult) -> bool:
+        """Known themes, Add theme and the read-only system status, until Back."""
+        options = ChoiceValidator(("1", "2"), error="please enter 1 or 2")
+        while True:
+            self._view.show_settings(self._data.load_known_themes(),
+                                     session.themes_to_add, self._status())
+            self._view.show_message("1. Add a theme\n2. Back to the admin menu")
+            choice = self._prompter.ask_until_valid("Choose an option (1-2): ", options)
+            if choice != "1":                   # Back, or quit
+                return False
+            self._add_theme(session)
+
+    def _add_theme(self, session: SessionResult) -> None:
+        """Queue one new theme. I never save it: the pipeline does, when the
+        analysis runs (data.add_known_theme, then logic.set_known_themes)."""
+        theme = self._prompter.ask_until_valid(
+            "New theme name (quit to cancel): ", self._theme_validator)
+        if theme is None:
+            self._view.show_message("Cancelled.")
+            return
+        known = {name.lower() for name in self._data.load_known_themes()}
+        known |= {name.lower() for name in session.themes_to_add}
+        if theme == UNCLEAR_THEME:              # Logic treats filler words as Unclear
+            self._view.show_message("  Invalid: that is not a usable theme name.")
+        elif theme.lower() in known:
+            self._view.show_message(f"  '{theme}' is already a known theme.")
+        else:
+            session.themes_to_add.append(theme)
+            self._view.show_message(f"  '{theme}' will be added when the analysis runs.")
+
+    def _status(self) -> dict[str, str]:
+        """Read-only facts for Settings, using only the Data reads I am allowed."""
+        last_run = self._data.load_history(1)
+        run_at = str(last_run[0].get("run_at") or "") if last_run else ""
+        return {
+            "AI connection": self.AI_STATUS.get(self._ai_ready, self.AI_STATUS[None]),
+            "Processed records": str(len(self._data.load_records() or [])),
+            "Waiting for review": str(len(self._load_queue())),
+            "Last analysis run": run_at.replace("T", " ") or "never",
+        }
 
     def _finish(self, session: SessionResult) -> bool:
         return True

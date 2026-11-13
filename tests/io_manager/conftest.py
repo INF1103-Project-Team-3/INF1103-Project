@@ -116,6 +116,7 @@ class FakeData:
         self.records = []
         self.queue = []
         self.objects = {}
+        self.history = []           # newest first, as the real one stores it
 
     def read_rows(self, path):
         if path not in self.files:
@@ -133,6 +134,12 @@ class FakeData:
 
     def load_object(self, name):
         return self.objects.get(name)
+
+    def load_records(self):
+        return list(self.records)
+
+    def load_history(self, limit=None):
+        return self.history[:limit] if limit is not None else list(self.history)
 
 
 @pytest.fixture

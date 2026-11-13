@@ -16,7 +16,8 @@ from managers.io_manager.review_decision import ReviewDecision
 from managers.io_manager.session_result import SessionResult
 
 PASSWORD = "pw-from-env"
-FINISH = "7"                    # the last admin menu option
+SETTINGS = "7"
+FINISH = "8"                    # the last admin menu option
 GOOD_ROW = {"feedback_id": "a1", "text": "Wifi keeps dropping", "timestamp": "2026-10-01T09:00:00",
             "theme": "Facilities", "sentiment": "negative", "severity": "high"}
 
@@ -149,6 +150,78 @@ def test_answering_no_on_the_dashboard_starts_no_review(session, screen, data, m
     data.queue = [make_record("fb_9", reasons=["Critical severity"])]
     assert session(["admin", "3", "n", FINISH]) is None
     assert not any(line.startswith("Review 1 of") for line in screen.lines)
+
+
+def status_line(screen, label):
+    """The value shown for one line of the system status."""
+    line = next(line for line in screen.lines if line.startswith(f"  {label}"))
+    return line.split(": ", 1)[1]
+
+
+def test_settings_shows_the_system_status_read_from_data(prompter, screen, data, logic, make_record):
+    data.records = [make_record("fb_1"), make_record("fb_2")]
+    data.queue = [make_record("fb_3")]
+    data.history = [{"run_at": "2026-11-10T08:00:00"}, {"run_at": "2026-11-01T08:00:00"}]
+    io = IOManager(screen.view, prompter(["admin", SETTINGS, "2", FINISH], [PASSWORD]),
+                   [], data, logic, PASSWORD, ai_ready=True)
+    io.run_session()
+    assert f"Known themes ({len(data.themes)})" in screen.lines
+    assert status_line(screen, "AI connection") == "ready"
+    assert status_line(screen, "Processed records") == "2"
+    assert status_line(screen, "Waiting for review") == "1"
+    assert status_line(screen, "Last analysis run") == "2026-11-10 08:00:00"
+
+
+@pytest.mark.parametrize("ai_ready, shown", [(True, "ready"), (False, "not configured (no API key)"),
+                                             (None, "not reported")])
+def test_the_ai_connection_is_whatever_app_engine_reports(prompter, screen, data, logic, ai_ready, shown):
+    # only AppEngine may read the API key, so it tells IOManager whether the AI is ready
+    io = IOManager(screen.view, prompter(["admin", SETTINGS, "2", FINISH], [PASSWORD]),
+                   [], data, logic, PASSWORD, ai_ready=ai_ready)
+    io.run_session()
+    assert status_line(screen, "AI connection") == shown
+    assert status_line(screen, "Last analysis run") == "never"
+
+
+def test_adding_a_theme_returns_it_for_the_pipeline_to_save(session, screen, logic):
+    result = session(["admin", SETTINGS, "1", "parking fees", "2", FINISH])
+    assert result.themes_to_add == ["Parking Fees"]          # cleaned up by Logic
+    assert logic.calls == ["parking fees"]
+    assert "  'Parking Fees' will be added when the analysis runs." in screen.lines
+
+
+@pytest.mark.parametrize("typed", ["workload", "WORKLOAD", "  Workload "])
+def test_a_theme_that_is_already_known_is_not_added_again(session, screen, typed):
+    assert session(["admin", SETTINGS, "1", typed, "2", FINISH]) is None
+    assert "  'Workload' is already a known theme." in screen.lines
+
+
+def test_the_same_new_theme_is_not_queued_twice(session, screen):
+    result = session(["admin", SETTINGS, "1", "car park", "1", "Car Park", "2", FINISH])
+    assert result.themes_to_add == ["Car Park"]
+    assert "  'Car Park' is already a known theme." in screen.lines
+
+
+def test_a_confirmed_theme_from_data_counts_as_known(session, screen, data):
+    data.themes = data.themes + ["Car Park"]
+    assert session(["admin", SETTINGS, "1", "car park", "2", FINISH]) is None
+    assert "  'Car Park' is already a known theme." in screen.lines
+
+
+def test_a_filler_word_is_not_a_usable_theme(session, screen):
+    assert session(["admin", SETTINGS, "1", "n/a", "2", FINISH]) is None
+    assert "  Invalid: that is not a usable theme name." in screen.lines
+
+
+def test_an_empty_theme_is_asked_again_and_quit_cancels(session, screen):
+    assert session(["admin", SETTINGS, "1", "", "quit", "2", FINISH]) is None
+    assert "  Invalid: theme cannot be empty" in screen.lines
+
+
+def test_settings_shows_the_theme_waiting_to_be_added(session, screen):
+    session(["admin", SETTINGS, "1", "Car Park", "2", FINISH])
+    assert "Added this session, saved when you finish:" in screen.lines
+    assert "  Car Park" in screen.lines
 
 
 def test_show_notice_is_shown_prominently(screen, prompter, data, logic):
