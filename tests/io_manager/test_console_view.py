@@ -130,6 +130,24 @@ def test_review_entry_before_logic_and_without_ai(screen, make_record):
     assert "  Flagged : Theme differs from AI" in screen.lines
 
 
+def test_settings_lists_themes_marks_added_ones_and_shows_status(screen):
+    screen.view.show_settings(["Workload", "Facilities", "Car Park"], ["Parking Fees"],
+                              {"AI connection": "ready", "Last analysis run": "never"})
+    assert "Known themes (3)" in screen.lines
+    assert "  Workload" in screen.lines                  # a base theme, no marker
+    assert "  Car Park   (added)" in screen.lines        # confirmed by an admin earlier
+    assert "Added this session, saved when you finish:" in screen.lines
+    assert "  Parking Fees" in screen.lines
+    assert "SYSTEM STATUS (read only)" in screen.lines
+    assert any(line.startswith("  AI connection") and line.endswith(": ready")
+               for line in screen.lines)
+
+
+def test_settings_without_new_themes_has_no_added_section(screen):
+    screen.view.show_settings(["Workload"], [], {})
+    assert "Added this session, saved when you finish:" not in screen.lines
+
+
 def test_typographic_characters_are_replaced_for_old_terminals(screen, make_record):
     screen.view.show_search_results([make_record(text="It’s slow — again")])
     assert "  It's slow - again" in screen.lines

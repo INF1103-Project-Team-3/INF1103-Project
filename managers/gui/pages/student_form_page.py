@@ -1,23 +1,20 @@
 # StudentFormPage: the student's feedback form.
 
-import re
-import uuid
-from datetime import datetime
-
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
-    QButtonGroup, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QPushButton,
+    QButtonGroup, QFrame, QGridLayout, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton,
     QScrollArea, QVBoxLayout, QWidget,
 )
 
-from managers.models import CRITICAL, SENTIMENTS, SEVERITIES, FeedbackRecord
+from managers.io_manager import EntryValidator, RecordBuilder
+from managers.models import CRITICAL, SENTIMENTS, SEVERITIES
 
 from ..widgets.option_card import OptionCard
+from ..widgets.theme_picker import ThemePicker
 
 WIDTH = 760
 MAX_CHARS = 2000
-CHIPS_PER_ROW = 5
 SEVERITY_TEXT = {
     "low": "Minor annoyance or a suggestion",
     "medium": "Affects your studies or daily routine",
@@ -26,15 +23,18 @@ SEVERITY_TEXT = {
 }
 
 
-# Emits feedback_submitted(record). Checks here are placeholders for I/O's validators.
+# Emits feedback_submitted(record), checked by I/O's EntryValidator and built by RecordBuilder.
 class StudentFormPage(QWidget):
     feedback_submitted = Signal(object)
     back_requested = Signal()
 
-    def __init__(self, known_themes: list[str], parent=None):
+    def __init__(self, known_themes: list[str], validator: EntryValidator, builder: RecordBuilder,
+                 parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.__themes = list(known_themes)
+        self.__validator = validator
+        self.__builder = builder
 
         top = QFrame()
         top.setObjectName("topBar")
@@ -80,6 +80,15 @@ class StudentFormPage(QWidget):
         layout.addWidget(top)
         layout.addWidget(self.__scroll, 1)
         self.reset()
+
+    @property
+    def theme_picker(self) -> ThemePicker:
+        return self.__theme
+
+    # Refreshed when the form opens, so themes confirmed since start-up are listed.
+    def set_themes(self, themes: list[str]) -> None:
+        self.__themes = list(themes)
+        self.__theme.set_themes(self.__themes)
 
     def reset(self) -> None:
         self.__banner.hide()
@@ -141,23 +150,15 @@ class StudentFormPage(QWidget):
         below.addWidget(self.__counter)
         layout.addLayout(self.__question("Your feedback", self.__text, below))
 
-        self.__theme = QLineEdit()
-        self.__theme.setObjectName("studentTheme")
-        self.__theme.setPlaceholderText("e.g. Facilities, lectures, wifi, assignments")
-        chips = QVBoxLayout()
-        chips.setSpacing(8)
-        for start in range(0, len(self.__themes), CHIPS_PER_ROW):
-            chip_row = QHBoxLayout()
-            chip_row.setSpacing(8)
-            for theme in self.__themes[start:start + CHIPS_PER_ROW]:
-                chip = QPushButton(theme)
-                chip.setObjectName("chip")
-                chip.setCursor(Qt.CursorShape.PointingHandCursor)
-                chip.clicked.connect(lambda _checked=False, value=theme: self.__theme.setText(value))
-                chip_row.addWidget(chip)
-            chip_row.addStretch()
-            chips.addLayout(chip_row)
-        layout.addLayout(self.__question("What is it about?", self.__theme, chips))
+        self.__theme = ThemePicker("studentTheme", "Choose a topic…",
+                                   "Describe the topic in a few words, e.g. parking")
+        self.__theme.set_themes(self.__themes)
+        hint = QLabel("Not listed? Choose \"Other…\" and type it in.")
+        hint.setObjectName("statusLine")
+        below = QHBoxLayout()
+        below.addWidget(hint)
+        below.addStretch()
+        layout.addLayout(self.__question("What is it about?", self.__theme, below))
 
         self.__sentiment_group = QButtonGroup(self)
         sentiments = QGridLayout()
@@ -237,37 +238,23 @@ class StudentFormPage(QWidget):
             return
         self.__counter.setText(f"{len(text)} / {MAX_CHARS}")
 
-    def __problems(self, text: str, theme: str, sentiment, severity) -> list[str]:
-        problems = []
-        if not re.search(r"[A-Za-z]{2,}", text):
-            problems.append("Write your feedback in words.")
-        if not theme:
-            problems.append("Say what it is about.")
-        if sentiment is None:
-            problems.append("Choose how you feel about it.")
-        if severity is None:
-            problems.append("Choose how serious it is.")
-        return problems
-
     def __on_submit(self, *_args) -> None:
-        text = self.__text.toPlainText().strip()
-        theme = self.__theme.text().strip()
-        sentiment = self.__checked(self.__sentiment_cards)
-        severity = self.__checked(self.__severity_cards)
-        problems = self.__problems(text, theme, sentiment, severity)
-        if problems:
-            self.__error.setText(" ".join(problems))
+        typed_theme = self.__theme.theme()
+        raw = {"text": self.__text.toPlainText(), "theme": typed_theme,
+               "sentiment": self.__checked(self.__sentiment_cards),
+               "severity": self.__checked(self.__severity_cards)}
+        entry, error = self.__validator.validate(raw)
+        if error:
+            self.__error.setText(f"Please check your answers: {error}.")
             self.__error.show()
             return
 
-        matched = next((t for t in self.__themes if t.lower() == theme.lower()), None)
-        record = FeedbackRecord(f"fb_{uuid.uuid4().hex[:8]}", text,
-                                datetime.now().isoformat(timespec="seconds"), None,
-                                {"theme": matched or theme, "sentiment": sentiment, "severity": severity})
+        record = self.__builder.build(entry)
         self.feedback_submitted.emit(record)
 
-        where = f"filed under {matched}" if matched else "staff will sort it into a theme"
-        self.__banner_text.setText(f"Reference {record.feedback_id} · \"{theme}\" {where}")
+        theme = entry["theme"]
+        where = f"filed under {theme}" if theme in self.__themes else "staff will sort it into a theme"
+        self.__banner_text.setText(f"Reference {record.feedback_id} · \"{typed_theme}\" {where}")
         self.__banner.show()
         self.__clear_form()
         self.__scroll.verticalScrollBar().setValue(0)

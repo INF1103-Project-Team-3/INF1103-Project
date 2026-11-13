@@ -1,8 +1,8 @@
 # MainWindow: the admin window (sidebar, pages, background runs).
 
-from types import SimpleNamespace
-
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QMessageBox, QStackedWidget, QWidget
+
+from managers.io_manager import EntryValidator, PasswordValidator, RecordBuilder, ReviewDecision, SessionResult
 
 from .pages.add_feedback_page import AddFeedbackPage
 from .pages.dashboard_page import DashboardPage
@@ -11,6 +11,7 @@ from .pages.start_page import StartPage
 from .pages.student_form_page import StudentFormPage
 from .pages.trends_page import TrendsPage
 from .pipeline_worker import PipelineWorker
+from .qt_feedback_view import QtFeedbackView
 from .qt_progress_reporter import QtProgressReporter
 from .style import STYLE, app_font, light_palette
 from .widgets.sidebar import Sidebar
@@ -19,16 +20,19 @@ DASHBOARD, ADD_FEEDBACK, FEEDBACK, TRENDS = "Dashboard", "Add feedback", "Feedba
 
 
 # Holds the sidebar and pages, and runs the pipeline on a PipelineWorker.
+# validators is I/O's EntryValidator; with no PasswordValidator, admin login is off.
 class MainWindow(QMainWindow):
-    def __init__(self, pipeline, data, logic, validators, importers, reporter: QtProgressReporter,
-                 check_password=None):
+    def __init__(self, pipeline, data, logic, validators: EntryValidator, importers,
+                 reporter: QtProgressReporter, password: PasswordValidator | None = None):
         super().__init__()
         self.__pipeline = pipeline
         self.__data = data
         self.__logic = logic
         self.__validators = validators
         self.__importers = importers
-        self.__check_password = check_password
+        self.__password = password
+        self.__builder = RecordBuilder()
+        self.__source_file = None
         self.__worker = None
         self.__decisions = []
         self.__actions = []
@@ -40,9 +44,9 @@ class MainWindow(QMainWindow):
         self.setFont(app_font())
         self.setStyleSheet(STYLE)
         self.__dashboard = DashboardPage(data)
-        self.__add_feedback = AddFeedbackPage(data, reporter.signals)
+        self.__add_feedback = AddFeedbackPage(data, reporter.signals, validators, self.__builder, importers)
         self.__feedback = FeedbackPage(data)
-        self.__trends = TrendsPage(data)
+        self.__trends = TrendsPage(data, logic)
         self.__pages = {DASHBOARD: self.__dashboard, ADD_FEEDBACK: self.__add_feedback,
                         FEEDBACK: self.__feedback, TRENDS: self.__trends}
 
@@ -62,11 +66,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.__stack, 1)
 
         self.__start = StartPage()
-        self.__student = StudentFormPage(data.load_known_themes())
+        self.__student = StudentFormPage(data.load_known_themes(), validators, self.__builder)
         self.__start.student_chosen.connect(self.show_student_form)
         self.__start.login_requested.connect(self.__on_login)
         self.__student.back_requested.connect(self.show_start)
-        self.__student.feedback_submitted.connect(self.__on_feedback_submitted)
+        self.__student.feedback_submitted.connect(self.__queue_record)
         self.__screens = QStackedWidget()
         for screen in (self.__start, self.__student, admin):
             self.__screens.addWidget(screen)
@@ -74,12 +78,21 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.__screens)
 
         self.__add_feedback.run_requested.connect(self.run_pipeline)
+        self.__add_feedback.record_added.connect(self.__queue_record)
+        self.__add_feedback.import_ready.connect(self.__on_import)
         self.__feedback.decision_made.connect(self.__on_decision)
         self.__trends.action_logged.connect(self.__on_action_logged)
+
+        self.__view = QtFeedbackView(self, self.__dashboard, self.__feedback, self.__add_feedback)
 
         self.__refresh_all()
         self.show_page(DASHBOARD)
         self.show_start()
+
+    # I/O's FeedbackView for this window, for AppEngine and I/O classes to show results with.
+    @property
+    def view(self) -> QtFeedbackView:
+        return self.__view
 
     def show_start(self) -> None:
         self.__start.reset()
@@ -87,6 +100,7 @@ class MainWindow(QMainWindow):
         self.statusBar().hide()
 
     def show_student_form(self) -> None:
+        self.__student.set_themes(self.__data.load_known_themes())
         self.__student.reset()
         self.__screens.setCurrentWidget(self.__student)
         self.statusBar().hide()
@@ -130,25 +144,41 @@ class MainWindow(QMainWindow):
             return
         super().closeEvent(event)
 
-    def __build_session(self):
+    def __build_session(self) -> SessionResult:
         self.__sent_records = list(self.__new_records)
-        return SimpleNamespace(records=list(self.__sent_records), source_file=None,
-                               decisions=list(self.__decisions), actions=list(self.__actions))
+        return SessionResult(records=list(self.__sent_records), source_file=self.__source_file,
+                             decisions=list(self.__decisions), actions=list(self.__actions))
 
     def __on_login(self, password: str) -> None:
-        if self.__check_password is not None and self.__check_password(password):
+        accepted = self.__password is not None and self.__password.check(password)[0]
+        if accepted:
             self.show_admin()
         else:
             self.__start.show_error()
 
-    def __on_feedback_submitted(self, record) -> None:
+    # A student's entry or an admin's typed entry, saved on the next run.
+    def __queue_record(self, record) -> None:
+        if any(r.feedback_id == record.feedback_id for r in self.__new_records):
+            return
         self.__new_records.append(record)
         self.__add_feedback.set_new_count(len(self.__new_records))
 
-    def __on_decision(self, feedback_id: str, action: str, values) -> None:
-        self.__decisions.append(SimpleNamespace(feedback_id=feedback_id, action=action, values=values))
-        what = "delete" if action == "delete" else " / ".join(values)
-        self.statusBar().showMessage(f"{feedback_id}: {what} (saved on the next run)", 8000)
+    # An imported file's new records; the run records the file as its source.
+    def __on_import(self, result) -> None:
+        for record in result.records:
+            self.__queue_record(record)
+        self.__source_file = result.source_file
+        self.statusBar().showMessage(f"{len(result.records)} entries from {result.source_file} queued", 8000)
+
+    # A later decision for the same record replaces the earlier one.
+    def __on_decision(self, decision: ReviewDecision) -> None:
+        self.__decisions = [d for d in self.__decisions if d.feedback_id != decision.feedback_id]
+        self.__decisions.append(decision)
+        if decision.action == ReviewDecision.DELETE:
+            what = "delete"
+        else:
+            what = " / ".join((decision.theme, decision.sentiment, decision.severity))
+        self.statusBar().showMessage(f"{decision.feedback_id}: {what} (saved on the next run)", 8000)
 
     def __on_action_logged(self, action) -> None:
         self.__actions.append(action)
@@ -160,6 +190,7 @@ class MainWindow(QMainWindow):
         sent = {record.feedback_id for record in self.__sent_records}
         self.__new_records = [r for r in self.__new_records if r.feedback_id not in sent]
         self.__sent_records = []
+        self.__source_file = None
         self.__add_feedback.set_new_count(len(self.__new_records))
         self.__trends.forget_unsaved()
         self.__add_feedback.progress_panel.show_message("Run finished.")

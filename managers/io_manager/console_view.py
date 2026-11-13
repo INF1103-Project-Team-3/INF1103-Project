@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import re
 import textwrap
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
-from managers.models import CRITICAL, HIGH, LABEL_FIELDS, UNCLEAR_THEME, FeedbackRecord
+from managers.models import CRITICAL, HIGH, LABEL_FIELDS, THEMES, UNCLEAR_THEME, FeedbackRecord
 
 from .feedback_view import FeedbackView
 
@@ -32,6 +32,8 @@ class ConsoleView(FeedbackView):
     MERGED_GAP = "   "
     MERGED_WIDTH = (MERGED_THEME + MERGED_STATUS + MERGED_COUNT + MERGED_SENT
                     + MERGED_URGENT + len(MERGED_GAP) + 8)
+
+    STATUS_LABEL_WIDTH = 20
 
     REVIEW_ID_WIDTH = 12
     REVIEW_REASON_WIDTH = 24
@@ -91,6 +93,18 @@ class ConsoleView(FeedbackView):
     def show_rejected_rows(self, rejected: Sequence[tuple[int, str]]) -> None:
         if rejected:
             self._block(["Rejected rows:"] + [f"  Row {n}: {reason}" for n, reason in rejected])
+
+    def show_settings(self, known_themes: Sequence[str], themes_to_add: Sequence[str],
+                      status: Mapping[str, str]) -> None:
+        # base themes come from the shared constants; anything else was added by an admin
+        lines = ["SETTINGS", "-" * self.WIDTH, f"Known themes ({len(known_themes)})"]
+        lines += [f"  {name}" + ("" if name in THEMES else "   (added)") for name in known_themes]
+        if themes_to_add:
+            lines += ["Added this session, saved when you finish:"]
+            lines += [f"  {name}" for name in themes_to_add]
+        self._block(lines)
+        self._block(["SYSTEM STATUS (read only)"] + [
+            f"  {label:<{self.STATUS_LABEL_WIDTH}}: {value}" for label, value in status.items()])
 
     # ------------------------------------------------------------------
     # Dashboard blocks. Each returns a list of lines and prints nothing;

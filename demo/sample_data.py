@@ -4,7 +4,8 @@ import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from managers.models import CRITICAL, MATCHED, MISMATCH, SENTIMENTS, SEVERITIES, Action, FeedbackRecord
+from managers.logic_manager import LogicManager
+from managers.models import SENTIMENTS, SEVERITIES, Action, FeedbackRecord
 
 SAMPLES = Path(__file__).resolve().parent.parent / "tests" / "ai_manager_samples"
 CHECKED_COUNT = 6
@@ -23,7 +24,8 @@ def load_ai_answers() -> dict[str, tuple[str, str, str]]:
     return answers
 
 
-# Stress-test text with the hand labels as the student's values.
+# Stress-test text with the hand labels as the student's values. The first few are
+# classified and checked by the real LogicManager; the rest wait for the AI.
 def build_sample_records() -> list[FeedbackRecord]:
     entries = json.loads((SAMPLES / "stress-input.json").read_text(encoding="utf-8"))
     labels = {row["feedback_id"]: row for row in
@@ -39,28 +41,9 @@ def build_sample_records() -> list[FeedbackRecord]:
                                 "stress-input.json", user)
         if index < CHECKED_COUNT:
             record.set_ai(*answers[record.feedback_id])
-            fake_check(record)
         records.append(record)
+    LogicManager().apply_rules(records[:CHECKED_COUNT])
     return records
-
-
-# Rough stand-in for Logic's rules, so the demo has flagged records.
-def fake_check(record: FeedbackRecord) -> None:
-    user, ai = record.user, record.ai
-    gap = abs(SEVERITIES.index(user["severity"]) - SEVERITIES.index(ai["severity"]))
-    reasons = []
-    if user["theme"].lower() != ai["theme"].lower():
-        reasons.append("Theme mismatch")
-    if (user["severity"] == CRITICAL) != (ai["severity"] == CRITICAL):
-        reasons.append("Critical (one side only)")
-    elif gap >= 2:
-        reasons.append("Severity gap")
-    if user["sentiment"] != ai["sentiment"]:
-        reasons.append("Sentiment mismatch")
-    record.clear_review()
-    record.set_final(user["theme"], user["sentiment"], user["severity"], MISMATCH if reasons else MATCHED)
-    for reason in reasons:
-        record.add_review_reason(reason, excludes=True)
 
 
 def _allowed(value: str, allowed: tuple[str, ...]) -> str:
@@ -77,18 +60,31 @@ SAMPLE_HISTORY = {
     "Social Environment": (0, 0, 0, 1),
     "Internship Placement": (1, 0, 1, 1),
 }
+# Made-up priority per run (None = the theme had no counted entries yet, drawn as a gap).
+SAMPLE_PRIORITY = {
+    "Assessment": (40, 44, 52, 68),
+    "Facilities": (72, 70, 55, 38),
+    "Teaching Quality": (30, 28, 31, 29),
+    "Well-being": (35, 48, 61, 70),
+    "Workload": (42, 45, 50, 58),
+    "Administration": (33, 30, 27, 35),
+    "Social Environment": (None, None, None, 15),
+    "Internship Placement": (25, None, 22, 24),
+}
 RUN_DAYS_AGO = (35, 28, 25, 14)
 
 
-# [{"run": 1, "finished_at": "2026-10-01", "theme_counts": {...}}, ...], oldest first.
+# [{"run": 1, "finished_at": "2026-10-01", "theme_counts": {...}, "theme_priority": {...}}, ...], oldest first.
 def build_sample_history(today: date | None = None) -> list[dict]:
     today = today or date.today()
     history = []
     for index, days_ago in enumerate(RUN_DAYS_AGO):
-        counts = {theme: values[index] for theme, values in SAMPLE_HISTORY.items()}
+        counts = {theme: values[index] for theme, values in SAMPLE_HISTORY.items() if values[index]}
+        priority = {theme: values[index] for theme, values in SAMPLE_PRIORITY.items()
+                    if values[index] is not None}
         history.append({"run": index + 1,
                         "finished_at": (today - timedelta(days=days_ago)).isoformat(),
-                        "theme_counts": counts})
+                        "theme_counts": counts, "theme_priority": priority})
     return history
 
 

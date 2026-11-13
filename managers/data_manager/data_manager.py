@@ -308,7 +308,7 @@ class DataManager:
                 return data if isinstance(data, dict) else None
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             logging.error("Corrupt token log at '%s': %s. Returning None safely.", filepath, e)
-            return None
+            return None  # Corrupt file returns None so it is never overwritten
 
     def load_prompts(self) -> tuple[str, str]:
         """Loads system and summary prompts from config/ with fallback supporting {themes}."""
