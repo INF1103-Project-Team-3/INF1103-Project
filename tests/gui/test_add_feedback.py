@@ -124,3 +124,23 @@ def test_main_window_sends_imported_entries_with_their_source_file(qtbot, tmp_pa
     button(page, "Add 1 entry").click()
     session = window._MainWindow__build_session()
     assert [r.feedback_id for r in session.records] == ["new_001"] and session.source_file == "week6.csv"
+
+
+def test_process_counts_unverified_entries_so_the_ai_can_retry_them(qtbot, tmp_path):
+    from managers.data_manager import DataManager
+    from managers.gui import QtProgressReporter
+    from managers.gui.data_reader import DataReader
+    from managers.gui.pages.add_feedback_page import AddFeedbackPage
+    from managers.models import UNVERIFIED
+    data = DataManager(str(tmp_path / "data"))
+    record = RecordBuilder().build({"text": "Wifi drops", "theme": "Facilities",
+                                    "sentiment": "negative", "severity": "medium"})
+    record.set_final("Facilities", "negative", "medium", UNVERIFIED)
+    data.save_records([record])
+    page = AddFeedbackPage(DataReader(data), QtProgressReporter().signals, validator(), RecordBuilder())
+    qtbot.addWidget(page)
+    page.refresh()
+    text = " ".join(label.text() for label in page.findChildren(QLabel))
+    assert "1 entry waiting for the AI (1 unverified" in text
+    process = button(page, "Process")
+    assert process.text() == "Process 1 entry" and process.isEnabled()
