@@ -1,0 +1,103 @@
+"""ClassificationTask: call 1, classifying one feedback entry."""
+
+import json
+
+from managers.models import FeedbackRecord, SENTIMENTS, SEVERITIES, UNCLEAR_THEME
+
+from .ai_task import AITask
+
+MAX_COINED_THEME_WORDS = 3  # a longer label would be sent back in every later request
+# The one-line restatement call 2 reads in place of the full text (D18). Part 1's
+# limit, enforced here because strict mode cannot express a word count; a longer
+# one fails validation and is retried, as in Part 1.
+MAX_SUMMARY_WORDS = 15
+# Wait for the reset once fewer tokens than this remain. Kept at the tested
+# value, although measured call 1 requests average ~1,700 tokens (max 2,295).
+CLASSIFY_TOKEN_MARGIN = 1600
+
+
+class ClassificationTask(AITask):
+    """One classification request for one feedback record.
+
+    Only the record's text and labels the model coined earlier go in the request,
+    so user values cannot anchor the model.
+    """
+
+    def __init__(self, record: FeedbackRecord, system_prompt: str, themes: list[str], known_themes: list[str]):
+        super().__init__(record.feedback_id, "feedback_classification", self._build_schema(), CLASSIFY_TOKEN_MARGIN)
+        self.__text = record.text
+        self.__system_prompt = system_prompt
+        self.__themes = themes
+        self.__known_themes = known_themes
+        self.__labels_by_key = {self._match_key(label): label for label in [*themes, UNCLEAR_THEME]}
+
+    def build_messages(self) -> list[dict[str, str]]:
+        """Return the chat messages for one classification request.
+
+        json.dumps stops the feedback text breaking the payload structure;
+        instructions written inside the text are handled by the prompt.
+        """
+        return [
+            {"role": "system", "content": self.__system_prompt},
+            {"role": "user", "content": json.dumps(self._build_user_payload())},
+        ]
+
+    def validate(self, result: object) -> bool:
+        """Return True if result is a valid classification.
+
+        Strict mode guarantees the shape, but not a non-empty theme or summary,
+        the length of a coined theme or the summary's word limit, which its
+        schema subset cannot express.
+        """
+        if not isinstance(result, dict) or set(result) != set(self.schema["required"]):
+            return False
+        return (
+            isinstance(result["theme"], str)
+            and result["theme"].strip() != ""
+            and (result["theme"] in self.__themes or len(result["theme"].split()) <= MAX_COINED_THEME_WORDS)
+            and result["sentiment"] in SENTIMENTS
+            and result["severity"] in SEVERITIES
+            and isinstance(result["summary"], str)
+            and result["summary"].strip() != ""
+            and len(result["summary"].split()) <= MAX_SUMMARY_WORDS
+        )
+
+    def _clean(self, result: object) -> object:
+        """Replace a spelling variant of a listed theme with its exact label.
+
+        Matches on spelling only, so synonyms and plurals stay coined; merging
+        on meaning is a labelling decision.
+        """
+        if isinstance(result, dict) and isinstance(result.get("theme"), str):
+            result["theme"] = self.__labels_by_key.get(self._match_key(result["theme"]), result["theme"])
+        return result
+
+    def _match_key(self, label: str) -> str:
+        """Return label in lowercase with only its letters and digits."""
+        return "".join(character for character in label.lower() if character.isalnum())
+
+    def _build_user_payload(self) -> dict[str, str | list[str]]:
+        """Return the user message payload: the feedback text, plus coined themes if any."""
+        payload: dict[str, str | list[str]] = {"text": self.__text}
+        if self.__known_themes:  # omitted when empty, to avoid paying for an empty list
+            payload["existing_new_themes"] = self.__known_themes
+        return payload
+
+    def _build_schema(self) -> dict:
+        """Return the output schema. theme is free text, so the model can coin one.
+
+        summary is the one-line restatement call 2 reads (D18); it is required
+        here, as it was in Part 1, even though set_ai treats it as optional.
+        Strict mode requires every property in "required" and additionalProperties: false.
+        """
+        return {
+            "type": "object",
+            "properties": {
+                "theme": {"type": "string"},
+                "sentiment": {"type": "string", "enum": list(SENTIMENTS)},
+                "severity": {"type": "string", "enum": list(SEVERITIES)},
+                "summary": {"type": "string"},
+            },
+            "required": ["theme", "sentiment", "severity", "summary"],
+            "additionalProperties": False,
+        }

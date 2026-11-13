@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    image: feedbacklens
+    volumes:
+      # Mount the repo root, so the container uses your local files:
+      # code changes apply without rebuilding, the API key is read from
+      # managers/config/.env, and all results are saved to data/ in the repo
+      - .:/Project
+    # Keep the terminal interactive so you can type at the prompts
+    stdin_open: true
+    tty: true
