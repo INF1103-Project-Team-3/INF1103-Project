@@ -1,0 +1,23 @@
+{
+  "records": [
+    {
+      "feedback_id": "fb_008",
+      "text": "It's fine I guess, could be better could be worse, hard to say really.",
+      "timestamp": "2026-09-18T10:58:00",
+      "theme": "Unclear",
+      "sentiment": "neutral",
+      "severity": "low",
+      "summary": "Student expresses vague, indifferent opinion with no clear issue.",
+      "confidence": 0.4,
+      "agreement": 1.0,
+      "counted": false,
+      "needs_review": true,
+      "review_reason": [
+        "Confidence 0.40 is below threshold 0.5.",
+        "Unclear theme - needs a theme assigned."
+      ],
+      "run_at": "2026-10-14T06:19:53",
+      "source_file": "feedback_20261014_061849.json"
+    }
+  ]
+}

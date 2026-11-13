@@ -1,0 +1,4 @@
+# GUI only, kept apart from requirements.txt until the Dockerfile installs Qt's system libraries (A20).
+# Install on your laptop:  pip install -r requirements/requirements.txt -r requirements/gui.txt
+PySide6-Essentials>=6.6
+pytest-qt>=4.4
