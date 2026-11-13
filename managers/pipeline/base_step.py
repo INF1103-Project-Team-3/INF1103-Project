@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 
 
 class BaseStep(PipelineStep):
+    # True: an error stops the run (nothing half-finished is saved).
+    # Steps whose failure must not block saving the run (Summary, Impact) set this to False (D20).
+    stop_on_error = True
+
     def execute(self, context: PipelineContext) -> bool:
         step_name = self.__class__.__name__
         logger.info("Starting %s", step_name)
@@ -22,7 +26,9 @@ class BaseStep(PipelineStep):
             return should_continue
         except Exception:
             logger.exception("Error executing %s", step_name)
-            raise
+            if self.stop_on_error:
+                raise
+            return True     # carry on to the next step
 
     @abstractmethod
     def _run(self, context: PipelineContext) -> bool:

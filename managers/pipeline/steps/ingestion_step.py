@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from ..base_step import BaseStep
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from managers.ai_manager import AIManager
@@ -35,12 +38,18 @@ class IngestionStep(BaseStep):
                     existing_records.pop(decision.feedback_id, None)
                 elif decision.action == "update":
                     record = existing_records.get(decision.feedback_id)
-                    if record is not None:
-                        record.mark_reviewed(
-                            decision.theme,
-                            decision.sentiment,
-                            decision.severity,
-                        )
+                    if record is None:
+                        logger.warning("Review skipped: no processed record %s", decision.feedback_id)
+                    else:
+                        try:
+                            record.mark_reviewed(
+                                decision.theme,
+                                decision.sentiment,
+                                decision.severity,
+                            )
+                        except ValueError as error:   # bad value: skip this decision, keep the run going
+                            logger.warning("Review of %s not applied: %s", decision.feedback_id, error)
+                            continue
                         if decision.theme and decision.theme not in known_themes:
                             self._data.add_known_theme(decision.theme)
                             known_themes.add(decision.theme)

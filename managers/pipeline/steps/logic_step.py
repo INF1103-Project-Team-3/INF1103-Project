@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from managers.logic_manager import AggregationResult
@@ -9,6 +10,9 @@ if TYPE_CHECKING:
     from managers.data_manager import DataManager
     from managers.logic_manager import LogicManager
     from ..pipeline_context import PipelineContext
+
+
+logger = logging.getLogger(__name__)
 
 
 class LogicStep(BaseStep):
@@ -27,7 +31,8 @@ class LogicStep(BaseStep):
         if previous_raw is not None:
             try:
                 previous = AggregationResult.from_dict(previous_raw)
-            except ValueError:
+            except ValueError as error:   # a Part 1 history entry (G4): skip it and log it
+                logger.warning("Previous run not usable, trend has no comparison: %s", error)
                 previous = None
 
         trend = self._logic.compare_runs(result, previous)

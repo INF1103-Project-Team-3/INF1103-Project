@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import os
 import sys
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
@@ -37,19 +39,35 @@ from .steps import (
     SummaryStep,
 )
 
+logger = logging.getLogger(__name__)
+
+MANAGERS_DIR = Path(__file__).resolve().parents[1]      # .../managers
+REPO_ROOT = MANAGERS_DIR.parent
+ENV_FILE = MANAGERS_DIR / "config" / ".env"             # 4.3: config/ holds .env
+DEFAULT_DATA_DIR = str(REPO_ROOT / "data")              # 4.3: "data", relative to the repo root
+
 
 class AppEngine:
-    def __init__(self, data_dir: str = "data") -> None:
+    def __init__(self, data_dir: str = DEFAULT_DATA_DIR) -> None:
         self._data_dir = data_dir
         self.data: DataManager | None = None
         self.logic: LogicManager | None = None
         self.ai: AIManager | None = None
         self.pipeline: PipelineManager | None = None
 
+    @staticmethod
+    def _load_env() -> None:
+        # Safe to call twice: existing environment variables are not overwritten
+        load_dotenv(ENV_FILE)
+
     def bootstrap_system(self, reporter: Any = None) -> PipelineContext:
-        load_dotenv()
+        self._load_env()
+        # D20: a missing key or key label never stops the run; the AI just reports it down
         api_key = os.getenv("GROQ_API_KEY", "")
-        key_label = "GROQ_API_KEY" if api_key else ""
+        key_label = os.getenv("GROQ_KEY_LABEL", "")
+        if not api_key or not key_label:
+            logger.warning("GROQ_API_KEY or GROQ_KEY_LABEL is not set in %s; "
+                           "the AI will be unavailable this session", ENV_FILE)
 
         store = JsonFileStore()
         self.data = DataManager(self._data_dir, store)
@@ -81,9 +99,23 @@ class AppEngine:
 
         return PipelineContext(data_dir=self._data_dir)
 
+    def _build_io_parts(self):
+        """Validators, builder and importers, shared by the terminal and the GUI (8.3)."""
+        theme_validator = ThemeValidator(self.logic)
+        entry_validator = EntryValidator(theme_validator)
+        builder = RecordBuilder()
+        importers = [
+            CsvImporter(self.data, entry_validator, builder),
+            JsonImporter(self.data, entry_validator, builder),
+        ]
+        return entry_validator, importers
+
     def run(self, mode: str | None = None) -> None:
-        selected_mode = mode or ("gui" if "--gui" in sys.argv else "cli")
+        selected_mode = mode or ("gui" if "--gui" in sys.argv[1:] else "cli")
+        self._load_env()    # must happen BEFORE reading ADMIN_PASSWORD
         admin_password = os.getenv("ADMIN_PASSWORD", "")
+        if not admin_password:
+            logger.warning("ADMIN_PASSWORD is not set in %s; admin login is turned off", ENV_FILE)
 
         if selected_mode == "gui":
             from PySide6.QtWidgets import QApplication
@@ -98,13 +130,7 @@ class AppEngine:
             assert self.data is not None
             assert self.logic is not None
 
-            theme_validator = ThemeValidator(self.logic)
-            entry_validator = EntryValidator(theme_validator)
-            builder = RecordBuilder()
-            importers = [
-                CsvImporter(self.data, entry_validator, builder),
-                JsonImporter(self.data, entry_validator, builder),
-            ]
+            entry_validator, importers = self._build_io_parts()
             pw_validator = PasswordValidator(admin_password) if admin_password else None
             reader = DataReader(self.data)
 
@@ -120,7 +146,6 @@ class AppEngine:
             window.show()
             sys.exit(app.exec())
 
-
         # Default CLI mode
         self.bootstrap_system(reporter=ConsoleProgressReporter())
         assert self.pipeline is not None
@@ -130,13 +155,7 @@ class AppEngine:
         view = ConsoleView()
         prompter = Prompter(view)
 
-        theme_validator = ThemeValidator(self.logic)
-        entry_validator = EntryValidator(theme_validator)
-        builder = RecordBuilder()
-        importers = [
-            CsvImporter(self.data, entry_validator, builder),
-            JsonImporter(self.data, entry_validator, builder),
-        ]
+        _entry_validator, importers = self._build_io_parts()
 
         io_mgr = IOManager(
             view=view,
