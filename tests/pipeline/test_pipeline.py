@@ -53,6 +53,7 @@ class FakeSession:
     source_file: str | None = "import.csv"
     decisions: list[FakeDecision] = field(default_factory=list)
     actions: list[Action] = field(default_factory=list)
+    themes_to_add: list[str] = field(default_factory=list)   # matches SessionResult (Joel's #81)
 
 
 def _make_record(fid: str = "FB-001", text: str = "Wi-Fi is broken") -> FeedbackRecord:
@@ -67,7 +68,8 @@ def _make_record(fid: str = "FB-001", text: str = "Wi-Fi is broken") -> Feedback
 
 def _make_mock_data(records: list[FeedbackRecord] | None = None) -> MagicMock:
     data = MagicMock()
-    data.load_records.return_value = list(records or [])
+    # The real DataManager returns plain dicts; the pipeline rebuilds them (Serializable)
+    data.load_records.return_value = [r.to_dict() for r in records or []]
     data.load_pending.return_value = []
     data.load_known_themes.return_value = ["Facilities", "Workload"]
     data.load_previous_run.return_value = None
@@ -143,7 +145,26 @@ def test_ingestion_step_confirms_new_theme_and_updates_logic_and_ai() -> None:
     step = IngestionStep(data, logic, ai)
     assert step.execute(ctx) is True
 
-    assert rec.verification == REVIEWED
+    saved = data.save_records.call_args.args[0]
+    assert [(r.feedback_id, r.verification) for r in saved] == [("FB-010", REVIEWED)]
+    data.add_known_theme.assert_called_once_with("Parking Fees")
+    logic.set_known_themes.assert_called_once_with(["Facilities", "Parking Fees"])
+    ai.set_known_themes.assert_called_once_with(["Facilities", "Parking Fees"])
+
+
+def test_ingestion_step_saves_themes_added_in_settings() -> None:
+    data = _make_mock_data()
+    data.load_known_themes.side_effect = [
+        ["Facilities"],
+        ["Facilities", "Parking Fees"],
+    ]
+    logic = _make_mock_logic()
+    ai = MagicMock()
+
+    ctx = PipelineContext(session=FakeSession(themes_to_add=["Parking Fees"]))  # type: ignore[arg-type]
+
+    assert IngestionStep(data, logic, ai).execute(ctx) is True
+
     data.add_known_theme.assert_called_once_with("Parking Fees")
     logic.set_known_themes.assert_called_once_with(["Facilities", "Parking Fees"])
     ai.set_known_themes.assert_called_once_with(["Facilities", "Parking Fees"])
@@ -176,7 +197,7 @@ def test_full_pipeline_completes_when_ai_is_down() -> None:
     """Action A25: End-to-end run with failing AI continues and produces rule-based fallback."""
     rec = _make_record("FB-999")
     data = _make_mock_data()
-    data.load_pending.return_value = [rec]
+    data.load_pending.return_value = [rec.to_dict()]   # real Data returns dicts
     logic = _make_mock_logic()
 
     # Simulate AI outage (stopped=True, 0 records classified)
