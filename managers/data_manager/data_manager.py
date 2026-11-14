@@ -103,7 +103,14 @@ class DataManager:
     def save_records(self, records: List[Any]) -> bool:
         filepath = self._get_path("processed_feedback.json")
         payload = {"records": [r.to_dict() if hasattr(r, "to_dict") else r for r in records]}
-        return self.json_store.save(filepath, payload)
+        saved = self.json_store.save(filepath, payload)
+        if saved:
+            ids = {getattr(r, "feedback_id", None) or r.get("feedback_id") for r in records}
+            self.save_pending([
+                r for r in self._load_raw_records("feedback_before_ai.json")
+                if r.get("feedback_id") not in ids
+            ])
+        return saved
 
     def delete_record(self, feedback_id: str) -> bool:
         success_proc = self._remove_from_store_file(feedback_id, "processed_feedback.json")
@@ -185,9 +192,14 @@ class DataManager:
         raw_list = self._load_raw_records("for_review.json")
         return self._to_records(raw_list)
 
-    def save_invalid(self, invalid_records: List[Dict[str, Any]]) -> bool:
+    def save_invalid(self, invalid_records: List[Any]) -> bool:
         filepath = self._get_path("invalid_records.json")
-        return self.json_store.save(filepath, invalid_records)
+        payload = [
+            {**rec.to_dict(), "problems": list(probs)} if isinstance(item, tuple) else item
+            for item in invalid_records
+            for rec, probs in [item if isinstance(item, tuple) else (None, None)]
+        ]
+        return self.json_store.save(filepath, payload)
 
     def save_object(self, name: str, obj: Any) -> bool:
         filename = f"{name}.json" if not name.endswith(".json") else name
@@ -308,7 +320,7 @@ class DataManager:
                 return data if isinstance(data, dict) else None
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             logging.error("Corrupt token log at '%s': %s. Returning None safely.", filepath, e)
-            return None  # Corrupt file returns None so it is never overwritten
+            return None
 
     def load_prompts(self) -> tuple[str, str]:
         """Loads system and summary prompts from config/ with fallback supporting {themes}."""
