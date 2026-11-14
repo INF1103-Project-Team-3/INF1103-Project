@@ -59,7 +59,7 @@ class MainWindow(QMainWindow):
         self.setPalette(light_palette())
         self.setFont(app_font())
         self.setStyleSheet(STYLE)
-        self.__dashboard = DashboardPage(data)
+        self.__dashboard = DashboardPage(data, ai_ready)
         self.__add_feedback = AddFeedbackPage(data, reporter.signals, validators, self.__builder, importers)
         self.__feedback = FeedbackPage(data)
         self.__trends = TrendsPage(data, logic)
@@ -95,6 +95,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.__screens)
 
         self.__add_feedback.run_requested.connect(self.run_pipeline)
+        self.__dashboard.run_requested.connect(self.run_pipeline)
         self.__add_feedback.record_added.connect(self.__queue_record)
         self.__add_feedback.import_ready.connect(self.__on_import)
         self.__feedback.decision_made.connect(self.__on_decision)
@@ -122,7 +123,7 @@ class MainWindow(QMainWindow):
         self.statusBar().hide()
 
     def show_student_form(self) -> None:
-        self.__student.set_themes(self.__data.load_known_themes())
+        self.__student.set_themes(self.__themes())
         self.__student.reset()
         self.__screens.setCurrentWidget(self.__student)
         self.statusBar().hide()
@@ -247,10 +248,19 @@ class MainWindow(QMainWindow):
         self.__update_queue()
         self.statusBar().showMessage(f"{count} {'change' if count == 1 else 'changes'} discarded", 8000)
 
-    # A theme added in Settings, saved by the pipeline on the next run.
+    # Known themes plus the ones queued in Settings: the run saves those before Logic checks
+    # entries, so an entry using one is counted under it.
+    def __themes(self) -> list[str]:
+        known = self.__data.load_known_themes()
+        return known + [theme for theme in self.__themes_to_add if theme not in known]
+
+    # A theme added in Settings, saved by the pipeline on the next run; the theme pickers offer it
+    # straight away.
     def __queue_theme(self, theme: str) -> None:
         self.__themes_to_add.append(theme)
         self.__settings.set_queued(self.__themes_to_add)
+        self.__add_feedback.set_queued_themes(self.__themes_to_add)
+        self.__feedback.set_queued_themes(self.__themes_to_add)
         self.__update_queue()
         self.statusBar().showMessage(f"Theme '{theme}' added (saved on the next run)", 8000)
 
@@ -297,6 +307,8 @@ class MainWindow(QMainWindow):
         self.__source_file = None
         self.__themes_to_add.clear()
         self.__settings.set_queued([])
+        self.__add_feedback.set_queued_themes([])
+        self.__feedback.set_queued_themes([])
         self.__update_queue()
         self.__trends.forget_unsaved()
         self.__add_feedback.progress_panel.show_message("Run finished.")

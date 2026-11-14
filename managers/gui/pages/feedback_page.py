@@ -35,6 +35,7 @@ class FeedbackPage(BasePage):
         self.__cards = {}
         self.__current = None
         self.__queued = {}
+        self.__queued_themes = []
 
         search_card = Card(padding=16, spacing=12)
         bar = QHBoxLayout()
@@ -202,6 +203,13 @@ class FeedbackPage(BasePage):
         self.__save_text.setText(text)
         self.__save_bar.setVisible(bool(count))
 
+    # Themes added in Settings but not saved yet; the Final theme box offers them too (the run
+    # saves them before applying review decisions' themes).
+    def set_queued_themes(self, themes: list[str]) -> None:
+        self.__queued_themes = list(themes)
+        if self.__current in self.__records and not self.__detail.has_unsaved_changes():
+            self.__select(self.__current)
+
     # While a run is going, Save changes waits (only one run at a time).
     def set_busy(self, busy: bool) -> None:
         self.__save_button.setText("Saving…" if busy else "Save changes")
@@ -270,5 +278,7 @@ class FeedbackPage(BasePage):
             self.__cards[self.__current].set_selected(False)
         self.__current = feedback_id
         self.__cards[feedback_id].set_selected(True)
-        self.__detail.show_record(self.__records[feedback_id], self.__data.load_known_themes())
+        known = self.__data.load_known_themes()
+        themes = known + [theme for theme in self.__queued_themes if theme not in known]
+        self.__detail.show_record(self.__records[feedback_id], themes)
         self.__detail.set_queued(self.__queued.get(feedback_id))

@@ -61,7 +61,7 @@ def test_a_run_after_the_ai_was_down_retries_the_unverified_entry(qtbot, data):
     page = DashboardPage(reader)
     qtbot.addWidget(page)
     page.refresh()
-    assert "AI unavailable" not in labels(page)
+    assert "unverified." not in labels(page)
 
 
 def test_trend_chart_breaks_the_line_at_a_missing_run(qtbot):
@@ -98,7 +98,7 @@ def test_dashboard_shows_the_ai_notice_strip_and_themes(qtbot, reader):
     qtbot.addWidget(page)
     page.refresh()
     text = labels(page)
-    assert "AI unavailable for 1 entry" in text
+    assert "so 1 entry is unverified" in text
     assert "Compared with the run on" in text
     assert "Facilities" in text and "Parking Fees" in text
     assert "All fine." not in text and "summary and suggested actions are on Trends" in text
@@ -225,3 +225,26 @@ def test_trend_chart_skips_x_labels_that_would_overlap(qtbot):
     chart.resize(2000, 320)
     chart.set_data(["Run 1", "Run 2", "Run 3"], {"Facilities": [1, 2, 3]}, top=100)
     assert chart.label_indices() == [0, 1, 2]
+
+
+def dashboard(qtbot, reader, ai_ready):
+    page = DashboardPage(reader, ai_ready)
+    qtbot.addWidget(page)
+    page.refresh()
+    return page
+
+
+# The AI notice says whether the AI is back (with Process now) or still down.
+def test_the_ai_notice_offers_process_now_once_the_ai_is_back(qtbot, reader):
+    page = dashboard(qtbot, reader, ai_ready=True)
+    assert "The AI was unavailable on the last run, so 1 entry is unverified" in labels(page)
+    process = [b for b in page.findChildren(QPushButton) if b.text() == "Process now"][0]
+    assert process.isVisibleTo(page)
+    with qtbot.waitSignal(page.run_requested, timeout=1000):
+        process.click()
+
+
+def test_the_ai_notice_says_the_ai_is_down_without_a_button(qtbot, reader):
+    page = dashboard(qtbot, reader, ai_ready=False)
+    assert "The AI is unavailable, so 1 entry is unverified" in labels(page)
+    assert not [b for b in page.findChildren(QPushButton) if b.text() == "Process now"][0].isVisibleTo(page)
