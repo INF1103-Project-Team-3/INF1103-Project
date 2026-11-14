@@ -97,7 +97,8 @@ class MainWindow(QMainWindow):
         self.__add_feedback.import_ready.connect(self.__on_import)
         self.__feedback.decision_made.connect(self.__on_decision)
         self.__feedback.undo_requested.connect(self.__undo_decision)
-        self.__feedback.process_requested.connect(self.run_pipeline)
+        self.__feedback.save_requested.connect(self.__save_changes)
+        self.__feedback.discard_requested.connect(self.__discard_decisions)
         self.__trends.action_logged.connect(self.__on_action_logged)
         self.__settings.theme_added.connect(self.__queue_theme)
 
@@ -140,7 +141,8 @@ class MainWindow(QMainWindow):
         self.__sidebar.select(name)
 
     # Starts one run on a PipelineWorker. Returns False if one is already running.
-    def run_pipeline(self, session=None) -> bool:
+    # show_progress opens Add feedback, where the run's progress is shown.
+    def run_pipeline(self, session=None, show_progress: bool = True) -> bool:
         if self.__worker is not None:
             return False
         if session is None:
@@ -150,10 +152,17 @@ class MainWindow(QMainWindow):
         self.__worker.failed.connect(self.__on_run_failed)
         self.__worker.finished.connect(self.__on_worker_finished)
         self.__add_feedback.set_busy(True)
+        self.__feedback.set_busy(True)
         self.__sidebar.set_badge(ADD_FEEDBACK, "● running", "running")
-        self.show_page(ADD_FEEDBACK)
+        if show_progress:
+            self.show_page(ADD_FEEDBACK)
         self.__worker.start()
         return True
+
+    # Save changes on the Feedback page: the same run as Process, but the admin stays on Feedback.
+    def __save_changes(self) -> None:
+        if self.run_pipeline(show_progress=False):
+            self.statusBar().showMessage("Saving changes… (progress on Add feedback)")
 
     def closeEvent(self, event) -> None:
         if self.__worker is not None:
@@ -186,9 +195,15 @@ class MainWindow(QMainWindow):
     # Undo on the Feedback page: drops the queued decision for that record.
     def __undo_decision(self, feedback_id: str) -> None:
         self.__decisions = [d for d in self.__decisions if d.feedback_id != feedback_id]
-        self.__feedback.set_queued(self.__decisions)
         self.__update_queue()
         self.statusBar().showMessage(f"{feedback_id}: change undone", 8000)
+
+    # Discard all on the Feedback page: drops every queued decision (nothing was saved yet).
+    def __discard_decisions(self) -> None:
+        count = len(self.__decisions)
+        self.__decisions.clear()
+        self.__update_queue()
+        self.statusBar().showMessage(f"{count} {'change' if count == 1 else 'changes'} discarded", 8000)
 
     # A theme added in Settings, saved by the pipeline on the next run.
     def __queue_theme(self, theme: str) -> None:
@@ -198,11 +213,14 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Theme '{theme}' added (saved on the next run)", 8000)
 
     # Everything queued for the next run counts towards Process: entries, decisions,
-    # actions and new themes.
+    # actions and new themes. The Feedback page's save bar shows the decisions, and the
+    # entries the same run would send to the AI.
     def __update_queue(self) -> None:
         count = (len(self.__new_records) + len(self.__decisions) + len(self.__actions)
                  + len(self.__themes_to_add))
         self.__add_feedback.set_new_count(count)
+        waiting = self.__add_feedback.waiting_for_ai() + len(self.__new_records)
+        self.__feedback.set_queued(self.__decisions, waiting)
 
     # An imported file's new records; the run records the file as its source.
     def __on_import(self, result) -> None:
@@ -215,13 +233,12 @@ class MainWindow(QMainWindow):
     def __on_decision(self, decision: ReviewDecision) -> None:
         self.__decisions = [d for d in self.__decisions if d.feedback_id != decision.feedback_id]
         self.__decisions.append(decision)
-        self.__feedback.set_queued(self.__decisions)
         self.__update_queue()
         if decision.action == ReviewDecision.DELETE:
             what = "delete"
         else:
             what = " / ".join((decision.theme, decision.sentiment, decision.severity))
-        self.statusBar().showMessage(f"{decision.feedback_id}: {what} (saved on the next run)", 8000)
+        self.statusBar().showMessage(f"{decision.feedback_id}: {what} (saved when you press Save changes)", 8000)
 
     def __on_action_logged(self, action) -> None:
         self.__actions.append(action)
@@ -230,7 +247,6 @@ class MainWindow(QMainWindow):
 
     def __on_run_completed(self, context) -> None:
         self.__decisions.clear()
-        self.__feedback.set_queued([])
         self.__actions.clear()
         sent = {record.feedback_id for record in self.__sent_records}
         self.__new_records = [r for r in self.__new_records if r.feedback_id not in sent]
@@ -251,6 +267,7 @@ class MainWindow(QMainWindow):
         self.__worker.deleteLater()
         self.__worker = None
         self.__add_feedback.set_busy(False)
+        self.__feedback.set_busy(False)
         self.__sidebar.set_badge(ADD_FEEDBACK, "")
         self.__refresh_all()
 

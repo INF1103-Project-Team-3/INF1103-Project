@@ -20,12 +20,13 @@ SORTS = (RECOMMENDED, "Newest first", "Oldest first", "Most severe first", "Them
 
 
 # A list of entry cards on the left and EntryDetailPanel on the right. Decisions are queued
-# until Process: queued cards are tagged, the panel shows Undo / Process now, and Needs
-# review moves on to the next entry.
+# until Save changes: queued cards are tagged, the panel shows Undo, the save bar counts them,
+# and Needs review moves on to the next entry.
 class FeedbackPage(BasePage):
     decision_made = Signal(object)
     undo_requested = Signal(str)
-    process_requested = Signal()
+    save_requested = Signal()
+    discard_requested = Signal()
 
     def __init__(self, data, parent=None):
         super().__init__("Feedback", "", parent)
@@ -75,6 +76,7 @@ class FeedbackPage(BasePage):
         bar.addWidget(self.__sort)
         search_card.body.addLayout(bar)
         self.content_layout.addWidget(search_card)
+        self.content_layout.addWidget(self.__build_save_bar())
 
         columns = QHBoxLayout()
         columns.setSpacing(16)
@@ -98,7 +100,6 @@ class FeedbackPage(BasePage):
         self.__detail = EntryDetailPanel()
         self.__detail.decision_requested.connect(self.__on_decision)
         self.__detail.undo_requested.connect(self.undo_requested)
-        self.__detail.process_requested.connect(self.process_requested)
         columns.addWidget(self.__list_card, 2, Qt.AlignmentFlag.AlignTop)
         columns.addWidget(self.__detail, 3, Qt.AlignmentFlag.AlignTop)
         self.content_layout.addLayout(columns)
@@ -185,13 +186,55 @@ class FeedbackPage(BasePage):
             return sorted(newest, key=lambda r: (r.current_labels.get("theme") or "").lower())
         return list(records)
 
-    # The decisions waiting for Process (MainWindow keeps them), shown on cards and in the panel.
-    def set_queued(self, decisions) -> None:
+    # The decisions waiting to be saved (MainWindow keeps them), shown on cards, in the panel and
+    # on the save bar; waiting is how many entries the same run would also send to the AI.
+    def set_queued(self, decisions, waiting: int = 0) -> None:
         self.__queued = {d.feedback_id: self.describe(d) for d in decisions}
         for feedback_id, card in self.__cards.items():
             card.set_queued(self.__queued.get(feedback_id))
         if self.__current is not None:
             self.__detail.set_queued(self.__queued.get(self.__current))
+        count = len(self.__queued)
+        text = f"<b>{count} {'change' if count == 1 else 'changes'} not saved yet.</b>"
+        if waiting:
+            text += (f" Saving also sends {waiting} waiting {'entry' if waiting == 1 else 'entries'} "
+                     f"to the AI.")
+        self.__save_text.setText(text)
+        self.__save_bar.setVisible(bool(count))
+
+    # While a run is going, Save changes waits (only one run at a time).
+    def set_busy(self, busy: bool) -> None:
+        self.__save_button.setText("Saving…" if busy else "Save changes")
+        self.__save_button.setEnabled(not busy)
+        self.__discard_button.setEnabled(not busy)
+
+    def __build_save_bar(self) -> QFrame:
+        self.__save_bar = QFrame()
+        self.__save_bar.setObjectName("helpBox")
+        layout = QHBoxLayout(self.__save_bar)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(10)
+        self.__save_text = QLabel("")
+        self.__save_text.setObjectName("helpText")
+        self.__save_text.setWordWrap(True)
+        self.__discard_button = QPushButton("Discard all")
+        self.__discard_button.clicked.connect(self.__on_discard)
+        self.__save_button = QPushButton("Save changes")
+        self.__save_button.setObjectName("primaryButton")
+        self.__save_button.clicked.connect(lambda _checked=False: self.save_requested.emit())
+        layout.addWidget(self.__save_text, 1)
+        for widget in (self.__discard_button, self.__save_button):
+            widget.setCursor(Qt.CursorShape.PointingHandCursor)
+            layout.addWidget(widget)
+        self.__save_bar.hide()
+        return self.__save_bar
+
+    def __on_discard(self, *_args) -> None:
+        count = len(self.__queued)
+        answer = QMessageBox.question(self, "Discard changes",
+                                      f"Discard {count} {'change' if count == 1 else 'changes'} not saved yet?")
+        if answer == QMessageBox.StandardButton.Yes:
+            self.discard_requested.emit()
 
     # "Will be deleted" or "Will be saved as Facilities · negative · low".
     @staticmethod

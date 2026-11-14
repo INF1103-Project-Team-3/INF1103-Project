@@ -21,7 +21,6 @@ COLUMNS = (("Field", 2, 70), ("Student", 3, 90), ("AI", 3, 90), ("Final", 3, 120
 class EntryDetailPanel(QFrame):
     decision_requested = Signal(object)
     undo_requested = Signal(str)
-    process_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -80,7 +79,7 @@ class EntryDetailPanel(QFrame):
             self.__rows[field] = self.__row([name, user, ai, self.__boxes[field]])
             table.addWidget(self.__rows[field])
 
-        self.__save = QPushButton("Save final labels")
+        self.__save = QPushButton("Use these labels")
         self.__save.setObjectName("primaryButton")
         self.__use_user = QPushButton("Use student's")
         self.__use_ai = QPushButton("Use AI's")
@@ -118,14 +117,9 @@ class EntryDetailPanel(QFrame):
         self.__queued_text.setWordWrap(True)
         undo = QPushButton("Undo")
         undo.clicked.connect(lambda _checked=False: self.undo_requested.emit(self.__record.feedback_id))
-        process = QPushButton("Process now")
-        process.setObjectName("primaryButton")
-        process.clicked.connect(lambda _checked=False: self.process_requested.emit())
-        for button in (undo, process):
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
+        undo.setCursor(Qt.CursorShape.PointingHandCursor)
         queued_layout.addWidget(self.__queued_text, 1)
         queued_layout.addWidget(undo)
-        queued_layout.addWidget(process)
         self.__queued.hide()
 
         note = QLabel("To leave an entry for later, just pick another one from the list; it stays in "
@@ -148,12 +142,11 @@ class EntryDetailPanel(QFrame):
         layout.addStretch()
         self.clear()
 
-    # Shows that this record's decision is queued until Process (with Undo / Process now),
-    # and locks the decision buttons meanwhile; None returns to normal.
+    # Shows that this record's decision is queued until Save changes (with Undo), and locks the
+    # decision buttons meanwhile; None returns to normal.
     def set_queued(self, text: str | None) -> None:
         queued = bool(text) and self.__record is not None
-        self.__queued_text.setText(f"<b>{text}</b> when you press Process. Nothing has changed yet."
-                                   if queued else "")
+        self.__queued_text.setText(f"<b>{text}</b> when you press Save changes." if queued else "")
         self.__queued.setVisible(queued)
         if self.__record is not None:
             self.__set_buttons_enabled(not queued)
@@ -273,7 +266,7 @@ class EntryDetailPanel(QFrame):
     def __on_save(self, *_args) -> None:
         values = tuple(box.currentText().strip() for box in self.__boxes.values())
         if not all(values):
-            QMessageBox.warning(self, "Missing value", "Choose a theme, sentiment and severity before saving.")
+            QMessageBox.warning(self, "Missing value", "Choose a theme, sentiment and severity first.")
             return
         self.__emit_update(values)
 

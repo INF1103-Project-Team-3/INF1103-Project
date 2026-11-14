@@ -70,7 +70,7 @@ def test_save_builds_an_update_with_the_final_values(qtbot):
     theme.setCurrentText("Administration")
     sentiment.setCurrentText("neutral")
     severity.setCurrentText("low")
-    decision = click_for_decision(qtbot, panel, "Save final labels")
+    decision = click_for_decision(qtbot, panel, "Use these labels")
     assert decision == ReviewDecision(record.feedback_id, ReviewDecision.UPDATE, "Administration", "neutral", "low")
 
 
@@ -194,13 +194,45 @@ def test_delete_shows_will_be_deleted_and_undo_clears_it(qtbot, monkeypatch):
     assert button(panel, "Use student's").isEnabled()
 
 
-def test_process_now_runs_the_queued_decision(qtbot):
+def save_bar_text(page):
+    return page._FeedbackPage__save_text.text()
+
+
+def test_the_save_bar_counts_decisions_and_warns_about_waiting_entries(qtbot):
+    window, page, panel, data = feedback_window(qtbot)
+    bar = page._FeedbackPage__save_bar
+    assert not bar.isVisibleTo(page)
+    button(panel, "Use student's").click()
+    button(panel, "Use student's").click()
+    assert bar.isVisibleTo(page) and "2 changes not saved yet" in save_bar_text(page)
+    from managers.io_manager import RecordBuilder
+    waiting = window._MainWindow__add_feedback.waiting_for_ai() + 1
+    window._MainWindow__queue_record(RecordBuilder().build(
+        {"text": "Wifi drops", "theme": "Facilities", "sentiment": "negative", "severity": "low"}))
+    assert f"Saving also sends {waiting} waiting" in save_bar_text(page)
+
+
+def test_save_changes_runs_the_decisions_and_stays_on_feedback(qtbot):
     window, page, panel, data = feedback_window(qtbot)
     first = panel.record.feedback_id
     button(panel, "Use student's").click()
-    page._FeedbackPage__select(first)
-    with qtbot.waitSignal(page.process_requested, timeout=1000):
-        button(panel, "Process now").click()
+    button(page, "Save changes").click()
+    pipeline = window._MainWindow__pipeline
+    qtbot.waitUntil(lambda: window._MainWindow__worker is None, timeout=3000)
+    assert [d.feedback_id for d in pipeline.sessions[0].decisions] == [first]
+    assert window._MainWindow__stack.currentWidget() is page
+    assert not page._FeedbackPage__save_bar.isVisibleTo(page) and visible_tags(page).get(first, "") == ""
+
+
+def test_discard_all_drops_every_queued_decision(qtbot, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "question", lambda *_args: QMessageBox.StandardButton.Yes)
+    window, page, panel, data = feedback_window(qtbot)
+    button(panel, "Use student's").click()
+    button(panel, "Use student's").click()
+    button(page, "Discard all").click()
+    assert window._MainWindow__build_session().decisions == []
+    assert not page._FeedbackPage__save_bar.isVisibleTo(page) and not any(visible_tags(page).values())
 
 
 # MainWindow sets Fusion and the light palette app-wide, so Windows dark mode can't darken the admin text box.

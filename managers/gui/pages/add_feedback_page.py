@@ -95,9 +95,7 @@ class AddFeedbackPage(BasePage):
     # entries go to the AI again on the next run, so Process must be possible without new feedback).
     def refresh(self) -> None:
         self.__single.set_themes(self.__data.load_known_themes())
-        pending = {r.feedback_id for r in self.__data.load_pending()}
-        unverified = {r.feedback_id for r in self.__data.load_records()
-                      if r.ai is None and r.verification == UNVERIFIED} - pending
+        pending, unverified = self.__waiting()
         waiting = len(pending) + len(unverified)
         count = waiting + self.__queued
         text = f"{waiting} {'entry' if waiting == 1 else 'entries'} waiting for the AI"
@@ -113,6 +111,17 @@ class AddFeedbackPage(BasePage):
             self.__process.setText(f"Process {count} {'entry' if count == 1 else 'entries'}"
                                    if count else "Nothing to process")
             self.__process.setEnabled(bool(count))
+
+    # How many saved entries the next run sends to the AI (pending plus unverified).
+    def waiting_for_ai(self) -> int:
+        pending, unverified = self.__waiting()
+        return len(pending) + len(unverified)
+
+    def __waiting(self) -> tuple[set, set]:
+        pending = {r.feedback_id for r in self.__data.load_pending()}
+        unverified = {r.feedback_id for r in self.__data.load_records()
+                      if r.ai is None and r.verification == UNVERIFIED} - pending
+        return pending, unverified
 
     def __build_segments(self) -> QFrame:
         segments = QFrame()
