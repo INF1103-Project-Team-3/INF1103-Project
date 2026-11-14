@@ -66,8 +66,8 @@ class IngestionStep(BaseStep):
         if existing_records:
             self._data.save_records(list(existing_records.values()))
 
-        pending = self._rebuild_all(self._data.load_pending(), FeedbackRecord)
-        processed = self._rebuild_all(self._data.load_records(), FeedbackRecord)
+        pending = self._data.load_pending()
+        processed = self._data.load_records()
         context.records = processed + pending
         return True
 
