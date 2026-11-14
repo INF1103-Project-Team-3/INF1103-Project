@@ -4,7 +4,6 @@ import logging
 from typing import TYPE_CHECKING
 
 from managers.io_manager import ReviewDecision
-from managers.models import FeedbackRecord
 from ..base_step import BaseStep
 
 logger = logging.getLogger(__name__)
@@ -29,9 +28,7 @@ class IngestionStep(BaseStep):
 
     def _run(self, context: PipelineContext) -> bool:
         session = context.session
-        existing_records = {
-            r.feedback_id: r for r in self._rebuild_all(self._data.load_records(), FeedbackRecord)
-        }
+        existing_records = {r.feedback_id: r for r in self._data.load_records()}
 
         if session is not None:
             # Themes to confirm: new themes from Settings, plus any a review keeps (D16)
@@ -69,8 +66,8 @@ class IngestionStep(BaseStep):
         if existing_records:
             self._data.save_records(list(existing_records.values()))
 
-        pending = self._rebuild_all(self._data.load_pending(), FeedbackRecord)
-        processed = self._rebuild_all(self._data.load_records(), FeedbackRecord)
+        pending = self._data.load_pending()
+        processed = self._data.load_records()
         context.records = processed + pending
         return True
 
