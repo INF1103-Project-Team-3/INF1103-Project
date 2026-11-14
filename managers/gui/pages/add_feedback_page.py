@@ -27,6 +27,7 @@ class AddFeedbackPage(BasePage):
         self.__data = data
         self.__busy = False
         self.__queued = 0
+        self.__queued_themes = []
 
         self.__single = SingleEntryForm(validator, builder)
         self.__single.record_added.connect(self.record_added)
@@ -86,6 +87,11 @@ class AddFeedbackPage(BasePage):
         self.__panel.set_running(busy)
         self.refresh()
 
+    # Themes added in Settings but not saved yet; the Single entry picker offers them too.
+    def set_queued_themes(self, themes: list[str]) -> None:
+        self.__queued_themes = list(themes)
+        self.refresh()
+
     # How many entries (student, typed or imported) are queued for the next run.
     def set_new_count(self, count: int) -> None:
         self.__queued = count
@@ -94,7 +100,8 @@ class AddFeedbackPage(BasePage):
     # Waiting for the AI: pending entries plus saved ones the AI couldn't check (D4: unverified
     # entries go to the AI again on the next run, so Process must be possible without new feedback).
     def refresh(self) -> None:
-        self.__single.set_themes(self.__data.load_known_themes())
+        known = self.__data.load_known_themes()
+        self.__single.set_themes(known + [t for t in self.__queued_themes if t not in known])
         pending, unverified = self.__waiting()
         waiting = len(pending) + len(unverified)
         count = waiting + self.__queued

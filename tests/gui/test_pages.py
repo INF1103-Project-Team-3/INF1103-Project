@@ -295,3 +295,29 @@ def test_the_unsaved_dialog_offers_three_choices_and_dismissing_cancels(qtbot, m
     assert window._ask_unsaved("1 entry") == "cancel"
     labels, text = seen[0]
     assert {"Process and close", "Close anyway"} <= set(labels) and "Not saved yet: 1 entry." in text
+
+
+def picker_items(widget, name):
+    box = widget.findChild(QComboBox, name)
+    return [box.itemText(i) for i in range(box.count())]
+
+
+# A theme queued in Settings is offered by both theme pickers before Process, and stays after it.
+def test_a_queued_theme_is_offered_on_the_student_form_and_single_entry(qtbot):
+    window, *_ = feedback_window(qtbot)
+    window._MainWindow__queue_theme("Parking Fees")
+    window.show_student_form()
+    assert "Parking Fees" in picker_items(window, "studentTheme")
+    assert "Parking Fees" in picker_items(window, "entryTheme")
+
+
+def test_a_queued_theme_is_offered_in_the_review_panel_and_can_be_used(qtbot):
+    window, page, panel, data = feedback_window(qtbot)
+    window._MainWindow__queue_theme("Parking Fees")
+    theme_box = panel.findChildren(QComboBox)[0]
+    assert "Parking Fees" in [theme_box.itemText(i) for i in range(theme_box.count())]
+    first = panel.record.feedback_id
+    theme_box.setCurrentText("Parking Fees")
+    button(panel, "Use these labels").click()
+    decision = window._MainWindow__build_session().decisions[0]
+    assert decision.feedback_id == first and decision.theme == "Parking Fees"
