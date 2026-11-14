@@ -197,7 +197,7 @@ def test_full_pipeline_completes_when_ai_is_down() -> None:
     """Action A25: End-to-end run with failing AI continues and produces rule-based fallback."""
     rec = _make_record("FB-999")
     data = _make_mock_data()
-    data.load_pending.return_value = [rec.to_dict()]   # real Data returns dicts
+    data.load_pending.return_value = [rec]
     logic = _make_mock_logic()
 
     # Simulate AI outage (stopped=True, 0 records classified)
