@@ -7,15 +7,28 @@ from .storage_backend import StorageBackend
 from .json_file_store import JsonFileStore
 from .csv_file_store import CsvFileStore
 
-# Import base themes safely from models package
+# Import models and constants from shared package
 try:
-    from managers.models import THEMES
+    from managers.models import THEMES, FeedbackRecord, Action
 except ImportError:
-    THEMES = ["Teaching Quality", "Assessment", "Facilities", "Administration", "Well-being", "Social Environment", "Workload", "Internship Placement"]
+    THEMES = (
+        "Teaching Quality",
+        "Assessment",
+        "Facilities",
+        "Administration",
+        "Well-being",
+        "Social Environment",
+        "Workload",
+        "Internship Placement",
+    )
+    FeedbackRecord = None  # type: ignore
+    Action = None  # type: ignore
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
+
 def _read_list_strict(path: Union[str, Path]) -> List[Any]:
+    """Module-level compatibility helper for older I/O tests."""
     store = JsonFileStore()
     data = store.load(Path(path))
     if isinstance(data, list):
@@ -24,34 +37,80 @@ def _read_list_strict(path: Union[str, Path]) -> List[Any]:
         return data["records"]
     raise ValueError("Expected a list or records container.")
 
+
 class DataManager:
+    """
+    Encapsulates all file persistence and returns model objects.
+    """
+
     def __init__(self, data_dir: str = "data", store: Optional[StorageBackend] = None) -> None:
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.json_store: StorageBackend = store if store else JsonFileStore()
-        
+
         self._importers = {
             ".csv": CsvFileStore(),
-            ".json": self.json_store
+            ".json": self.json_store,
         }
 
     def _get_path(self, filename: str) -> Path:
         return self.data_dir / filename
 
-    def load_records(self, filename: str = "processed_feedback.json") -> List[Any]:
+    def _to_records(self, raw_list: List[Any]) -> List[Any]:
+        """Converts raw dictionaries into FeedbackRecord objects, skipping corrupt entries."""
+        if FeedbackRecord is None:
+            return raw_list
+        records = []
+        for item in raw_list:
+            if isinstance(item, FeedbackRecord):
+                records.append(item)
+            elif isinstance(item, dict):
+                try:
+                    records.append(FeedbackRecord.from_dict(item))
+                except (KeyError, ValueError) as e:
+                    logging.error("Skipping corrupt FeedbackRecord entry: %s", e)
+        return records
+
+    def _to_actions(self, raw_list: List[Any]) -> List[Any]:
+        """Converts raw dictionaries into Action objects, skipping corrupt entries."""
+        if Action is None:
+            return raw_list
+        actions = []
+        for item in raw_list:
+            if isinstance(item, Action):
+                actions.append(item)
+            elif isinstance(item, dict):
+                try:
+                    actions.append(Action.from_dict(item))
+                except (KeyError, ValueError) as e:
+                    logging.error("Skipping corrupt Action entry: %s", e)
+        return actions
+
+    def _load_raw_records(self, filename: str) -> List[Dict[str, Any]]:
+        """Internal helper to load raw record dicts from a store file."""
         filepath = self._get_path(filename)
         data = self.json_store.load(filepath)
-        if isinstance(data, dict) and "records" in data:
+        if isinstance(data, dict) and isinstance(data.get("records"), list):
             return data["records"]
         if isinstance(data, list):
             return data
         return []
 
+    def load_records(self, filename: str = "processed_feedback.json") -> List[Any]:
+        raw_list = self._load_raw_records(filename)
+        return self._to_records(raw_list)
+
     def save_records(self, records: List[Any]) -> bool:
         filepath = self._get_path("processed_feedback.json")
         payload = {"records": [r.to_dict() if hasattr(r, "to_dict") else r for r in records]}
-        success = self.json_store.save(filepath, payload)
-        return success
+        saved = self.json_store.save(filepath, payload)
+        if saved:
+            ids = {getattr(r, "feedback_id", None) or r.get("feedback_id") for r in records}
+            self.save_pending([
+                r for r in self._load_raw_records("feedback_before_ai.json")
+                if r.get("feedback_id") not in ids
+            ])
+        return saved
 
     def delete_record(self, feedback_id: str) -> bool:
         success_proc = self._remove_from_store_file(feedback_id, "processed_feedback.json")
@@ -72,13 +131,8 @@ class DataManager:
         return True
 
     def load_pending(self, filename: str = "feedback_before_ai.json") -> List[Any]:
-        filepath = self._get_path(filename)
-        data = self.json_store.load(filepath)
-        if isinstance(data, dict) and "records" in data:
-            return data["records"]
-        if isinstance(data, list):
-            return data
-        return []
+        raw_list = self._load_raw_records(filename)
+        return self._to_records(raw_list)
 
     def save_pending(self, records: List[Any], filename: str = "feedback_before_ai.json") -> bool:
         filepath = self._get_path(filename)
@@ -86,7 +140,7 @@ class DataManager:
         return self.json_store.save(filepath, payload)
 
     def add_pending(self, records: Union[Any, List[Any]]) -> bool:
-        current = self.load_pending()
+        current = self._load_raw_records("feedback_before_ai.json")
         incoming = records if isinstance(records, list) else [records]
         current.extend([r.to_dict() if hasattr(r, "to_dict") else r for r in incoming])
         return self.save_pending(current)
@@ -95,7 +149,8 @@ class DataManager:
         target_id = record.get("feedback_id") if isinstance(record, dict) else getattr(record, "feedback_id", None)
         if not target_id:
             return
-        processed = self.load_records("processed_feedback.json")
+
+        processed = self._load_raw_records("processed_feedback.json")
         updated = False
         rec_dict = record.to_dict() if hasattr(record, "to_dict") else record
 
@@ -107,19 +162,23 @@ class DataManager:
         if not updated:
             processed.append(rec_dict)
 
-        # Save processed feedback
         self.json_store.save(self._get_path("processed_feedback.json"), {"records": processed})
-        remaining = [r for r in self.load_pending() if r.get("feedback_id") != target_id]
+
+        remaining = [
+            r for r in self._load_raw_records("feedback_before_ai.json")
+            if r.get("feedback_id") != target_id
+        ]
         self.save_pending(remaining)
 
-    def search_records(self, query: str) -> List[Dict[str, Any]]:
+    def search_records(self, query: str) -> List[Any]:
         records = self.load_records("processed_feedback.json")
         if not query.strip():
             return records
         terms = query.lower().split()
         results = []
         for record in records:
-            content = " ".join(str(val) for val in record.values()).lower()
+            rec_dict = record.to_dict() if hasattr(record, "to_dict") else record
+            content = " ".join(str(val) for val in rec_dict.values()).lower()
             if all(term in content for term in terms):
                 results.append(record)
         return results
@@ -129,16 +188,18 @@ class DataManager:
         payload = {"records": [r.to_dict() if hasattr(r, "to_dict") else r for r in records]}
         return self.json_store.save(filepath, payload)
 
-    def load_review_queue(self) -> List[Dict[str, Any]]:
-        filepath = self._get_path("for_review.json")
-        data = self.json_store.load(filepath)
-        if isinstance(data, dict) and "records" in data:
-            return data["records"]
-        return []
+    def load_review_queue(self) -> List[Any]:
+        raw_list = self._load_raw_records("for_review.json")
+        return self._to_records(raw_list)
 
-    def save_invalid(self, invalid_records: List[Dict[str, Any]]) -> bool:
+    def save_invalid(self, invalid_records: List[Any]) -> bool:
         filepath = self._get_path("invalid_records.json")
-        return self.json_store.save(filepath, invalid_records)
+        payload = [
+            {**rec.to_dict(), "problems": list(probs)} if isinstance(item, tuple) else item
+            for item in invalid_records
+            for rec, probs in [item if isinstance(item, tuple) else (None, None)]
+        ]
+        return self.json_store.save(filepath, payload)
 
     def save_object(self, name: str, obj: Any) -> bool:
         filename = f"{name}.json" if not name.endswith(".json") else name
@@ -166,7 +227,7 @@ class DataManager:
         entry = {
             "run_at": run_at,
             "source_file": source_file,
-            "result": res_dict
+            "result": res_dict,
         }
         history.insert(0, entry)
         return self.json_store.save(filepath, history)
@@ -195,8 +256,7 @@ class DataManager:
             confirmed = data["themes"]
         elif isinstance(data, list):
             confirmed = data
-        
-        # Combine base themes and confirmed unique themes
+
         known = list(THEMES)
         for t in confirmed:
             if t not in known:
@@ -206,34 +266,29 @@ class DataManager:
     def add_known_theme(self, name: str) -> bool:
         filepath = self._get_path("known_themes.json")
         data = self.json_store.load(filepath)
-        
+
         themes_list = []
         if isinstance(data, dict) and "themes" in data:
             themes_list = data["themes"]
         elif isinstance(data, list):
             themes_list = data
-            
+
         if name not in themes_list:
             themes_list.append(name)
-            
+
         payload = {"themes": themes_list}
         return self.json_store.save(filepath, payload)
 
     def load_actions(self) -> List[Any]:
-        filepath = self._get_path("actions.json")
-        data = self.json_store.load(filepath)
-        if isinstance(data, dict) and "records" in data:
-            return data["records"]
-        if isinstance(data, list):
-            return data
-        return []
+        raw_list = self._load_raw_records("actions.json")
+        return self._to_actions(raw_list)
 
     def save_action(self, action: Any) -> bool:
-        actions = self.load_actions()
+        raw_actions = self._load_raw_records("actions.json")
         act_dict = action.to_dict() if hasattr(action, "to_dict") else action
-        actions.append(act_dict)
+        raw_actions.append(act_dict)
         filepath = self._get_path("actions.json")
-        return self.json_store.save(filepath, {"records": actions})
+        return self.json_store.save(filepath, {"records": raw_actions})
 
     def read_rows(self, path: Union[str, Path]) -> List[Dict[str, Any]]:
         p = Path(path)
@@ -258,22 +313,21 @@ class DataManager:
         """Loads token usage log; returns {} if missing/empty, None if corrupt."""
         filepath = self._token_log_path()
         if not filepath.exists() or filepath.stat().st_size == 0:
-            return {}  # Missing file returns empty dict for fresh setup
+            return {}
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return data if isinstance(data, dict) else None
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             logging.error("Corrupt token log at '%s': %s. Returning None safely.", filepath, e)
-            return None  # Corrupt file returns None so it is never overwritten
+            return None
 
     def load_prompts(self) -> tuple[str, str]:
         """Loads system and summary prompts from config/ with fallback supporting {themes}."""
         config_dir = Path(__file__).resolve().parents[1] / "config"
         prompt_path = config_dir / "system_prompt.txt"
         summary_path = config_dir / "summary_prompt.txt"
-        
-        # Fallback system prompt must include {themes} to prevent PromptLibrary startup failure
+
         sys_prompt = (
             prompt_path.read_text(encoding="utf-8")
             if prompt_path.exists()
