@@ -24,6 +24,9 @@ class EntryCard(QFrame):
 
         tags = QHBoxLayout()
         tags.setSpacing(6)
+        self.__queued = Pill("", "caution")
+        self.__queued.hide()
+        tags.addWidget(self.__queued)
         for text, kind in record_tags(record):
             tags.addWidget(Pill(text, kind))
         tags.addStretch()
@@ -48,6 +51,15 @@ class EntryCard(QFrame):
     @property
     def feedback_id(self) -> str:
         return self.__feedback_id
+
+    # A tag such as "Will be deleted" while a review decision waits for Process; None hides it.
+    def set_queued(self, text: str | None) -> None:
+        self.__queued.setText(text or "")
+        self.__queued.setVisible(bool(text))
+
+    @property
+    def queued_text(self) -> str:
+        return self.__queued.text() if self.__queued.isVisibleTo(self) else ""
 
     def set_selected(self, selected: bool) -> None:
         self.setProperty("selected", selected)

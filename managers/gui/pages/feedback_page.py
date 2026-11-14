@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QButtonGroup, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout,
 )
 
+from managers.io_manager import ReviewDecision
 from managers.models import SEVERITIES
 
 from ..widgets.card import Card
@@ -18,9 +19,13 @@ RECOMMENDED = "Recommended"
 SORTS = (RECOMMENDED, "Newest first", "Oldest first", "Most severe first", "Theme (A-Z)")
 
 
-# A list of entry cards on the left and EntryDetailPanel on the right.
+# A list of entry cards on the left and EntryDetailPanel on the right. Decisions are queued
+# until Process: queued cards are tagged, the panel shows Undo / Process now, and Needs
+# review moves on to the next entry.
 class FeedbackPage(BasePage):
     decision_made = Signal(object)
+    undo_requested = Signal(str)
+    process_requested = Signal()
 
     def __init__(self, data, parent=None):
         super().__init__("Feedback", "", parent)
@@ -28,6 +33,7 @@ class FeedbackPage(BasePage):
         self.__records = {}
         self.__cards = {}
         self.__current = None
+        self.__queued = {}
 
         search_card = Card(padding=16, spacing=12)
         bar = QHBoxLayout()
@@ -90,7 +96,9 @@ class FeedbackPage(BasePage):
         self.__list_card.body.addWidget(list_note)
 
         self.__detail = EntryDetailPanel()
-        self.__detail.decision_requested.connect(self.decision_made)
+        self.__detail.decision_requested.connect(self.__on_decision)
+        self.__detail.undo_requested.connect(self.undo_requested)
+        self.__detail.process_requested.connect(self.process_requested)
         columns.addWidget(self.__list_card, 2, Qt.AlignmentFlag.AlignTop)
         columns.addWidget(self.__detail, 3, Qt.AlignmentFlag.AlignTop)
         self.content_layout.addLayout(columns)
@@ -149,6 +157,7 @@ class FeedbackPage(BasePage):
             card.clicked.connect(self.__on_card_clicked)
             self.__list_layout.addWidget(card)
             self.__cards[record.feedback_id] = card
+            card.set_queued(self.__queued.get(record.feedback_id))
         self.__empty.setVisible(not records)
 
         self.__current = None
@@ -176,6 +185,33 @@ class FeedbackPage(BasePage):
             return sorted(newest, key=lambda r: (r.current_labels.get("theme") or "").lower())
         return list(records)
 
+    # The decisions waiting for Process (MainWindow keeps them), shown on cards and in the panel.
+    def set_queued(self, decisions) -> None:
+        self.__queued = {d.feedback_id: self.describe(d) for d in decisions}
+        for feedback_id, card in self.__cards.items():
+            card.set_queued(self.__queued.get(feedback_id))
+        if self.__current is not None:
+            self.__detail.set_queued(self.__queued.get(self.__current))
+
+    # "Will be deleted" or "Will be saved as Facilities · negative · low".
+    @staticmethod
+    def describe(decision) -> str:
+        if decision.action == ReviewDecision.DELETE:
+            return "Will be deleted"
+        return f"Will be saved as {decision.theme} · {decision.sentiment} · {decision.severity}"
+
+    # Passes the decision on, then in Needs review opens the next entry not yet decided.
+    def __on_decision(self, decision) -> None:
+        self.decision_made.emit(decision)
+        if not self.__review_button.isChecked():
+            return
+        ids = list(self.__cards)
+        start = ids.index(decision.feedback_id) + 1 if decision.feedback_id in ids else 0
+        for feedback_id in ids[start:] + ids[:start]:
+            if feedback_id not in self.__queued:
+                self.__select(feedback_id)
+                return
+
     def __on_card_clicked(self, feedback_id: str) -> None:
         if feedback_id == self.__current:
             return
@@ -192,3 +228,4 @@ class FeedbackPage(BasePage):
         self.__current = feedback_id
         self.__cards[feedback_id].set_selected(True)
         self.__detail.show_record(self.__records[feedback_id], self.__data.load_known_themes())
+        self.__detail.set_queued(self.__queued.get(feedback_id))
