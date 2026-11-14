@@ -22,11 +22,14 @@ class EntryCard(QFrame):
         self.setProperty("critical", is_critical(record) and record.needs_review)
         self.setProperty("selected", False)
 
-        tags = QHBoxLayout()
-        tags.setSpacing(6)
+        # The queued tag sits on its own line, so its long text can't widen the list.
+        queued = QHBoxLayout()
         self.__queued = Pill("", "caution")
         self.__queued.hide()
-        tags.addWidget(self.__queued)
+        queued.addWidget(self.__queued)
+        queued.addStretch()
+        tags = QHBoxLayout()
+        tags.setSpacing(6)
         for text, kind in record_tags(record):
             tags.addWidget(Pill(text, kind))
         tags.addStretch()
@@ -44,6 +47,7 @@ class EntryCard(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(6)
+        layout.addLayout(queued)
         layout.addLayout(tags)
         layout.addWidget(text)
         layout.addWidget(meta)

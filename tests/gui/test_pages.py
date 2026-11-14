@@ -70,7 +70,7 @@ def test_save_builds_an_update_with_the_final_values(qtbot):
     theme.setCurrentText("Administration")
     sentiment.setCurrentText("neutral")
     severity.setCurrentText("low")
-    decision = click_for_decision(qtbot, panel, "Save final labels")
+    decision = click_for_decision(qtbot, panel, "Use these labels")
     assert decision == ReviewDecision(record.feedback_id, ReviewDecision.UPDATE, "Administration", "neutral", "low")
 
 
@@ -194,10 +194,104 @@ def test_delete_shows_will_be_deleted_and_undo_clears_it(qtbot, monkeypatch):
     assert button(panel, "Use student's").isEnabled()
 
 
-def test_process_now_runs_the_queued_decision(qtbot):
+def save_bar_text(page):
+    return page._FeedbackPage__save_text.text()
+
+
+def test_the_save_bar_counts_decisions_and_warns_about_waiting_entries(qtbot):
+    window, page, panel, data = feedback_window(qtbot)
+    bar = page._FeedbackPage__save_bar
+    assert not bar.isVisibleTo(page)
+    button(panel, "Use student's").click()
+    button(panel, "Use student's").click()
+    assert bar.isVisibleTo(page) and "2 changes not saved yet" in save_bar_text(page)
+    from managers.io_manager import RecordBuilder
+    waiting = window._MainWindow__add_feedback.waiting_for_ai() + 1
+    window._MainWindow__queue_record(RecordBuilder().build(
+        {"text": "Wifi drops", "theme": "Facilities", "sentiment": "negative", "severity": "low"}))
+    assert f"Saving also sends {waiting} waiting" in save_bar_text(page)
+
+
+def test_save_changes_runs_the_decisions_and_stays_on_feedback(qtbot):
     window, page, panel, data = feedback_window(qtbot)
     first = panel.record.feedback_id
     button(panel, "Use student's").click()
-    page._FeedbackPage__select(first)
-    with qtbot.waitSignal(page.process_requested, timeout=1000):
-        button(panel, "Process now").click()
+    button(page, "Save changes").click()
+    pipeline = window._MainWindow__pipeline
+    qtbot.waitUntil(lambda: window._MainWindow__worker is None, timeout=3000)
+    assert [d.feedback_id for d in pipeline.sessions[0].decisions] == [first]
+    assert window._MainWindow__stack.currentWidget() is page
+    assert not page._FeedbackPage__save_bar.isVisibleTo(page) and visible_tags(page).get(first, "") == ""
+
+
+def test_discard_all_drops_every_queued_decision(qtbot, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "question", lambda *_args: QMessageBox.StandardButton.Yes)
+    window, page, panel, data = feedback_window(qtbot)
+    button(panel, "Use student's").click()
+    button(panel, "Use student's").click()
+    button(page, "Discard all").click()
+    assert window._MainWindow__build_session().decisions == []
+    assert not page._FeedbackPage__save_bar.isVisibleTo(page) and not any(visible_tags(page).values())
+
+
+# MainWindow sets Fusion and the light palette app-wide, so Windows dark mode can't darken the admin text box.
+def test_main_window_forces_fusion_and_a_light_text_box(qtbot):
+    from PySide6.QtGui import QPalette
+    from PySide6.QtWidgets import QApplication, QPlainTextEdit
+    from managers.gui.style import CARD
+    window, *_ = feedback_window(qtbot)
+    app = QApplication.instance()
+    assert app.style().name().lower() == "fusion"
+    assert app.palette().color(QPalette.ColorRole.Base).name().upper() == CARD
+    box = window.findChild(QPlainTextEdit, "entryTextBox")
+    assert box.palette().color(QPalette.ColorRole.Base).name().upper() == CARD
+
+
+def queue_entry(window):
+    from managers.io_manager import RecordBuilder
+    record = RecordBuilder().build({"text": "Lab is cold", "theme": "Facilities", "sentiment": "negative",
+                                    "severity": "low"})
+    window._MainWindow__queue_record(record)
+    return record
+
+
+# G1: closing with queued work asks first; with nothing queued it closes straight away.
+def test_closing_with_nothing_queued_does_not_ask(qtbot, monkeypatch):
+    window, *_ = feedback_window(qtbot)
+    monkeypatch.setattr(window, "_ask_unsaved", lambda _text: pytest.fail("should not ask"))
+    assert window.unsaved_summary() == "" and window.may_close()
+
+
+def test_closing_with_queued_work_asks_and_can_cancel_or_close(qtbot, monkeypatch):
+    window, page, panel, data = feedback_window(qtbot)
+    queue_entry(window)
+    button(panel, "Use student's").click()
+    asked = []
+    monkeypatch.setattr(window, "_ask_unsaved", lambda text: asked.append(text) or "cancel")
+    assert not window.may_close() and asked == ["1 entry and 1 review decision"]
+    monkeypatch.setattr(window, "_ask_unsaved", lambda _text: "close")
+    assert window.may_close()
+
+
+def test_process_and_close_runs_the_queue_then_closes(qtbot, monkeypatch):
+    window, *_ = feedback_window(qtbot)
+    record = queue_entry(window)
+    closed = []
+    monkeypatch.setattr(window, "_ask_unsaved", lambda _text: "process")
+    monkeypatch.setattr(window, "close", lambda: closed.append(True))
+    assert not window.may_close()
+    qtbot.waitUntil(lambda: window._MainWindow__worker is None, timeout=3000)
+    assert [r.feedback_id for r in window._MainWindow__pipeline.sessions[0].records] == [record.feedback_id]
+    assert closed == [True] and window.unsaved_summary() == ""
+
+
+def test_the_unsaved_dialog_offers_three_choices_and_dismissing_cancels(qtbot, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    seen = []
+    monkeypatch.setattr(QMessageBox, "exec", lambda box: seen.append(
+        ([b.text() for b in box.buttons()], box.text())) or 0)
+    window, *_ = feedback_window(qtbot)
+    assert window._ask_unsaved("1 entry") == "cancel"
+    labels, text = seen[0]
+    assert {"Process and close", "Close anyway"} <= set(labels) and "Not saved yet: 1 entry." in text
