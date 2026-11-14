@@ -14,7 +14,7 @@ from .record_tags import STATUS_TAGS, explain_reason, long_date
 
 EMPTY = "—"
 FIELDS = ("theme", "sentiment", "severity")
-COLUMNS = (("Field", 2, 90), ("Student", 3, 110), ("AI", 3, 110), ("Final", 3, 140))
+COLUMNS = (("Field", 2, 70), ("Student", 3, 90), ("AI", 3, 90), ("Final", 3, 120))
 
 
 # Shows a record and turns the admin's buttons into a ReviewDecision.
@@ -34,9 +34,10 @@ class EntryDetailPanel(QFrame):
         self.__heading.setObjectName("detailId")
         self.__date = QLabel("")
         self.__date.setObjectName("detailDate")
-        top = QHBoxLayout()
+        self.__date.setWordWrap(True)
+        top = QVBoxLayout()
+        top.setSpacing(4)
         top.addWidget(self.__heading)
-        top.addStretch()
         top.addWidget(self.__date)
 
         self.__text = QLabel("")
@@ -92,15 +93,20 @@ class EntryDetailPanel(QFrame):
         self.__use_user.clicked.connect(lambda _checked=False: self.__decide_with(self.__record.user))
         self.__use_ai.clicked.connect(lambda _checked=False: self.__decide_with(self.__record.ai))
         self.__delete.clicked.connect(self.__on_delete)
+        # Two lines of buttons (saving, then shortcuts), so the panel fits a narrow window.
         button_row = QFrame()
         button_row.setObjectName("buttonRow")
-        buttons = QHBoxLayout(button_row)
+        buttons = QVBoxLayout(button_row)
         buttons.setContentsMargins(0, 14, 0, 0)
         buttons.setSpacing(10)
-        for button in (self.__confirm, self.__save, self.__use_user, self.__use_ai, self.__delete):
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            buttons.addWidget(button)
-        buttons.addStretch()
+        for group in ((self.__confirm, self.__save), (self.__use_user, self.__use_ai, self.__delete)):
+            line = QHBoxLayout()
+            line.setSpacing(10)
+            for button in group:
+                button.setCursor(Qt.CursorShape.PointingHandCursor)
+                line.addWidget(button)
+            line.addStretch()
+            buttons.addLayout(line)
 
         self.__queued = QFrame()
         self.__queued.setObjectName("helpBox")
