@@ -92,6 +92,8 @@ class MainWindow(QMainWindow):
         self.__add_feedback.record_added.connect(self.__queue_record)
         self.__add_feedback.import_ready.connect(self.__on_import)
         self.__feedback.decision_made.connect(self.__on_decision)
+        self.__feedback.undo_requested.connect(self.__undo_decision)
+        self.__feedback.process_requested.connect(self.run_pipeline)
         self.__trends.action_logged.connect(self.__on_action_logged)
         self.__settings.theme_added.connect(self.__queue_theme)
 
@@ -177,6 +179,13 @@ class MainWindow(QMainWindow):
         self.__new_records.append(record)
         self.__update_queue()
 
+    # Undo on the Feedback page: drops the queued decision for that record.
+    def __undo_decision(self, feedback_id: str) -> None:
+        self.__decisions = [d for d in self.__decisions if d.feedback_id != feedback_id]
+        self.__feedback.set_queued(self.__decisions)
+        self.__update_queue()
+        self.statusBar().showMessage(f"{feedback_id}: change undone", 8000)
+
     # A theme added in Settings, saved by the pipeline on the next run.
     def __queue_theme(self, theme: str) -> None:
         self.__themes_to_add.append(theme)
@@ -202,6 +211,7 @@ class MainWindow(QMainWindow):
     def __on_decision(self, decision: ReviewDecision) -> None:
         self.__decisions = [d for d in self.__decisions if d.feedback_id != decision.feedback_id]
         self.__decisions.append(decision)
+        self.__feedback.set_queued(self.__decisions)
         self.__update_queue()
         if decision.action == ReviewDecision.DELETE:
             what = "delete"
@@ -216,6 +226,7 @@ class MainWindow(QMainWindow):
 
     def __on_run_completed(self, context) -> None:
         self.__decisions.clear()
+        self.__feedback.set_queued([])
         self.__actions.clear()
         sent = {record.feedback_id for record in self.__sent_records}
         self.__new_records = [r for r in self.__new_records if r.feedback_id not in sent]

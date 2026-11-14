@@ -150,3 +150,54 @@ def test_choosing_a_sort_reorders_the_list_and_selects_the_new_first_entry(qtbot
     panel = page.findChild(EntryDetailPanel)
     queue = data.load_review_queue()
     assert panel.record.feedback_id == min(queue, key=lambda r: r.timestamp).feedback_id
+
+
+def feedback_window(qtbot):
+    from managers.gui import MainWindow, QtProgressReporter
+    from managers.io_manager import EntryValidator, ThemeValidator
+    from managers.logic_manager import LogicManager
+    from tests.gui.support.stub_pipeline import StubPipeline
+    data = FakeDataManager(build_sample_records())
+    logic, reporter = LogicManager(), QtProgressReporter()
+    window = MainWindow(StubPipeline(), data, logic, EntryValidator(ThemeValidator(logic)), [], reporter)
+    qtbot.addWidget(window)
+    page = window.findChild(FeedbackPage)
+    window.show_page("Feedback")
+    return window, page, page.findChild(EntryDetailPanel), data
+
+
+def visible_tags(page):
+    from managers.gui.widgets.entry_card import EntryCard
+    return {c.feedback_id: c.queued_text for c in page.findChildren(EntryCard) if not c.isHidden()}
+
+
+def test_a_decision_tags_the_card_and_opens_the_next_entry(qtbot):
+    window, page, panel, data = feedback_window(qtbot)
+    first = panel.record.feedback_id
+    button(panel, "Use student's").click()
+    assert visible_tags(page)[first].startswith("Will be saved as")
+    assert panel.record.feedback_id != first
+
+
+def test_delete_shows_will_be_deleted_and_undo_clears_it(qtbot, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "question", lambda *_args: QMessageBox.StandardButton.Yes)
+    window, page, panel, data = feedback_window(qtbot)
+    first = panel.record.feedback_id
+    button(panel, "Delete").click()
+    assert visible_tags(page)[first] == "Will be deleted"
+    page._FeedbackPage__select(first)
+    assert "Will be deleted" in " ".join(l.text() for l in panel.findChildren(QLabel))
+    assert not button(panel, "Use student's").isEnabled()
+    button(panel, "Undo").click()
+    assert visible_tags(page)[first] == "" and window._MainWindow__build_session().decisions == []
+    assert button(panel, "Use student's").isEnabled()
+
+
+def test_process_now_runs_the_queued_decision(qtbot):
+    window, page, panel, data = feedback_window(qtbot)
+    first = panel.record.feedback_id
+    button(panel, "Use student's").click()
+    page._FeedbackPage__select(first)
+    with qtbot.waitSignal(page.process_requested, timeout=1000):
+        button(panel, "Process now").click()
