@@ -32,10 +32,9 @@ def labels(widget):
 
 
 # Run 1 with the AI working (summary written), run 2 with it down (one unverified entry and
-# rule-based actions); Parking Fees, a new theme, is confirmed in run 2. A third run after an
-# AI-down run would hit the pipeline's leftover-pending bug (reported to Zheng Yi).
+# rule-based actions); Parking Fees, a new theme, is confirmed in run 2.
 @pytest.fixture
-def reader(tmp_path):
+def data(tmp_path):
     data = DataManager(str(tmp_path / "data"))
     logic = LogicManager()
     parking = entry("Parking costs too much", theme="Parking Fees")
@@ -43,7 +42,25 @@ def reader(tmp_path):
     build_pipeline(data, logic, StubAI(down=True)).execute_pipeline(
         SessionResult(records=[entry("Lab is cold", severity="high")],
                       decisions=[ReviewDecision.update(parking.feedback_id, parking.user)]))
+    return data
+
+
+# The pages read the two runs through DataReader.
+@pytest.fixture
+def reader(data):
     return DataReader(data)
+
+
+# With the AI back, an empty Process retries the unverified entry (D4) and keeps every entry (#89, #94).
+def test_a_run_after_the_ai_was_down_retries_the_unverified_entry(qtbot, data):
+    build_pipeline(data, LogicManager(), StubAI()).execute_pipeline(SessionResult())
+    reader = DataReader(data)
+    assert len(reader.load_records()) == 3 and not reader.load_pending()
+    assert len(reader.load_history()) == 3 and reader.load_result().unverified_count == 0
+    page = DashboardPage(reader)
+    qtbot.addWidget(page)
+    page.refresh()
+    assert "AI unavailable" not in labels(page)
 
 
 def test_trend_chart_breaks_the_line_at_a_missing_run(qtbot):
