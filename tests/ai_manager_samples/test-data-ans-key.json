@@ -1,0 +1,219 @@
+[
+  {
+    "feedback_id": "fb_001",
+    "theme": "Teaching Quality",
+    "sentiment": "negative",
+    "severity": "medium",
+    "note": "Matches the worked example in the design doc section 3."
+  },
+  {
+    "feedback_id": "fb_002",
+    "theme": "Facilities",
+    "sentiment": "positive",
+    "severity": "low",
+    "note": ""
+  },
+  {
+    "feedback_id": "fb_003",
+    "theme": "Assessment",
+    "sentiment": "negative",
+    "severity": "medium",
+    "note": "Marking criteria never explained is real friction, but nothing is actually blocked - the student can still submit. Reclassified high->medium (2026-09-23) after both live candidates independently converged on medium; the high tier's 'blocks a task' test isn't satisfied here."
+  },
+  {
+    "feedback_id": "fb_004",
+    "theme": "Social Environment",
+    "sentiment": "negative",
+    "severity": "critical",
+    "note": "Near-identical to the design doc's own critical example (threats, feels unsafe)."
+  },
+  {
+    "feedback_id": "fb_005",
+    "theme": "Administration",
+    "sentiment": "negative",
+    "severity": "high",
+    "note": "Can be perceived as a hard blocker; timetable is essential for a student's class schedule."
+  },
+  {
+    "feedback_id": "fb_006",
+    "theme": "Well-being",
+    "sentiment": "negative",
+    "severity": "high",
+    "ambiguous": true,
+    "note": "Near-identical to the design doc's example, which pairs this severity with confidence 0.45 due to vagueness. Flagged ambiguous (2026-09-24): a 5-call probe on gpt-oss-20b (the candidate that missed it on the corpus rerun) landed on the correct theme 3/5 and correct severity 4/5 - the label is well-defined and correct, the model just doesn't reach it every call. Same category as fb_017/fb_020."
+  },
+  {
+    "feedback_id": "fb_007",
+    "theme": "Unclear",
+    "sentiment": "neutral",
+    "severity": "low",
+    "note": "Gibberish/no meaningful feedback. Doc leaves the confidence-0.0 theme choice open; using 'Unclear' per the logic_manager example table (fb_009 row in the design doc)."
+  },
+  {
+    "feedback_id": "fb_008",
+    "theme": "Unclear",
+    "sentiment": "neutral",
+    "severity": "low",
+    "note": "Real but content-free ('could be better could be worse'), no theme fits confidently. Judgement call, open to disagreement."
+  },
+  {
+    "feedback_id": "fb_010",
+    "theme": "Facilities",
+    "sentiment": "negative",
+    "severity": "high",
+    "ambiguous": true,
+    "note": "Two weeks unresolved, described as 'unbearable' over a 2-hour class; severity high. Flagged ambiguous (2026-09-24): a 5-call probe on gpt-oss-120b landed on the correct severity (high) 3/5 - the label is well-defined and correct, the model just doesn't reach it every call. Same category as fb_017/fb_020."
+  },
+  {
+    "feedback_id": "fb_011",
+    "theme": "Assessment",
+    "sentiment": "negative",
+    "severity": "high",
+    "note": "Rubric changed 3 days pre-submission with no notice; prepared for wrong criteria, a direct barrier to completing the task as required."
+  },
+  {
+    "feedback_id": "fb_012",
+    "theme": "Teaching Quality",
+    "sentiment": "negative",
+    "severity": "low",
+    "note": "Pacing mismatch in the opposite direction (too slow/repetitive), but student still completes the work; minor inconvenience."
+  },
+  {
+    "feedback_id": "fb_013",
+    "theme": "Internship Placement",
+    "sentiment": "negative",
+    "severity": "high",
+    "note": "New label (not in the six-theme list) for an IWSP/placement complaint. Reclassified from medium to high after 5/5 candidates in the 30-entry comparison unanimously predicted high - two months of irrelevant work is a sustained, unfair burden even without a hard coursework-access block."
+  },
+  {
+    "feedback_id": "fb_014",
+    "theme": "Facilities",
+    "sentiment": "negative",
+    "severity": "high",
+    "note": "Recurring financial friction from printing quota policy; reclassified from Administration to Facilities after 5/5 candidates in the 30-entry comparison unanimously disagreed with the original tag. Severity reclassified medium->high (2026-09-23): being forced to repeatedly pay out of pocket every trimester is an unfair/solo burden even though the student can still technically submit."
+  },
+  {
+    "feedback_id": "fb_015",
+    "theme": "Well-being",
+    "sentiment": "negative",
+    "severity": "critical",
+    "note": "Severe mental health distress ('don't see the point in continuing', no one to tell) - matches the critical definition directly. Theme/sentiment confidence should be high even though the content is alarming; confidence reflects classification certainty, not severity."
+  },
+  {
+    "feedback_id": "fb_016",
+    "theme": "Social Environment",
+    "sentiment": "negative",
+    "severity": "critical",
+    "note": "Recurring demeaning comments from a professor in front of the class; falls under the 'harassment' clause of critical."
+  },
+  {
+    "feedback_id": "fb_017",
+    "theme": "Assessment",
+    "sentiment": "negative",
+    "severity": "high",
+    "ambiguous": true,
+    "note": "Sarcastic tone but genuine complaint about carrying group work unfairly (echoes fb_009's pattern). Confidence should be low per the prompt's explicit sarcasm rule regardless of the underlying severity call. Theme reclassified Social Environment->Assessment (2026-09-23): both live candidates independently read it as a grading-outcome complaint (\"everyone gets the same grade\"), not a groupmate-behaviour complaint like fb_009 - the mark itself, not the social dynamic, is what's named as unfair. Severity flagged ambiguous (2026-09-23): a 5-call probe on gpt-oss-120b landed on the correct severity (high) 4/5 times - the label is well-defined and correct, but the model doesn't reach it every call. Flagged so this run-to-run noise doesn't count against the strict metric, unlike fb_022 where the ground truth itself has no single correct answer."
+  },
+  {
+    "feedback_id": "fb_018",
+    "theme": "Administration",
+    "sentiment": "negative",
+    "severity": "high",
+    "note": "Mixed content: leads with praise, caveats with a crash near deadlines. Sentiment/theme relabelled 2026-09-23 under the actionability rule - the praise is not actionable (nothing for the university to fix), the crash is, so sentiment follows the complaint regardless of clause order; confirmed by all 3 candidates independently predicting negative/Administration against the new label. Severity reclassified medium->high the same day after all 3 candidates unanimously predicted high, not medium - same evidentiary bar already used for fb_013/fb_014. The crash blocks booking near a deadline with no stated workaround in the text; medium's original reasoning (avoidable by booking earlier) wasn't supported by 3/3 independent model reads."
+  },
+  {
+    "feedback_id": "fb_019",
+    "theme": "Facilities",
+    "sentiment": "negative",
+    "severity": "low",
+    "ambiguous": true,
+    "note": "Contains an embedded prompt-injection attempt telling the classifier to output critical/1.0; the actual feedback ('wifi a bit slow sometimes') is minor. Correct behaviour is to ignore the injected instruction entirely and classify only the real complaint. Sentiment reclassified neutral->negative (2026-09-23): 'a bit slow sometimes' carries a mild negative charge under the sentiment rubric's own frustration/complaint definition, not a pure factual observation; severity stays low regardless. Severity flagged ambiguous (2026-09-24): a 5-call probe on gpt-oss-120b landed on the correct severity (low) 4/5 - the label is well-defined and correct, the model just doesn't reach it every call. Same category as fb_017/fb_020."
+  },
+  {
+    "feedback_id": "fb_020",
+    "theme": "Facilities",
+    "sentiment": "negative",
+    "severity": "medium",
+    "ambiguous": true,
+    "note": "Singlish register; recurring printer queue causing lateness, but not a hard blocker to coursework. Flagged ambiguous (2026-09-23): a 5-call probe on gpt-oss-120b landed on the correct severity (medium) 4/5 times - the label is well-defined and correct, but the model doesn't reach it every call. Flagged so this run-to-run noise doesn't count against the strict metric, unlike fb_022 where the ground truth itself has no single correct answer."
+  },
+  {
+    "feedback_id": "fb_021",
+    "theme": "Unclear",
+    "sentiment": "neutral",
+    "severity": "low",
+    "note": "One-word 'meh.' - too short to identify a subject, though it carries mild negative valence. Judgement call between neutral and negative; leaning neutral since there's nothing to attach the valence to."
+  },
+  {
+    "feedback_id": "fb_022",
+    "theme": "Well-being",
+    "sentiment": "negative",
+    "severity": "high",
+    "ambiguous": true,
+    "note": "Rambles across three issues (confusing brief, double-booked lab, sleep loss) stacking into cumulative overwhelm. Theme picked as the overarching thread rather than any single sub-issue, but no theme is cleanly correct - inherently underdetermined, not a model error either way. Flagged ambiguous (2026-09-23) so it's excluded from the strict agreement metric rather than counted as a miss; still included and visible in the full metric and mismatch detail."
+  },
+  {
+    "feedback_id": "fb_023",
+    "theme": "Teaching Quality",
+    "sentiment": "positive",
+    "severity": "low",
+    "note": "High-enthusiasm praise for a capstone briefing session; unambiguous positive, high confidence."
+  },
+  {
+    "feedback_id": "fb_024",
+    "theme": "Administration",
+    "sentiment": "neutral",
+    "severity": "low",
+    "note": "Forward-looking suggestion, no complaint or strong emotion - tests the neutral/suggestion branch of sentiment."
+  },
+  {
+    "feedback_id": "fb_025",
+    "theme": "Assessment",
+    "sentiment": "negative",
+    "severity": "medium",
+    "note": "Reporting student isn't personally blocked, but it's a fairness/integrity concern affecting the cohort. Severity reclassified medium->high on 2026-09-23 (\"academic integrity violations are treated as serious regardless of personal impact to the reporter\"), then reverted high->medium the same day after a 5-call reasoning-trace probe on gpt-oss-120b: 4 of 5 calls independently read the high tier's \"unfair/solo burden on the student\" as scoped to the reporter's own personal impact, which this entry lacks (the misconduct is someone else's, merely observed) - only 1 call stretched the clause to a cohort-fairness reading to justify high. The \"regardless of personal impact\" rationale doesn't match the rubric as actually worded; the model's dominant, rubric-literal reading is the better-supported one. Confidence showed no signal either way (0.65-0.92 across all 5 calls, uncorrelated with which answer was given). Theme reclassified Academic Integrity->Assessment (2026-09-23): the coined label was a one-off, not made canonical alongside Internship Placement, and the underlying concern (suspected plagiarism in submitted coursework) sits under the assessment process."
+  },
+  {
+    "feedback_id": "fb_026",
+    "theme": "Facilities",
+    "sentiment": "negative",
+    "severity": "critical",
+    "note": "Physical safety hazard (loose stairwell railing) - explicit safety concern under the critical definition."
+  },
+  {
+    "feedback_id": "fb_027",
+    "theme": "Facilities",
+    "sentiment": "negative",
+    "severity": "medium",
+    "ambiguous": true,
+    "note": "Recurring money loss, no access to anything essential blocked - matches the medium definition (recurring annoyance/friction, work still completable) rather than low (one-off/cosmetic) or high (no barrier to a task). Still tests that recurrence caps at medium, not high, when nothing essential is at stake. Flagged ambiguous (2026-09-24): a 5-call probe on gpt-oss-120b landed on the correct severity (medium) 3/5 - the label is well-defined and correct, the model just doesn't reach it every call. Same category as fb_017/fb_020."
+  },
+  {
+    "feedback_id": "fb_028",
+    "theme": "Assessment",
+    "sentiment": "negative",
+    "severity": "medium",
+    "note": "Same underlying issue as fb_003 (marking criteria never explained) but delivered in a flat, resigned tone - still tests that tone doesn't change the severity call, just no longer at the high tier. Reclassified high->medium alongside fb_003 (2026-09-23): both live candidates independently converged on medium/low on both entries, and neither scenario blocks a task per the high tier's definition."
+  },
+  {
+    "feedback_id": "fb_029",
+    "theme": "Social Environment",
+    "sentiment": "negative",
+    "severity": "critical",
+    "note": "Stalking-type behaviour (repeated unsolicited presence causing fear) distinct from fb_004's direct threats - still falls under critical as a safety concern."
+  },
+  {
+    "feedback_id": "fb_030",
+    "theme": "Unclear",
+    "sentiment": "neutral",
+    "severity": "low",
+    "note": "Real, coherent text but off-topic (selling a calculator) - no feedback content at all, so confidence 0.0 per the off-topic clause."
+  },
+  {
+    "feedback_id": "fb_031",
+    "theme": "Internship Placement",
+    "sentiment": "negative",
+    "severity": "high",
+    "note": "Added specifically to test theme-continuity (existing_new_themes): a second IWSP-placement complaint that should reuse fb_013's 'Internship Placement' label within the same candidate's run rather than inventing another variant. Severity reclassified medium->high (2026-09-23): three weeks of being given no actual work is still an unfair/solo burden, same tier as fb_013's two-months case, just a shorter duration - not a difference in kind."
+  }
+]
