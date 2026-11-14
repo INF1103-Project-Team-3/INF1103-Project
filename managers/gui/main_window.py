@@ -46,6 +46,8 @@ class MainWindow(QMainWindow):
         self.__new_records = []
         self.__sent_records = []
         self.__themes_to_add = []
+        self.__close_after_run = False
+        self.__run_ok = False
 
         self.setWindowTitle("FeedbackLens")
         # Opens maximized: AppEngine just calls show(), which keeps this state.
@@ -151,6 +153,7 @@ class MainWindow(QMainWindow):
         self.__worker.completed.connect(self.__on_run_completed)
         self.__worker.failed.connect(self.__on_run_failed)
         self.__worker.finished.connect(self.__on_worker_finished)
+        self.__run_ok = False
         self.__add_feedback.set_busy(True)
         self.__feedback.set_busy(True)
         self.__sidebar.set_badge(ADD_FEEDBACK, "● running", "running")
@@ -164,13 +167,52 @@ class MainWindow(QMainWindow):
         if self.run_pipeline(show_progress=False):
             self.statusBar().showMessage("Saving changes… (progress on Add feedback)")
 
+    # A user's close is blocked during a run, and asks first while anything is still queued (G1).
     def closeEvent(self, event) -> None:
         if self.__worker is not None:
             QMessageBox.information(self, "Run in progress",
                                     "Please wait for the current run to finish before closing.")
             event.ignore()
             return
+        if event.spontaneous() and not self.may_close():
+            event.ignore()
+            return
         super().closeEvent(event)
+
+    # True if nothing is queued or the admin chose Close anyway; Process and close starts a run
+    # and closes the window once it succeeds.
+    def may_close(self) -> bool:
+        unsaved = self.unsaved_summary()
+        if not unsaved:
+            return True
+        choice = self._ask_unsaved(unsaved)
+        if choice == "close":
+            return True
+        if choice == "process":
+            self.__close_after_run = self.run_pipeline()
+        return False
+
+    # "2 entries and 1 review decision", or "" when nothing is waiting for Process.
+    def unsaved_summary(self) -> str:
+        counts = ((len(self.__new_records), "entry", "entries"),
+                  (len(self.__decisions), "review decision", "review decisions"),
+                  (len(self.__actions), "action", "actions"),
+                  (len(self.__themes_to_add), "new theme", "new themes"))
+        parts = [f"{n} {one if n == 1 else many}" for n, one, many in counts if n]
+        if len(parts) <= 1:
+            return "".join(parts)
+        return ", ".join(parts[:-1]) + f" and {parts[-1]}"
+
+    # Asks what to do with unsaved work: "process", "close" or "cancel".
+    def _ask_unsaved(self, unsaved: str) -> str:
+        box = QMessageBox(QMessageBox.Icon.Warning, "Unsaved changes",
+                          f"Not saved yet: {unsaved}. If you close now, they're lost.", parent=self)
+        process = box.addButton("Process and close", QMessageBox.ButtonRole.AcceptRole)
+        close = box.addButton("Close anyway", QMessageBox.ButtonRole.DestructiveRole)
+        cancel = box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(cancel)
+        box.exec()
+        return {process: "process", close: "close"}.get(box.clickedButton(), "cancel")
 
     def __build_session(self) -> SessionResult:
         self.__sent_records = list(self.__new_records)
@@ -246,6 +288,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Action logged for {action.theme} (saved on the next run)", 8000)
 
     def __on_run_completed(self, context) -> None:
+        self.__run_ok = True
         self.__decisions.clear()
         self.__actions.clear()
         sent = {record.feedback_id for record in self.__sent_records}
@@ -270,6 +313,11 @@ class MainWindow(QMainWindow):
         self.__feedback.set_busy(False)
         self.__sidebar.set_badge(ADD_FEEDBACK, "")
         self.__refresh_all()
+        # Process and close: close only if the run saved everything; after a failure, stay open.
+        if self.__close_after_run:
+            self.__close_after_run = False
+            if self.__run_ok:
+                self.close()
 
     def __refresh_all(self) -> None:
         for page in self.__pages.values():

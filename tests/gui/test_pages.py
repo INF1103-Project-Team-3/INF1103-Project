@@ -246,3 +246,52 @@ def test_main_window_forces_fusion_and_a_light_text_box(qtbot):
     assert app.palette().color(QPalette.ColorRole.Base).name().upper() == CARD
     box = window.findChild(QPlainTextEdit, "entryTextBox")
     assert box.palette().color(QPalette.ColorRole.Base).name().upper() == CARD
+
+
+def queue_entry(window):
+    from managers.io_manager import RecordBuilder
+    record = RecordBuilder().build({"text": "Lab is cold", "theme": "Facilities", "sentiment": "negative",
+                                    "severity": "low"})
+    window._MainWindow__queue_record(record)
+    return record
+
+
+# G1: closing with queued work asks first; with nothing queued it closes straight away.
+def test_closing_with_nothing_queued_does_not_ask(qtbot, monkeypatch):
+    window, *_ = feedback_window(qtbot)
+    monkeypatch.setattr(window, "_ask_unsaved", lambda _text: pytest.fail("should not ask"))
+    assert window.unsaved_summary() == "" and window.may_close()
+
+
+def test_closing_with_queued_work_asks_and_can_cancel_or_close(qtbot, monkeypatch):
+    window, page, panel, data = feedback_window(qtbot)
+    queue_entry(window)
+    button(panel, "Use student's").click()
+    asked = []
+    monkeypatch.setattr(window, "_ask_unsaved", lambda text: asked.append(text) or "cancel")
+    assert not window.may_close() and asked == ["1 entry and 1 review decision"]
+    monkeypatch.setattr(window, "_ask_unsaved", lambda _text: "close")
+    assert window.may_close()
+
+
+def test_process_and_close_runs_the_queue_then_closes(qtbot, monkeypatch):
+    window, *_ = feedback_window(qtbot)
+    record = queue_entry(window)
+    closed = []
+    monkeypatch.setattr(window, "_ask_unsaved", lambda _text: "process")
+    monkeypatch.setattr(window, "close", lambda: closed.append(True))
+    assert not window.may_close()
+    qtbot.waitUntil(lambda: window._MainWindow__worker is None, timeout=3000)
+    assert [r.feedback_id for r in window._MainWindow__pipeline.sessions[0].records] == [record.feedback_id]
+    assert closed == [True] and window.unsaved_summary() == ""
+
+
+def test_the_unsaved_dialog_offers_three_choices_and_dismissing_cancels(qtbot, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    seen = []
+    monkeypatch.setattr(QMessageBox, "exec", lambda box: seen.append(
+        ([b.text() for b in box.buttons()], box.text())) or 0)
+    window, *_ = feedback_window(qtbot)
+    assert window._ask_unsaved("1 entry") == "cancel"
+    labels, text = seen[0]
+    assert {"Process and close", "Close anyway"} <= set(labels) and "Not saved yet: 1 entry." in text
