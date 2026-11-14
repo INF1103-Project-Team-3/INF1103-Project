@@ -201,3 +201,16 @@ def test_process_now_runs_the_queued_decision(qtbot):
     page._FeedbackPage__select(first)
     with qtbot.waitSignal(page.process_requested, timeout=1000):
         button(panel, "Process now").click()
+
+
+# MainWindow sets Fusion and the light palette app-wide, so Windows dark mode can't darken the admin text box.
+def test_main_window_forces_fusion_and_a_light_text_box(qtbot):
+    from PySide6.QtGui import QPalette
+    from PySide6.QtWidgets import QApplication, QPlainTextEdit
+    from managers.gui.style import CARD
+    window, *_ = feedback_window(qtbot)
+    app = QApplication.instance()
+    assert app.style().name().lower() == "fusion"
+    assert app.palette().color(QPalette.ColorRole.Base).name().upper() == CARD
+    box = window.findChild(QPlainTextEdit, "entryTextBox")
+    assert box.palette().color(QPalette.ColorRole.Base).name().upper() == CARD

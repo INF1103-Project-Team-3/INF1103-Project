@@ -1,7 +1,7 @@
 # MainWindow: the admin window (sidebar, pages, background runs).
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QMessageBox, QStackedWidget, QWidget
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QMainWindow, QMessageBox, QStackedWidget, QWidget
 
 from managers.io_manager import (
     EntryValidator, PasswordValidator, RecordBuilder, ReviewDecision, SessionResult, ThemeValidator,
@@ -50,6 +50,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("FeedbackLens")
         # Opens maximized: AppEngine just calls show(), which keeps this state.
         self.setWindowState(Qt.WindowState.WindowMaximized)
+        # Fusion and a light palette for the whole app, so Windows dark mode can't darken any box.
+        app = QApplication.instance()
+        app.setStyle("Fusion")
+        app.setPalette(light_palette())
         self.setPalette(light_palette())
         self.setFont(app_font())
         self.setStyleSheet(STYLE)
