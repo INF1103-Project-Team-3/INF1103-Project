@@ -68,8 +68,8 @@ def _make_record(fid: str = "FB-001", text: str = "Wi-Fi is broken") -> Feedback
 
 def _make_mock_data(records: list[FeedbackRecord] | None = None) -> MagicMock:
     data = MagicMock()
-    # The real DataManager returns plain dicts; the pipeline rebuilds them (Serializable)
-    data.load_records.return_value = [r.to_dict() for r in records or []]
+    # Like the real DataManager (8.6), the mock returns FeedbackRecord objects
+    data.load_records.return_value = list(records or [])
     data.load_pending.return_value = []
     data.load_known_themes.return_value = ["Facilities", "Workload"]
     data.load_previous_run.return_value = None
@@ -197,7 +197,7 @@ def test_full_pipeline_completes_when_ai_is_down() -> None:
     """Action A25: End-to-end run with failing AI continues and produces rule-based fallback."""
     rec = _make_record("FB-999")
     data = _make_mock_data()
-    data.load_pending.return_value = [rec.to_dict()]   # real Data returns dicts
+    data.load_pending.return_value = [rec]
     logic = _make_mock_logic()
 
     # Simulate AI outage (stopped=True, 0 records classified)
@@ -245,3 +245,32 @@ def test_persistence_step_clears_fallback_actions_when_ai_summary_succeeds() -> 
 
     data.save_object.assert_any_call("summary", summary)
     data.save_object.assert_any_call("fallback_actions", [])
+
+
+def test_full_run_with_real_data_manager_keeps_saved_records_and_actions(tmp_path) -> None:
+    """Uses the real DataManager (not a mock), so a mismatch between what Data returns
+    and what the pipeline expects shows up here instead of wiping data/ in the app."""
+    from managers.data_manager import DataManager
+    from managers.logic_manager import LogicManager
+
+    data = DataManager(str(tmp_path))
+    saved = [_make_record(f"FB-{i:03}", f"Comment {i}") for i in range(5)]
+    data.save_records(saved)
+    from managers.io_manager import RecordBuilder
+    data.save_action(RecordBuilder().build_action("Facilities", "Fixed Wi-Fi", "2026-11-01"))
+
+    ai = MagicMock()
+    ai.classify_entries.side_effect = lambda recs, stored, on_classified: ([], list(recs), True)
+
+    pm = PipelineManager(data_dir=str(tmp_path))
+    logic = LogicManager()
+    for step in (IngestionStep(data, logic, ai), AIClassificationStep(ai, data),
+                 LogicStep(logic, data), SummaryStep(ai, logic),
+                 ImpactStep(logic, data), PersistenceStep(data)):
+        pm.register_step(step)
+
+    ctx = pm.execute_pipeline(FakeSession(source_file=None))  # type: ignore[arg-type]
+
+    assert sorted(r.feedback_id for r in data.load_records()) == [r.feedback_id for r in saved]
+    assert len(ctx.records) == 5
+    assert len(ctx.impacts) == 1
