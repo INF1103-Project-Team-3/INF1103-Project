@@ -3,7 +3,7 @@
 import math
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPolygonF
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from ..style import BORDER_SOFT, MUTED
@@ -14,6 +14,7 @@ ACTION_COLOUR = "#C9A227"
 ACTION_TEXT = "#7A5300"
 LEFT, RIGHT, TOP, BOTTOM = 44, 170, 34, 48
 LABEL_GAP = 16
+X_LABEL_GAP, X_LABEL_INSET = 14, 20
 
 
 # Theme counts per run, with dashed lines for actions.
@@ -71,7 +72,7 @@ class TrendChart(QWidget):
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        area = QRectF(LEFT, TOP, max(self.width() - LEFT - RIGHT, 10), max(self.height() - TOP - BOTTOM, 10))
+        area = self.__area()
         if not self.__labels:
             painter.setPen(QColor(MUTED))
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No runs yet")
@@ -125,15 +126,39 @@ class TrendChart(QWidget):
             painter.drawText(QRectF(0, y - 8, LEFT - 10, 16),
                              Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, str(tick))
 
+    # The runs whose x labels fit without overlapping: always the first and the last, then any
+    # in between that leaves a gap to its neighbours.
+    def label_indices(self) -> list[int]:
+        count = len(self.__labels)
+        if count <= 1:
+            return list(range(count))
+        area = self.__area()
+        metrics = QFontMetricsF(self.__small_font())
+        spans = []
+        for index, label in enumerate(self.__labels):
+            x, width = self.__x(area, index), metrics.horizontalAdvance(label)
+            left = x - X_LABEL_INSET if index == 0 else x - width / 2
+            spans.append((left, left + width))
+        shown, last = [0], spans[-1]
+        for index in range(1, count - 1):
+            left, right = spans[index]
+            if left >= spans[shown[-1]][1] + X_LABEL_GAP and right + X_LABEL_GAP <= last[0]:
+                shown.append(index)
+        return shown + [count - 1]
+
+    def __area(self) -> QRectF:
+        return QRectF(LEFT, TOP, max(self.width() - LEFT - RIGHT, 10), max(self.height() - TOP - BOTTOM, 10))
+
     def __draw_x_labels(self, painter: QPainter, area: QRectF) -> None:
         painter.setFont(self.__small_font())
         painter.setPen(QColor(MUTED))
-        for index, label in enumerate(self.__labels):
-            x = self.__x(area, index)
+        for index in self.label_indices():
+            x, label = self.__x(area, index), self.__labels[index]
             if index == 0 and len(self.__labels) > 1:
-                painter.drawText(QRectF(x - 20, area.bottom() + 10, 140, 18), Qt.AlignmentFlag.AlignLeft, label)
+                painter.drawText(QRectF(x - X_LABEL_INSET, area.bottom() + 10, 200, 18),
+                                 Qt.AlignmentFlag.AlignLeft, label)
             else:
-                painter.drawText(QRectF(x - 70, area.bottom() + 10, 140, 18), Qt.AlignmentFlag.AlignHCenter, label)
+                painter.drawText(QRectF(x - 100, area.bottom() + 10, 200, 18), Qt.AlignmentFlag.AlignHCenter, label)
 
     def __draw_markers(self, painter: QPainter, area: QRectF) -> None:
         painter.setFont(self.__small_font(bold=True))

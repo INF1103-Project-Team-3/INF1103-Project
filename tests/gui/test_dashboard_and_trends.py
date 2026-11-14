@@ -16,6 +16,7 @@ from managers.gui.pages.trends_page import TrendsPage  # noqa: E402
 from managers.gui.widgets.entry_detail_panel import EntryDetailPanel  # noqa: E402
 from managers.gui.widgets.sparkline import Sparkline  # noqa: E402
 from managers.gui.widgets.trend_chart import TrendChart  # noqa: E402
+from managers.gui.widgets.combo_box import ComboBox  # noqa: E402
 from managers.io_manager import RecordBuilder, ReviewDecision, SessionResult  # noqa: E402
 from managers.logic_manager import LogicManager  # noqa: E402
 from managers.models import THEMES  # noqa: E402
@@ -194,3 +195,33 @@ def test_summary_card_without_an_ai_summary_shows_rule_based_actions_below(qtbot
     page.refresh()
     text = labels(page)
     assert "No AI summary yet" in text and ActionSuggestions.LABEL in text and "Space out deadlines" in text
+
+
+# 25 flat runs, like many test runs with little new feedback.
+def many_runs(count=25):
+    from tests.gui.support.fake_data_manager import FakeDataManager
+    history = [{"run": i + 1, "finished_at": f"2026-10-{i + 1:02d}", "theme_counts": {"Facilities": 3},
+                "theme_priority": {"Facilities": 50}} for i in range(count)]
+    return FakeDataManager([], history=history)
+
+
+def test_trends_shows_the_last_10_runs_by_default_and_all_on_request(qtbot):
+    page = TrendsPage(many_runs())
+    qtbot.addWidget(page)
+    page.refresh()
+    assert page.chart.segments("Facilities") == [[(i, 50) for i in range(10)]]
+    page.findChild(ComboBox, "runSpan").setCurrentText("All runs")
+    assert len(page.chart.segments("Facilities")[0]) == 25
+    assert page.findChild(ComboBox, "compareFrom").count() == 25
+
+
+def test_trend_chart_skips_x_labels_that_would_overlap(qtbot):
+    chart = TrendChart()
+    qtbot.addWidget(chart)
+    chart.resize(700, 320)
+    chart.set_data([f"14 Nov · Run {i}" for i in range(1, 26)], {"Facilities": [50] * 25}, top=100)
+    shown = chart.label_indices()
+    assert shown[0] == 0 and shown[-1] == 24 and len(shown) < 25
+    chart.resize(2000, 320)
+    chart.set_data(["Run 1", "Run 2", "Run 3"], {"Facilities": [1, 2, 3]}, top=100)
+    assert chart.label_indices() == [0, 1, 2]
