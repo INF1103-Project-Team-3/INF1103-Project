@@ -29,14 +29,10 @@ COPY docker/gui/index.html /usr/share/novnc/index.html
 # Install dependencies first, so this step is cached until a requirements file changes.
 # gui.txt adds PySide6 and pytest-qt, so the GUI runs and its tests run in CI too.
 COPY requirements/ ./requirements/
-RUN pip install --no-cache-dir -r requirements/requirements.txt -r requirements/gui.txt pytest
+RUN pip install --no-cache-dir -r requirements/requirements.txt -r requirements/gui.txt pytest==9.2.0
 
 # Copy the repo into the image (.dockerignore keeps out .env, .git and caches)
 COPY . .
-
-# data_manager saves to /data: point that at the repo's own data/ folder,
-# so every file the app writes ends up in data/ in the repo
-RUN ln -s /Project/data /data
 
 # Terminal mode by default; the "gui" service in docker-compose.yml starts the GUI instead
 CMD ["python", "-m", "managers.main"]
