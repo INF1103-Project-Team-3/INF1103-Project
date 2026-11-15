@@ -4,8 +4,6 @@ from pathlib import Path
 from typing import Any
 from .file_store import FileStore
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
 class CsvFileStore(FileStore):
 
     def load(self, path: Path) -> Any:
@@ -13,7 +11,8 @@ class CsvFileStore(FileStore):
             return []
         rows = []
         try:
-            with open(path, "r", encoding="utf-8", newline="") as f:
+            # utf-8-sig drops the byte-order mark Excel puts before the first header
+            with open(path, "r", encoding="utf-8-sig", newline="") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     rows.append(dict(row))

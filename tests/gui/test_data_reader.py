@@ -1,5 +1,7 @@
 # DataReader on a real DataManager, filled by the real pipeline (stub AI) in a temp folder.
 
+import json
+
 import pytest
 
 pytest.importorskip("PySide6")
@@ -51,7 +53,7 @@ def test_logged_action_is_read_back_as_an_action(tmp_path):
 
 def test_skips_part1_history_and_corrupt_records(tmp_path):
     data = DataManager(str(tmp_path / "data"))
-    data.json_store.save(data.data_dir / "aggregated_history.json", [{"run_at": "x", "stats": {}}])
-    data.json_store.save(data.data_dir / "processed_feedback.json", {"records": [{"feedback_id": "fb_bad"}]})
+    (data.data_dir / "aggregated_history.json").write_text(json.dumps([{"run_at": "x", "stats": {}}]))
+    (data.data_dir / "processed_feedback.json").write_text(json.dumps({"records": [{"feedback_id": "fb_bad"}]}))
     reader = DataReader(data)
     assert reader.load_history() == [] and reader.load_records() == []
