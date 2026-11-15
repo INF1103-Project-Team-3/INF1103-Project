@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable, Sequence
 
-from managers.models import UNCLEAR_THEME, FeedbackRecord
+from managers.models import FeedbackRecord
 
 from .choice_validator import ChoiceValidator
 from .csv_importer import CsvImporter
@@ -276,11 +276,11 @@ class IOManager:
         if theme is None:
             self._view.show_message("Cancelled.")
             return
-        known = {name.lower() for name in self._data.load_known_themes()}
-        known |= {name.lower() for name in session.themes_to_add}
-        if theme == UNCLEAR_THEME:              # Logic treats filler words as Unclear
+        outcome = self._theme_validator.new_theme_outcome(
+            theme, [*self._data.load_known_themes(), *session.themes_to_add])
+        if outcome == ThemeValidator.UNUSABLE:
             self._view.show_message("  Invalid: that is not a usable theme name.")
-        elif theme.lower() in known:
+        elif outcome == ThemeValidator.KNOWN:
             self._view.show_message(f"  '{theme}' is already a known theme.")
         else:
             session.themes_to_add.append(theme)

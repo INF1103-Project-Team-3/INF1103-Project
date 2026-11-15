@@ -114,11 +114,12 @@ class DashboardPage(BasePage):
         unverified = result.unverified_count if result else 0
         if records is not None:
             total, counted = len(records), sum(1 for r in records if r.counted)
-            critical = sum(1 for r in records if r.severity == CRITICAL)
         else:
             total = result.total_entries if result else 0
             counted = result.counted_entries if result else 0
-            critical = sum(1 for r in queue if r.current_labels.get("severity") == CRITICAL)
+        # critical entries waiting for review, as CriticalSeverityRule flags them (final severity),
+        # counted the same way on every path (G11)
+        critical = sum(1 for r in queue if r.severity == CRITICAL)
         self.__values["Total entries"].setText(str(total))
         self.__values["Counted in statistics"].setText(str(counted))
         self.__feet["Counted in statistics"].setText(f"incl. {unverified} unverified (AI retries next run)")

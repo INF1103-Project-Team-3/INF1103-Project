@@ -6,13 +6,13 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
 from managers.io_manager import ThemeValidator
-from managers.models import THEMES, UNCLEAR_THEME
+from managers.models import THEMES
 
 from ..widgets.card import Card
 from ..widgets.pill import Pill
 from .base_page import BasePage
 
-AI_STATUS = {True: "ready", False: "not configured (no API key)", None: "not reported"}
+AI_STATUS = {True: "Key set", False: "not configured (no API key)", None: "not reported"}
 THEME_COLUMNS = 3
 
 
@@ -105,12 +105,13 @@ class SettingsPage(BasePage):
     # Checks the typed theme like the terminal's Settings, then emits theme_added.
     def add_theme(self, *_args) -> None:
         theme, error = self.__validator.check(self.__new_theme.text())
-        known = {name.lower() for name in [*self.__data.load_known_themes(), *self.__queued]}
+        outcome = error or self.__validator.new_theme_outcome(
+            theme, [*self.__data.load_known_themes(), *self.__queued])
         if error:
             self.__say(f"Can't add it: {error}.")
-        elif theme == UNCLEAR_THEME:
+        elif outcome == ThemeValidator.UNUSABLE:
             self.__say("That isn't a usable theme name.")
-        elif theme.lower() in known:
+        elif outcome == ThemeValidator.KNOWN:
             self.__say(f"'{theme}' is already a known theme.")
         else:
             self.__new_theme.clear()

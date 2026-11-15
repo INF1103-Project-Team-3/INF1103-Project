@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from managers.models import PENDING, UNVERIFIED
 from ..base_step import BaseStep
 
 if TYPE_CHECKING:
@@ -19,10 +18,7 @@ class AIClassificationStep(BaseStep):
         self._data = data
 
     def _run(self, context: PipelineContext) -> bool:
-        to_classify = [
-            r for r in context.records
-            if r.ai is None and r.verification in (PENDING, UNVERIFIED)   # rule 6: constants, not strings
-        ]
+        to_classify = [r for r in context.records if r.awaiting_ai]
         stored_records = [r for r in context.records if r.ai is not None]
 
         context.sent_to_ai = len(to_classify)

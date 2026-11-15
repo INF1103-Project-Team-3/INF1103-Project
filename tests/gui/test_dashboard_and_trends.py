@@ -108,7 +108,7 @@ def test_confirm_new_theme_builds_an_update_that_keeps_the_theme(qtbot, monkeypa
     from PySide6.QtWidgets import QMessageBox
     monkeypatch.setattr(QMessageBox, "question", lambda *_args: QMessageBox.StandardButton.Yes)
     record = [r for r in build_sample_records() if any(x.startswith("New theme") for x in r.review_reasons)][0]
-    panel = EntryDetailPanel()
+    panel = EntryDetailPanel(LogicManager().is_new_theme)
     qtbot.addWidget(panel)
     panel.show_record(record, list(THEMES))
     confirm = [b for b in panel.findChildren(QPushButton) if b.text().startswith("Confirm new theme")][0]
@@ -122,7 +122,17 @@ def test_confirm_new_theme_builds_an_update_that_keeps_the_theme(qtbot, monkeypa
 def test_confirm_button_is_hidden_without_a_new_theme(qtbot):
     record = [r for r in build_sample_records() if r.review_reasons
               and not any(x.startswith("New theme") for x in r.review_reasons)][0]
-    panel = EntryDetailPanel()
+    panel = EntryDetailPanel(LogicManager().is_new_theme)
+    qtbot.addWidget(panel)
+    panel.show_record(record, list(THEMES))
+    confirm = [b for b in panel.findChildren(QPushButton) if b.text().startswith("Confirm new theme")][0]
+    assert not confirm.isVisibleTo(panel)
+
+
+# G14: Logic decides whether the theme is new; a theme confirmed since is not offered again
+def test_confirm_button_asks_logic_not_the_reason_text(qtbot):
+    record = [r for r in build_sample_records() if any(x.startswith("New theme") for x in r.review_reasons)][0]
+    panel = EntryDetailPanel(LogicManager(known_themes=[*THEMES, record.theme]).is_new_theme)
     qtbot.addWidget(panel)
     panel.show_record(record, list(THEMES))
     confirm = [b for b in panel.findChildren(QPushButton) if b.text().startswith("Confirm new theme")][0]

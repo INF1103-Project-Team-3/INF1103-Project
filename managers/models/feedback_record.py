@@ -111,6 +111,12 @@ class FeedbackRecord(Serializable):
         return bool(self.__review_reasons)
 
     @property
+    def awaiting_ai(self) -> bool:
+        """True while the AI has not classified the record: it is new (pending), or it
+        was counted unverified while the AI was down. The next run sends it (D4)."""
+        return self.__ai is None and self.__verification in (PENDING, UNVERIFIED)
+
+    @property
     def counted(self) -> bool:
         """True once Logic has checked the record and no reason excludes it from statistics."""
         return self.__verification != PENDING and not self.__excluded
