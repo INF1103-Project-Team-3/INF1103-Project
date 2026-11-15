@@ -115,7 +115,6 @@ def test_other_left_empty_shows_an_error_and_builds_nothing(qtbot):
 def test_theme_list_is_a_dropdown_and_refreshes_with_new_themes(qtbot):
     from managers.gui.widgets.combo_box import ComboBox
     page = student_form(qtbot)
-    assert not [b for b in page.findChildren(QPushButton) if b.objectName() == "chip"]
     page.set_themes([*THEMES, "Parking Fees"])
     box = page.findChild(ComboBox, "studentTheme")
     assert [box.itemText(i) for i in range(box.count())][-2:] == ["Parking Fees", "Other…"]

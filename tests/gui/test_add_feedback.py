@@ -100,8 +100,15 @@ def test_import_previews_rejected_rows_and_skips_saved_ids(qtbot, tmp_path):
     assert [r.feedback_id for r in result.records] == ["new_001"] and result.source_file == "week6.csv"
 
 
+# A good file is previewed first, so the button starts enabled and the unsupported file must
+# clear it: on a fresh panel it is disabled already and the check could not fail (G15).
 def test_import_explains_an_unsupported_file(qtbot, tmp_path):
+    path = tmp_path / "week6.csv"
+    path.write_text(HEADER + "new_001,Wifi drops in the lab,2026-11-10T09:00:00,Facilities,negative,medium\n",
+                    encoding="utf-8")
     panel = import_panel(qtbot, FakeDataManager([]))
+    panel.load_file(str(path))
+    assert button(panel, "Add 1 entry").isEnabled()
     panel.load_file(str(tmp_path / "notes.txt"))
     assert "Only .csv and .json" in panel.findChild(QLabel, "errorText").text()
     assert not button(panel, "Add to queue").isEnabled()
