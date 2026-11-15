@@ -27,5 +27,6 @@ class PipelineContext:
     summary: AISummary | None = None
     impacts: list[ImpactReport] = field(default_factory=list)
     fallback_actions: ActionSuggestions | None = None
+    sent_to_ai: int = 0         # records sent to the AI this run (0 = nothing new to classify)
     classified_count: int = 0
     stopped: bool = False

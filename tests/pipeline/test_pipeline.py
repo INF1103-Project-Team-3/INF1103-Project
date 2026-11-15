@@ -170,27 +170,75 @@ def test_ingestion_step_saves_themes_added_in_settings() -> None:
     ai.set_known_themes.assert_called_once_with(["Facilities", "Parking Fees"])
 
 
-def test_summary_step_skips_call2_when_nothing_classified_and_uses_fallback() -> None:
-    data = _make_mock_data()
+def _summary_context(logic, *, sent: int, classified: int, stopped: bool = False) -> PipelineContext:
+    return PipelineContext(records=[_make_record()], result=logic.aggregate.return_value,
+                           sent_to_ai=sent, classified_count=classified, stopped=stopped)
+
+
+def test_summary_step_keeps_last_ai_summary_when_nothing_new_was_sent() -> None:
+    """A review-only run (nothing sent to the AI) with the AI working: no Call 2 (D24)
+    and no rule-based "AI unavailable" actions, so the last AI summary stays on show."""
     logic = _make_mock_logic()
     ai = MagicMock()
+    ctx = _summary_context(logic, sent=0, classified=0)
 
-    ctx = PipelineContext(
-        records=[_make_record()],
-        result=logic.aggregate.return_value,
-        classified_count=0,
-        stopped=False,
-    )
+    assert SummaryStep(ai, logic, ai_ready=True).execute(ctx) is True
 
-    step = SummaryStep(ai, logic)
-    assert step.execute(ctx) is True
-
-    # D24: Call 2 must not be invoked when classified_count == 0
     ai.summarise.assert_not_called()
-    # D21: Keyword fallback actions generated instead
+    logic.suggest_actions.assert_not_called()
+    assert ctx.summary is None and ctx.fallback_actions is None
+
+
+@pytest.mark.parametrize("ai_ready, sent, classified, stopped", [
+    (False, 0, 0, False),   # no API key or key label
+    (True, 3, 0, True),     # Call 1 stopped early
+    (True, 2, 0, False),    # entries sent, none could be classified
+])
+def test_summary_step_uses_rule_based_actions_when_the_ai_is_down(ai_ready, sent, classified, stopped) -> None:
+    logic = _make_mock_logic()
+    ai = MagicMock()
+    ctx = _summary_context(logic, sent=sent, classified=classified, stopped=stopped)
+
+    assert SummaryStep(ai, logic, ai_ready=ai_ready).execute(ctx) is True
+
+    ai.summarise.assert_not_called()
     logic.suggest_actions.assert_called_once()
-    assert ctx.summary is None
-    assert ctx.fallback_actions is not None
+    assert ctx.summary is None and ctx.fallback_actions is not None
+
+
+def test_summary_step_uses_rule_based_actions_when_call2_fails() -> None:
+    logic = _make_mock_logic()
+    ai = MagicMock()
+    ai.summarise.return_value = None
+    ctx = _summary_context(logic, sent=2, classified=2)
+
+    assert SummaryStep(ai, logic, ai_ready=True).execute(ctx) is True
+
+    ai.summarise.assert_called_once()
+    assert ctx.summary is None and ctx.fallback_actions is not None
+
+
+def test_summary_step_stores_the_ai_summary_when_call2_succeeds() -> None:
+    logic = _make_mock_logic()
+    ai = MagicMock()
+    ctx = _summary_context(logic, sent=2, classified=2)
+
+    assert SummaryStep(ai, logic, ai_ready=True).execute(ctx) is True
+
+    assert ctx.summary is ai.summarise.return_value and ctx.fallback_actions is None
+    logic.suggest_actions.assert_not_called()
+
+
+def test_persistence_step_leaves_the_saved_summary_alone_when_nothing_new() -> None:
+    data = _make_mock_data()
+    logic = _make_mock_logic()
+    ctx = PipelineContext(records=[_make_record()], result=logic.aggregate.return_value,
+                          trend=MagicMock(), session=FakeSession(source_file=None))  # type: ignore[arg-type]
+
+    assert PersistenceStep(data).execute(ctx) is True
+
+    saved = [c.args[0] for c in data.save_object.call_args_list]
+    assert "summary" not in saved and "fallback_actions" not in saved
 
 
 def test_full_pipeline_completes_when_ai_is_down() -> None:

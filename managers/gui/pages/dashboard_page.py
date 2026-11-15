@@ -2,9 +2,9 @@
 
 from datetime import datetime
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QGridLayout, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget,
+    QGridLayout, QHBoxLayout, QLabel, QProgressBar, QPushButton, QVBoxLayout, QWidget,
 )
 
 from managers.models import CRITICAL, SENTIMENTS
@@ -27,11 +27,15 @@ LATEST_ACTIONS = 3
 
 
 # Number cards, AI notice, since-last-run strip, themes by priority, sentiment mix,
-# new themes waiting, AI summary and latest actions.
+# new themes waiting, AI summary and latest actions. ai_ready (True/False/None) words the
+# AI notice; run_requested is its Process now button (shown once the AI is back).
 class DashboardPage(BasePage):
-    def __init__(self, data, parent=None):
+    run_requested = Signal()
+
+    def __init__(self, data, ai_ready: bool | None = None, parent=None):
         super().__init__("Dashboard", "", parent)
         self.__data = data
+        self.__ai_ready = ai_ready
         self.__values = {}
         self.__feet = {}
 
@@ -58,7 +62,15 @@ class DashboardPage(BasePage):
         self.__notice.set_tone("critical")
         self.__notice_text = QLabel("")
         self.__notice_text.setWordWrap(True)
-        self.__notice.body.addWidget(self.__notice_text)
+        self.__notice_button = QPushButton("Process now")
+        self.__notice_button.setObjectName("primaryButton")
+        self.__notice_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.__notice_button.clicked.connect(lambda _checked=False: self.run_requested.emit())
+        notice_row = QHBoxLayout()
+        notice_row.setSpacing(12)
+        notice_row.addWidget(self.__notice_text, 1)
+        notice_row.addWidget(self.__notice_button, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.__notice.body.addLayout(notice_row)
         self.content_layout.addWidget(self.__notice)
 
         self.__strip = Card("Since the last run", padding=16, spacing=10)
@@ -122,15 +134,25 @@ class DashboardPage(BasePage):
         self.__fill_waiting(result)
         self.__fill_actions()
 
-    # Shown when the AI couldn't check some counted entries (D20, A26).
+    # Shown when the AI couldn't check some counted entries (D20, A26), worded by whether the AI
+    # is ready now: back (offer Process now), still down, or not reported.
     def __fill_notice(self, unverified: int, summary) -> None:
         self.__notice.setVisible(bool(unverified))
+        self.__notice_button.setVisible(bool(unverified) and self.__ai_ready is True)
         if not unverified:
             return
+        entries = f"{unverified} {'entry is' if unverified == 1 else 'entries are'} unverified"
         when = f" The last AI summary is from {self.__date(summary.created_at)}." if summary else ""
-        self.__notice_text.setText(
-            f"<b>AI unavailable for {unverified} {'entry' if unverified == 1 else 'entries'}.</b> "
-            f"They are counted with the student's values and will be sent to the AI again on the next run.{when}")
+        if self.__ai_ready is True:
+            text = (f"<b>The AI was unavailable on the last run, so {entries}.</b> It's connected again: "
+                    f"press Process now to have it check them.")
+        elif self.__ai_ready is False:
+            text = (f"<b>The AI is unavailable, so {entries}.</b> They are counted with the student's "
+                    f"values and checked again on the next run once the AI is back.{when}")
+        else:
+            text = (f"<b>The AI couldn't check the last run, so {entries}.</b> They are counted with the "
+                    f"student's values and sent to the AI again on the next run.{when}")
+        self.__notice_text.setText(text)
 
     def __fill_strip(self, trend) -> None:
         body = self.__clear(self.__strip_body)

@@ -22,6 +22,12 @@ class EntryCard(QFrame):
         self.setProperty("critical", is_critical(record) and record.needs_review)
         self.setProperty("selected", False)
 
+        # The queued tag sits on its own line, so its long text can't widen the list.
+        queued = QHBoxLayout()
+        self.__queued = Pill("", "caution")
+        self.__queued.hide()
+        queued.addWidget(self.__queued)
+        queued.addStretch()
         tags = QHBoxLayout()
         tags.setSpacing(6)
         for text, kind in record_tags(record):
@@ -41,6 +47,7 @@ class EntryCard(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(6)
+        layout.addLayout(queued)
         layout.addLayout(tags)
         layout.addWidget(text)
         layout.addWidget(meta)
@@ -48,6 +55,15 @@ class EntryCard(QFrame):
     @property
     def feedback_id(self) -> str:
         return self.__feedback_id
+
+    # A tag such as "Will be deleted" while a review decision waits for Process; None hides it.
+    def set_queued(self, text: str | None) -> None:
+        self.__queued.setText(text or "")
+        self.__queued.setVisible(bool(text))
+
+    @property
+    def queued_text(self) -> str:
+        return self.__queued.text() if self.__queued.isVisibleTo(self) else ""
 
     def set_selected(self, selected: bool) -> None:
         self.setProperty("selected", selected)
