@@ -1,6 +1,7 @@
 import json
 import logging
 from dataclasses import FrozenInstanceError
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -120,10 +121,11 @@ def today_usage(token_log, model="stub-model"):
 
 
 # Interfaces and abstract classes
-@pytest.mark.parametrize("abstract_class", [LLMClient, AITask])
-def test_abstract_classes_cannot_be_instantiated(abstract_class):
-    with pytest.raises(TypeError):
-        abstract_class()
+# Given valid constructor arguments, so only abstractness can raise
+@pytest.mark.parametrize("abstract_class, args", [(LLMClient, ()), (AITask, ("fb_001", "name", {}, 1600))])
+def test_abstract_classes_cannot_be_instantiated(abstract_class, args):
+    with pytest.raises(TypeError, match="abstract"):
+        abstract_class(*args)
 
 
 # The stub stands in for GroqClient, and both tasks run through the same retry loop
@@ -370,6 +372,36 @@ def test_missing_key_stops_the_batch_without_a_request(prompts, token_log, sleep
     assert (classified, pending, stopped) == ([], [entry], True)
 
 
+def test_no_key_label_writes_nothing_to_the_ledger(prompts, token_log, sleeps, entry):
+    manager = AIManager(GroqClient(None), "", prompts, RecordingProgressReporter(), token_log.load, token_log.save)
+
+    manager.classify_entries([entry], [], discard)
+
+    assert token_log.saves == 0
+
+
+def test_a_failing_save_stops_the_batch_and_still_ends_it(prompts, token_log, sleeps, entry, caplog):
+    second = make_record("fb_002")
+    reporter = RecordingProgressReporter()
+    client = StubLLMClient([json.dumps(classification())] * 2)
+    def fail(record):
+        raise RuntimeError("disk gone")
+
+    with caplog.at_level(logging.ERROR):
+        classified, pending, stopped = build_manager(client, prompts, token_log, reporter).classify_entries(
+            [entry, second], [], fail
+        )
+
+    # Its AI values are set, so it stays classified and the pipeline saves it later
+    assert classified == [entry]
+    assert entry.ai is not None
+    assert (pending, stopped) == ([second], True)
+    assert len(client.calls) == 1
+    assert ("batch_stopped", "could not save fb_001", "fb_001") in reporter.events
+    assert reporter.names[-1] == "batch_end"
+    assert "disk gone" in caplog.text
+
+
 def test_every_attempt_lost_to_connection_errors_stops_the_batch(prompts, token_log, sleeps, entry):
     second = make_record("fb_002")
     client = StubLLMClient([error(LLMRequestError.CONNECTION)] * MAX_ATTEMPTS)
@@ -500,6 +532,14 @@ def test_error_without_wait_uses_backoff_and_error_with_wait_uses_it(prompts, to
     assert sleeps == [BACKOFF_BASE_S, 7.5, 0.5]
 
 
+def test_non_json_output_keeps_a_longer_client_wait(prompts, token_log, sleeps, entry):
+    client = StubLLMClient(["not json", json.dumps(classification())], wait_seconds=10)
+
+    build_manager(client, prompts, token_log).classify_entries([entry], [], discard)
+
+    assert sleeps == [10, 10]
+
+
 def test_gives_up_after_max_attempts(prompts, token_log, sleeps, entry):
     client = StubLLMClient([error() for _ in range(MAX_ATTEMPTS)])
 
@@ -625,6 +665,22 @@ def test_ai_summary_survives_a_round_trip():
 def test_ai_summary_cannot_be_changed():
     with pytest.raises(FrozenInstanceError):
         AISummary("Overall.", []).overall_summary = "Changed."
+
+
+def test_ai_summary_to_dict_hands_out_a_copy():
+    summary = AISummary("Overall.", [{"theme": "Facilities", "suggested_action": "Act."}])
+
+    data = summary.to_dict()
+    data["theme_actions"][0]["theme"] = "Changed"
+    data["theme_actions"].append({"theme": "Added", "suggested_action": "Act."})
+
+    assert summary.theme_actions == [{"theme": "Facilities", "suggested_action": "Act."}]
+
+
+def test_ai_summary_stamps_its_creation_time():
+    created_at = AISummary("Overall.", []).created_at
+
+    assert datetime.fromisoformat(created_at).isoformat(timespec="seconds") == created_at
 
 
 @pytest.mark.parametrize("missing", ["overall_summary", "theme_actions", "created_at"])
@@ -811,6 +867,13 @@ def test_groq_success_returns_content_tokens_and_wait(monkeypatch):
     assert GroqClient("key").send([], "name", {}, 1600) == ('{"a": 1}', 1234, FALLBACK_DELAY_S)
 
 
+def test_groq_null_token_count_reads_as_zero(monkeypatch):
+    body = json.dumps({"choices": [{"message": {"content": '{"a": 1}'}}], "usage": {"total_tokens": None}}).encode()
+    monkeypatch.setattr(requests.Session, "post", lambda *a, **k: response(200, body))
+
+    assert GroqClient("key").send([], "name", {}, 1600) == ('{"a": 1}', 0, FALLBACK_DELAY_S)
+
+
 def test_groq_sends_key_schema_and_output_cap(monkeypatch):
     sent = {}
     def capture(self, url, headers, json, timeout):
@@ -865,6 +928,9 @@ def test_parse_reset_duration(value, seconds):
     ({"x-ratelimit-remaining-tokens": "100"}, "fallback"),
     ({"retry-after": "soon"}, "fallback"),
     ({"x-ratelimit-remaining-tokens": "many", "x-ratelimit-reset-tokens": "10s"}, "fallback"),
+    ({"retry-after": "-5"}, "fallback"),
+    ({"retry-after": "nan"}, "fallback"),
+    ({"retry-after": "inf"}, "fallback"),
 ])
 def test_compute_delay(headers, delay):
     assert RateLimiter().compute_delay(headers, "fallback", 1600) == delay
@@ -909,6 +975,41 @@ def test_ledger_save_failure_is_logged_not_raised(token_log, caplog):
         TokenLedger("some-model", token_log.load, fail).record("test-key", "fb_001", 100)
 
     assert "not written" in caplog.text
+
+
+# today_total reads only "totals", so it still answers when only "candidates" is wrong
+@pytest.mark.parametrize("key_log, today_total", [
+    ([], None),
+    ({"totals": [], "candidates": {}}, None),
+    ({"totals": {}, "candidates": {"groq/some-model": {"model": "some-model"}}}, 0),
+    ({"totals": {"some-model": "many"}, "candidates": {}}, None),
+])
+def test_ledger_of_the_wrong_shape_is_treated_as_unreadable(token_log, caplog, key_log, today_total):
+    token_log.log = {datetime.now(timezone.utc).date().isoformat(): {"test-key": key_log}}
+    ledger = TokenLedger("some-model", token_log.load, token_log.save)
+
+    with caplog.at_level(logging.WARNING):
+        ledger.record("test-key", "fb_001", 100)
+
+    assert token_log.saves == 0
+    assert "unreadable" in caplog.text
+    assert ledger.today_total("test-key") == today_total
+
+
+def test_ledger_day_of_the_wrong_shape_is_treated_as_unreadable(token_log):
+    token_log.log = {datetime.now(timezone.utc).date().isoformat(): []}
+    ledger = TokenLedger("some-model", token_log.load, token_log.save)
+
+    ledger.record("test-key", "fb_001", 100)
+
+    assert token_log.saves == 0
+    assert ledger.today_total("test-key") is None
+
+
+def test_ledger_skips_an_empty_key_label(token_log):
+    TokenLedger("some-model", token_log.load, token_log.save).record("", "fb_001", 0)
+
+    assert token_log.saves == 0
 
 
 def test_ledger_warns_once_when_crossing_the_threshold(token_log, caplog):

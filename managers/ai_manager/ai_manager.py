@@ -9,6 +9,7 @@ rules; progress goes to a ProgressReporter as events.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -28,6 +29,7 @@ from .token_ledger import TokenLedger
 if TYPE_CHECKING:
     from managers.logic_manager import AggregationResult
 
+logger = logging.getLogger(__name__)
 
 class AIManager:
     """Public API for the app's two LLM calls. It decides what to send and
@@ -82,6 +84,8 @@ class AIManager:
         missing or rejected key, every attempt lost to connection errors, or a
         rate-limit wait over a minute stops the batch and leaves the rest
         pending, since retrying every record could take about 100 seconds each.
+        If on_classified raises, the error is logged, that record stays
+        classified and the batch stops the same way.
         """
         known_themes = self.__prompts.find_new_themes(stored_records)
         tracker = ProgressTracker(len(records))
@@ -98,7 +102,13 @@ class AIManager:
             else:
                 known_themes = self.__prompts.find_new_themes([record], known_themes)
                 classified.append(record)
-                on_classified(record)
+                try:
+                    on_classified(record)
+                except Exception as exc:
+                    # Its AI values are set, so it stays classified; a failing
+                    # save would fail for every later record too.
+                    logger.error("could not save %s: %s", record.feedback_id, exc)
+                    tracker.stop(f"could not save {record.feedback_id}", record.feedback_id)
             if tracker.stopped:
                 pending.extend(records[index + 1:])
                 tracker.leave_pending([left.feedback_id for left in records[index + 1:]])
