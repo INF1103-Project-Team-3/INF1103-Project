@@ -114,6 +114,7 @@ class FakeData:
         self.files = {}
         self.themes = list(THEMES)
         self.records = []
+        self.pending = []           # load_pending(): records stored but not yet run
         self.queue = []
         self.objects = {}
         self.history = []           # newest first, as the real one stores it
@@ -137,6 +138,9 @@ class FakeData:
 
     def load_records(self):
         return list(self.records)
+
+    def load_pending(self):
+        return list(self.pending)
 
     def load_history(self, limit=None):
         return self.history[:limit] if limit is not None else list(self.history)

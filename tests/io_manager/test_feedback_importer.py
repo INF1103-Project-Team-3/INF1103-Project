@@ -6,6 +6,7 @@ from datetime import datetime
 
 import pytest
 
+from managers.data_manager import DataManager
 from managers.io_manager.csv_importer import CsvImporter
 from managers.io_manager.entry_validator import EntryValidator
 from managers.io_manager.feedback_importer import FeedbackImporter
@@ -75,3 +76,28 @@ def test_a_missing_or_corrupt_file_is_an_error(importers):
     # FakeData raises ValueError like the real Data Manager does
     with pytest.raises(ValueError):
         importers[0].import_file("missing.csv")
+
+
+# I1: a mistyped path gives the ValueError import_file promises, with the real Data Manager
+def test_a_missing_file_raises_value_error_with_the_real_data_manager(tmp_path, logic):
+    importer = CsvImporter(DataManager(str(tmp_path / "data")), EntryValidator(ThemeValidator(logic)), RecordBuilder())
+    with pytest.raises(ValueError):
+        importer.import_file(str(tmp_path / "missing.csv"))
+
+
+# I2: rows whose feedback_id is already saved or pending are skipped and reported
+def test_rows_whose_id_is_already_saved_or_pending_are_skipped(importers, data, make_record):
+    data.records = [make_record("a1")]
+    data.pending = [make_record("a2")]
+    data.files["w.csv"] = [GOOD, {**GOOD, "feedback_id": "a2"}, {**GOOD, "feedback_id": "a3"},
+                           {**GOOD, "feedback_id": "a4", "severity": "huge"}]
+    result = importers[0].import_file("w.csv")
+    assert [r.feedback_id for r in result.records] == ["a3"]
+    assert result.already_saved == ["a1", "a2"]
+    assert len(result.rejected) == 1
+    assert result.total == 4
+
+
+def test_nothing_saved_means_nothing_skipped(importers, data):
+    data.files["w.csv"] = [GOOD]
+    assert importers[0].import_file("w.csv").already_saved == []

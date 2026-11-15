@@ -126,3 +126,16 @@ def test_save_action_skips_an_action_id_already_stored(tmp_path):
     data.save_action(action("a1"))
     data.save_action(action("a2"))
     assert [a.action_id for a in data.load_actions()] == ["a1", "a2"]
+
+
+# ---- I1: read_rows raises ValueError for a file it cannot read, as its contract says
+def test_read_rows_of_a_missing_file_raises_value_error(tmp_path):
+    with pytest.raises(ValueError, match="not found"):
+        DataManager(str(tmp_path / "data")).read_rows(tmp_path / "missing.csv")
+
+
+@pytest.mark.parametrize("name", ["folder.json", "folder.csv"])
+def test_read_rows_of_a_folder_raises_value_error(tmp_path, name):
+    (tmp_path / name).mkdir()
+    with pytest.raises(ValueError):
+        DataManager(str(tmp_path / "data")).read_rows(tmp_path / name)

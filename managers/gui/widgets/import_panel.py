@@ -1,6 +1,5 @@
 # ImportPanel: pick a CSV or JSON file and preview what I/O's importer accepts and rejects.
 
-from dataclasses import replace
 from html import escape
 
 from PySide6.QtCore import Signal
@@ -75,10 +74,9 @@ class ImportPanel(Card):
         except (ValueError, OSError) as error:
             self.__show_error(f"Couldn't import {path}: {error}")
             return
-        saved = {r.feedback_id for r in [*self.__data.load_records(), *self.__data.load_pending()]}
-        new = [r for r in result.records if r.feedback_id not in saved]
-        skipped = len(result.records) - len(new)
-        self.__result = replace(result, records=new)
+        new = result.records            # the importer has already left out saved IDs
+        skipped = len(result.already_saved)
+        self.__result = result
 
         parts = [f"{len(new)} ready"]
         if result.rejected:

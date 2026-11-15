@@ -123,12 +123,16 @@ def result_classes(monkeypatch):
             if not isinstance(raw, dict):
                 raise TypeError("corrupt saved data")
             return raw
+    class StrictSuggestions(Strict):
+        LABEL = "Suggested by rules (AI unavailable)"
     for module, names in (("managers.ai_manager", ["AISummary"]),
                           ("managers.logic_manager", ["AggregationResult", "TrendReport"])):
         fake = types.ModuleType(module)
         for name in names:
             setattr(fake, name, Strict)
         monkeypatch.setitem(sys.modules, module, fake)
+        if module == "managers.logic_manager":
+            fake.ActionSuggestions = StrictSuggestions
 
 
 def test_dashboard_with_corrupt_saved_data_does_not_crash(session, screen, data, result_classes):
@@ -249,3 +253,26 @@ def test_app_engine_can_build_everything_from_the_public_names(data, logic):
     result = io.run_session()
     assert isinstance(result, io_package.SessionResult)
     assert result.records[0].text == "Good lectures"
+
+
+# ---- I2: the terminal says how many rows were skipped as already saved
+def test_import_reports_rows_already_saved(session, screen, data, make_record):
+    data.records = [make_record("a1")]
+    data.files["week5.csv"] = [GOOD_ROW, {**GOOD_ROW, "feedback_id": "a2"}]
+    result = session(["admin", "2", "week5.csv", FINISH])
+    assert "Validated 1 of 2 row(s); 1 already saved, skipped." in screen.lines
+    assert [r.feedback_id for r in result.records] == ["a2"]
+
+
+# ---- I3: with the AI down, the dashboard shows the saved rule-based actions
+def test_dashboard_shows_saved_rule_based_actions(session, screen, data, result_classes):
+    data.objects = {
+        "aggregated_output": {"themes": [{"theme": "Workload", "count": 1, "avg_sentiment": -1.0,
+                                          "priority": 50, "severity_counts": {}}],
+                              "total_entries": 1, "counted_entries": 1, "unverified_count": 1},
+        "fallback_actions": {"theme_actions": [{"theme": "Workload", "suggested_action": "Ask timetabling."}],
+                             "created_at": "2026-11-15T09:00:00"},
+    }
+    session(["admin", "3", FINISH])
+    assert "SUGGESTED BY RULES (AI UNAVAILABLE), 2026-11-15 09:00:00" in screen.lines
+    assert "Ask timetabling." in screen.text

@@ -280,14 +280,19 @@ class DataManager:
         return self._json_store.save(filepath, {"records": raw_actions})
 
     def read_rows(self, path: Union[str, Path]) -> List[Dict[str, Any]]:
+        """Returns an import file's raw rows. Raises ValueError with the reason
+        if the file is missing or cannot be read."""
         p = Path(path)
         if not p.exists():
-            raise FileNotFoundError(f"Import file not found: {p}")
+            raise ValueError(f"Import file not found: {p}")
         ext = p.suffix.lower()
         store = self._importers.get(ext)
         if not store:
             raise ValueError(f"Unsupported file extension for import: {ext}")
-        data = store.load(p)
+        try:
+            data = store.load(p)
+        except OSError as e:
+            raise ValueError(f"Import file could not be read: {e}") from e
         if isinstance(data, dict) and "records" in data:
             return data["records"]
         if isinstance(data, list):
