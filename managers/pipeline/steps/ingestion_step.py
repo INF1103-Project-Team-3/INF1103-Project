@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 
 
 class IngestionStep(BaseStep):
+    description = "saving this session's changes"
+
     def __init__(
         self,
         data: DataManager,
@@ -43,17 +45,17 @@ class IngestionStep(BaseStep):
                     if record is None:
                         logger.warning("Review skipped: no processed record %s", decision.feedback_id)
                         continue
+                    theme = self._normalised(decision.theme)
                     try:
                         record.mark_reviewed(
-                            decision.theme,
+                            theme,
                             decision.sentiment,
                             decision.severity,
                         )
                     except ValueError as error:   # bad value: skip this decision, keep the run going
                         logger.warning("Review of %s not applied: %s", decision.feedback_id, error)
                         continue
-                    if decision.theme:
-                        new_themes.append(decision.theme)
+                    new_themes.append(theme)
 
             self._confirm_themes(new_themes)
 
@@ -71,16 +73,24 @@ class IngestionStep(BaseStep):
         context.records = processed + pending
         return True
 
+    def _normalised(self, theme):
+        """A decision's theme as Logic names it (D6, 7.4 step 1): an alias becomes its
+        base theme, an unclear word becomes Unclear. Blank or non-text is passed on
+        unchanged, so mark_reviewed rejects it as before."""
+        if isinstance(theme, str) and theme.strip():
+            return self._logic.normalise_theme(theme)
+        return theme
+
     def _confirm_themes(self, themes: list[str]) -> None:
-        """Save each theme not yet known, then refresh Logic and AI once (6, v1.8):
-        data.add_known_theme(t), logic.set_known_themes(...), ai.set_known_themes(...)."""
-        known = set(self._data.load_known_themes())
-        added = False
+        """Save each theme Logic says is new, once, then refresh Logic and AI once
+        (6, v1.8): data.add_known_theme(t), logic.set_known_themes(...),
+        ai.set_known_themes(...). Aliases, known themes and Unclear are never saved."""
+        added = []
         for theme in themes:
-            if theme not in known:
-                self._data.add_known_theme(theme)
-                known.add(theme)
-                added = True
+            name = self._normalised(theme)
+            if isinstance(name, str) and name not in added and self._logic.is_new_theme(name):
+                self._data.add_known_theme(name)
+                added.append(name)
         if added:
             refreshed = self._data.load_known_themes()
             self._logic.set_known_themes(refreshed)

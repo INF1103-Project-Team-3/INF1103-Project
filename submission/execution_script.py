@@ -615,7 +615,7 @@ def _summary_context(sent, classified, stopped=False):
     logic = LogicManager()
     records = run_rules([make_record("fb_1", ("Facilities", NEGATIVE, LOW), ai=("Facilities", NEGATIVE, LOW))], logic)
     return logic, PipelineContext(records=records, result=logic.aggregate(records),
-                                  sent_to_ai=sent, classified_count=classified, stopped=stopped)
+                                  sent_to_ai=sent, classified_count=classified, ai_stopped=stopped)
 
 
 @check("7. New features")
@@ -686,7 +686,7 @@ def a_full_run_with_the_ai_down_still_completes():
         entries = [builder.build({"text": f"The wifi drops in room {n}.", "theme": "Facilities",
                                   "sentiment": NEGATIVE, "severity": LOW}) for n in range(3)]
         context = build_pipeline(data, logic, ai).execute_pipeline(SessionResult(records=entries))
-        expect(context.stopped and all(r.verification == UNVERIFIED and r.counted for r in context.records),
+        expect(context.ai_stopped and all(r.verification == UNVERIFIED and r.counted for r in context.records),
                "entries were not unverified and counted")
         expect(isinstance(context.fallback_actions, ActionSuggestions), "no rule-based actions")
         expect(len(data.load_records()) == 3 and data.load_pending() == [], "the run was not saved")

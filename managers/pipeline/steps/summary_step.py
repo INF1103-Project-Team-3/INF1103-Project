@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 class SummaryStep(BaseStep):
     stop_on_error = False   # D20: Call 2 failing is acceptable; the run must still be saved
+    description = "the AI summary"
 
     def __init__(self, ai: AIManager, logic: LogicManager, ai_ready: bool = True) -> None:
         self._ai = ai
@@ -26,7 +27,7 @@ class SummaryStep(BaseStep):
         if context.result is None:
             return True
 
-        ai_working = self._ai_ready and not context.stopped
+        ai_working = self._ai_ready and not context.ai_stopped
         if ai_working and context.sent_to_ai == 0:
             # Nothing new reached the AI (e.g. a review-only run): skip Call 2 to save tokens
             # (D24) and keep the last AI summary, instead of rule-based "AI unavailable" actions

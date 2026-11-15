@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 class ImpactStep(BaseStep):
     stop_on_error = False   # impact is extra; a failure here must not block saving the run
+    description = "measuring action impact"
 
     def __init__(self, logic: LogicManager, data: DataManager) -> None:
         self._logic = logic

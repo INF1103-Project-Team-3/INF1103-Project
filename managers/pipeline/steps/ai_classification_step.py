@@ -12,6 +12,8 @@ if TYPE_CHECKING:
 
 
 class AIClassificationStep(BaseStep):
+    description = "AI classification"
+
     def __init__(self, ai: AIManager, data: DataManager) -> None:
         self._ai = ai
         self._data = data
@@ -34,6 +36,6 @@ class AIClassificationStep(BaseStep):
             on_classified=self._data.update_pending,
         )
         context.classified_count = len(classified)
-        context.stopped = stopped
+        context.ai_stopped = stopped
         # D20 / C36: Always continue to LogicStep even if AI is down or classified nothing
         return True

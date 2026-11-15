@@ -4,7 +4,6 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any
 
 from dotenv import load_dotenv
 
@@ -12,22 +11,21 @@ from managers.ai_manager import (
     AIManager,
     ConsoleProgressReporter,
     GroqClient,
+    ProgressReporter,
     PromptLibrary,
 )
 from managers.data_manager import DataManager, JsonFileStore
 from managers.io_manager import (
     ConsoleView,
-    CsvImporter,
     EntryValidator,
     IOManager,
-    JsonImporter,
     PasswordValidator,
     Prompter,
-    RecordBuilder,
     ThemeValidator,
 )
 from managers.logic_manager import LogicManager
 
+from .console_log_formatter import ConsoleLogFormatter
 from .pipeline_context import PipelineContext
 from .pipeline_manager import PipelineManager
 from .steps import (
@@ -50,69 +48,103 @@ DEFAULT_DATA_DIR = str(REPO_ROOT / "data")              # 4.3: "data", relative 
 class AppEngine:
     def __init__(self, data_dir: str = DEFAULT_DATA_DIR) -> None:
         self._data_dir = data_dir
-        self.data: DataManager | None = None
-        self.logic: LogicManager | None = None
-        self.ai: AIManager | None = None
-        self.pipeline: PipelineManager | None = None
+        self._data: DataManager | None = None
+        self._logic: LogicManager | None = None
+        self._ai: AIManager | None = None
+        self._pipeline: PipelineManager | None = None
+        self._ai_ready = False      # set by bootstrap_system: key and key label both present
 
     @staticmethod
     def _load_env() -> None:
         # Safe to call twice: existing environment variables are not overwritten
         load_dotenv(ENV_FILE)
 
-    def bootstrap_system(self, reporter: Any = None) -> PipelineContext:
+    def bootstrap_system(self, reporter: ProgressReporter | None = None) -> None:
         self._load_env()
         # D20: a missing key or key label never stops the run; the AI just reports it down
         api_key = os.getenv("GROQ_API_KEY", "")
         key_label = os.getenv("GROQ_KEY_LABEL", "")
-        self.ai_ready = bool(api_key and key_label)
+        self._ai_ready = bool(api_key and key_label)
         if not api_key or not key_label:
             logger.warning("GROQ_API_KEY or GROQ_KEY_LABEL is not set in %s; "
                            "the AI will be unavailable this session", ENV_FILE)
 
         store = JsonFileStore()
-        self.data = DataManager(self._data_dir, store)
+        self._data = DataManager(self._data_dir, store)
 
-        known_themes = self.data.load_known_themes()
-        self.logic = LogicManager(known_themes=known_themes)
+        known_themes = self._data.load_known_themes()
+        self._logic = LogicManager(known_themes=known_themes)
 
-        sys_prompt, sum_prompt = self.data.load_prompts()
+        sys_prompt, sum_prompt = self._data.load_prompts()
         prompts = PromptLibrary(sys_prompt, sum_prompt, themes=known_themes)
-        client = GroqClient(api_key=api_key)
+        # Not ready means AI down (D20): the client gets no key, so Call 1 stops at
+        # once instead of spending tokens on a run whose Call 2 is then skipped
+        client = GroqClient(api_key=api_key if self._ai_ready else None)
         active_reporter = reporter or ConsoleProgressReporter()
 
-        self.ai = AIManager(
+        self._ai = AIManager(
             client=client,
             key_label=key_label,
             prompts=prompts,
             reporter=active_reporter,
-            load_token_log=self.data.load_token_log,
-            save_token_log=self.data.save_token_log,
+            load_token_log=self._data.load_token_log,
+            save_token_log=self._data.save_token_log,
         )
 
-        self.pipeline = PipelineManager(data_dir=self._data_dir)
-        self.pipeline.register_step(IngestionStep(self.data, self.logic, self.ai))
-        self.pipeline.register_step(AIClassificationStep(self.ai, self.data))
-        self.pipeline.register_step(LogicStep(self.logic, self.data))
-        self.pipeline.register_step(SummaryStep(self.ai, self.logic, ai_ready=self.ai_ready))
-        self.pipeline.register_step(ImpactStep(self.logic, self.data))
-        self.pipeline.register_step(PersistenceStep(self.data))
-
-        return PipelineContext(data_dir=self._data_dir)
+        self._pipeline = PipelineManager(data_dir=self._data_dir)
+        self._pipeline.register_step(IngestionStep(self._data, self._logic, self._ai))
+        self._pipeline.register_step(AIClassificationStep(self._ai, self._data))
+        self._pipeline.register_step(LogicStep(self._logic, self._data))
+        self._pipeline.register_step(SummaryStep(self._ai, self._logic, ai_ready=self._ai_ready))
+        self._pipeline.register_step(ImpactStep(self._logic, self._data))
+        self._pipeline.register_step(PersistenceStep(self._data))
 
     def _build_io_parts(self):
-        """Validators, builder and importers, shared by the terminal and the GUI (8.3)."""
-        theme_validator = ThemeValidator(self.logic)
-        entry_validator = EntryValidator(theme_validator)
-        builder = RecordBuilder()
-        importers = [
-            CsvImporter(self.data, entry_validator, builder),
-            JsonImporter(self.data, entry_validator, builder),
-        ]
-        return entry_validator, importers
+        """The entry validator for typed feedback and the standard importers,
+        shared by the terminal and the GUI (8.3)."""
+        entry_validator = EntryValidator(ThemeValidator(self._logic))
+        return entry_validator, IOManager.create_importers(self._data, self._logic)
+
+    @staticmethod
+    def configure_logging(logger: logging.Logger | None = None) -> None:
+        """Sets up console logging once, for the whole app: warnings and errors
+        only, as plain lines without tracebacks (P4). Managers only log."""
+        target = logger if logger is not None else logging.getLogger()
+        if any(isinstance(h.formatter, ConsoleLogFormatter) for h in target.handlers):
+            return
+        handler = logging.StreamHandler()
+        handler.setFormatter(ConsoleLogFormatter())
+        target.addHandler(handler)
+        target.setLevel(logging.WARNING)
+
+    def execute_run(self, session, view) -> PipelineContext | None:
+        """Runs the pipeline on one session. If a step fails or the user presses
+        Ctrl-C, shows a plain message saying what was saved and returns None,
+        instead of ending the app with a traceback."""
+        try:
+            return self._pipeline.execute_pipeline(session)
+        except (Exception, KeyboardInterrupt) as error:
+            view.show_message(self._stopped_message(self._pipeline.current_step, error))
+            return None
+
+    @staticmethod
+    def _stopped_message(step, error: BaseException) -> str:
+        during = getattr(step, "description", "the analysis")
+        if isinstance(error, KeyboardInterrupt):
+            first = f"The analysis was stopped (Ctrl-C) during {during}."
+        else:
+            first = f"The analysis stopped during {during} because of an error: {error}"
+        if step is None or isinstance(step, IngestionStep):
+            saved = ("Some of this session's changes may not have been saved; "
+                     "check them and try again.")
+        else:
+            saved = ("This session's feedback, review decisions and actions were saved "
+                     "and are included in the next run; this run's results may not have been saved.")
+        return f"{first}\n{saved}"
 
     def run(self, mode: str | None = None) -> None:
         selected_mode = mode or ("gui" if "--gui" in sys.argv[1:] else "cli")
+        self.configure_logging()
         self._load_env()    # must happen BEFORE reading ADMIN_PASSWORD
         admin_password = os.getenv("ADMIN_PASSWORD", "")
         if not admin_password:
@@ -127,32 +159,32 @@ class AppEngine:
             reporter = QtProgressReporter()
             self.bootstrap_system(reporter=reporter)
 
-            assert self.pipeline is not None
-            assert self.data is not None
-            assert self.logic is not None
+            assert self._pipeline is not None
+            assert self._data is not None
+            assert self._logic is not None
 
             entry_validator, importers = self._build_io_parts()
             pw_validator = PasswordValidator(admin_password) if admin_password else None
-            reader = DataReader(self.data)
+            reader = DataReader(self._data)
 
             window = MainWindow(
-                pipeline=self.pipeline,
+                pipeline=self._pipeline,
                 data=reader,
-                logic=self.logic,
+                logic=self._logic,
                 validators=entry_validator,
                 importers=importers,
                 reporter=reporter,
                 password=pw_validator,
-                ai_ready=self.ai_ready,
+                ai_ready=self._ai_ready,
             )
             window.show()
             sys.exit(app.exec())
 
         # Default CLI mode
         self.bootstrap_system(reporter=ConsoleProgressReporter())
-        assert self.pipeline is not None
-        assert self.data is not None
-        assert self.logic is not None
+        assert self._pipeline is not None
+        assert self._data is not None
+        assert self._logic is not None
 
         view = ConsoleView()
         prompter = Prompter(view)
@@ -163,15 +195,17 @@ class AppEngine:
             view=view,
             prompter=prompter,
             importers=importers,
-            data=self.data,
-            logic=self.logic,
+            data=self._data,
+            logic=self._logic,
             admin_password=admin_password,
-            ai_ready=self.ai_ready,
+            ai_ready=self._ai_ready,
         )
 
         session = io_mgr.run_session()
         if session is not None:
-            context = self.pipeline.execute_pipeline(session)
+            context = self.execute_run(session, view)
+            if context is None:
+                return
             view.show_dashboard(
                 context.result,
                 context.trend,
