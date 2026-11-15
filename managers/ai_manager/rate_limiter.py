@@ -1,5 +1,6 @@
 """RateLimiter: works out the wait before the next request from Groq's headers."""
 
+import math
 import re
 from collections.abc import Mapping
 
@@ -28,12 +29,15 @@ class RateLimiter:
 
         Honours retry-after if present; otherwise waits for the token reset once
         fewer than margin tokens remain. Returns fallback if the headers are
-        missing or malformed.
+        missing or malformed; a negative or non-finite retry-after is malformed.
         """
         try:
             retry_after = headers.get("retry-after")
             if retry_after is not None:
-                return float(retry_after) + DELAY_BUFFER_S
+                seconds = float(retry_after)
+                if not math.isfinite(seconds) or seconds < 0:
+                    return fallback
+                return seconds + DELAY_BUFFER_S
             remaining = headers.get("x-ratelimit-remaining-tokens")
             reset = headers.get("x-ratelimit-reset-tokens")
             if remaining is None or reset is None:
