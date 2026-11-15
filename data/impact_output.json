@@ -1,0 +1,44 @@
+[
+  {
+    "action": {
+      "action_id": "act_0fb8f421",
+      "theme": "Teaching Quality",
+      "description": "Ask the lecturer to increase speaking pace and provide clearer guidance, and gather student feedback to ensure helpfulness remains.",
+      "action_date": "2026-11-15",
+      "keyword": null,
+      "logged_at": "2026-11-15T06:25:31"
+    },
+    "label": "Too early to tell",
+    "message": "Too early to tell: the action is dated 2026-11-15, so there is no feedback after it yet.",
+    "before": null,
+    "after": null,
+    "weekly": [
+      {
+        "week_start": "2026-10-18",
+        "negative": 0,
+        "total": 0
+      },
+      {
+        "week_start": "2026-10-25",
+        "negative": 0,
+        "total": 0
+      },
+      {
+        "week_start": "2026-11-01",
+        "negative": 0,
+        "total": 0
+      },
+      {
+        "week_start": "2026-11-08",
+        "negative": 1,
+        "total": 2
+      },
+      {
+        "week_start": "2026-11-15",
+        "negative": 0,
+        "total": 1
+      }
+    ],
+    "warnings": []
+  }
+]

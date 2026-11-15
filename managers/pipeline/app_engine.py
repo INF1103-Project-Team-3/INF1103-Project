@@ -94,7 +94,7 @@ class AppEngine:
         self.pipeline.register_step(IngestionStep(self.data, self.logic, self.ai))
         self.pipeline.register_step(AIClassificationStep(self.ai, self.data))
         self.pipeline.register_step(LogicStep(self.logic, self.data))
-        self.pipeline.register_step(SummaryStep(self.ai, self.logic))
+        self.pipeline.register_step(SummaryStep(self.ai, self.logic, ai_ready=self.ai_ready))
         self.pipeline.register_step(ImpactStep(self.logic, self.data))
         self.pipeline.register_step(PersistenceStep(self.data))
 

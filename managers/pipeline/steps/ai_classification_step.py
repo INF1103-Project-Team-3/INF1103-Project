@@ -23,6 +23,7 @@ class AIClassificationStep(BaseStep):
         ]
         stored_records = [r for r in context.records if r.ai is not None]
 
+        context.sent_to_ai = len(to_classify)
         if not to_classify:
             context.classified_count = 0
             return True

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<!-- FeedbackLens GUI page, served at http://localhost:6080/ by the "gui" service in docker-compose.yml.
+     The app's window is drawn into a VNC screen inside the container; this page shows that screen
+     full-window with noVNC (the Dockerfile copies this file into /usr/share/novnc). -->
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FeedbackLens</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e8582c'/%3E%3Ctext x='16' y='23' font-family='Arial' font-size='19' font-weight='bold' fill='white' text-anchor='middle'%3EF%3C/text%3E%3C/svg%3E">
+    <style>
+        html, body { margin: 0; height: 100%; background: #f3f4f3; overflow: hidden; }
+        #screen { position: absolute; inset: 0; }
+        #status {
+            position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+            font: 16px system-ui, sans-serif; color: #555; background: #f3f4f3;
+        }
+        #status.hidden { display: none; }
+    </style>
+</head>
+<body>
+<div id="screen"></div>
+<div id="status">Starting FeedbackLens…</div>
+<script type="module">
+    import RFB from './core/rfb.js';
+
+    const screen = document.getElementById('screen');
+    const status = document.getElementById('status');
+    // websockify serves this page and relays the VNC stream on the same port
+    const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/websockify';
+
+    function connect() {
+        const rfb = new RFB(screen, url);
+        rfb.scaleViewport = true;      // fit the app to the browser window
+        rfb.background = '#f3f4f3';     // fill any spare space with the app's background colour
+        rfb.addEventListener('connect', () => {
+            status.classList.add('hidden');
+            rfb.focus();               // keyboard input goes straight to the app
+        });
+        rfb.addEventListener('disconnect', () => {
+            // the app is still starting, or was restarted: keep trying
+            status.textContent = 'Waiting for FeedbackLens… (start it with: docker compose up gui)';
+            status.classList.remove('hidden');
+            setTimeout(connect, 1000);
+        });
+    }
+
+    connect();
+</script>
+</body>
+</html>

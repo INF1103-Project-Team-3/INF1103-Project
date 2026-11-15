@@ -43,7 +43,7 @@ The program is procedural Python (no classes), stores everything in flat JSON fi
 │       └── .env                                     # your API key (git-ignored, create it yourself)
 ├── data/                    # runtime data used by the app
 ├── submission/
-│   ├── execution_script.py  # runs the logic pipeline on sample data, no API needed
+│   ├── execution_script.py  # automated logic checks with stub AI replies, no API needed
 │   └── sample_ai_output.py  # shared fake AI records, including edge cases
 ├── tests/                   # pytest tests (io_manager)
 ├── requirements/requirements.txt
@@ -133,14 +133,10 @@ All commands run inside the container:
 # unit tests
 docker compose run --rm app pytest tests/
 
-# logic pipeline on sample data (no API key needed)
-docker compose run --rm app python submission/execution_script.py sample_ai_output
-# a sample file name is required: sample_ai_output, sample_ai_output1 or sample_ai_output2
-# to test trend analysis, run sample_ai_output1 and then sample_ai_output2:
-# the second run is compared against the first
-
-# logic_manager on the 30 saved AI outputs, including trend vs the previous run
-docker compose run --rm app python managers/logic_manager.py   # writes to tests/logic_output/
+# automated logic checks with stub AI replies (no API key needed): PASS/FAIL report, exit code 1 on failure
+docker compose run --rm app python submission/execution_script.py
+# optional: pick the sample AI replies to use (sample_ai_output, sample_ai_output1 or sample_ai_output2)
+docker compose run --rm app python submission/execution_script.py sample_ai_output2
 ```
 
 CI runs on every pull request to `main` and checks that all Python files compile.
