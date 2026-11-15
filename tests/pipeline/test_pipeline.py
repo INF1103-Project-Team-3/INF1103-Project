@@ -88,6 +88,10 @@ def _make_mock_logic() -> MagicMock:
         theme_actions=[{"theme": "Facilities", "suggested_action": "Escalate Wi-Fi issue"}]
     )
     logic.evaluate_actions.return_value = []
+    # like the real LogicManager: labels come back as given, and a theme is new
+    # unless it is one of the themes the mock data starts with
+    logic.normalise_theme.side_effect = lambda label: label
+    logic.is_new_theme.side_effect = lambda label: label not in ("Facilities", "Workload")
     return logic
 
 
@@ -115,17 +119,16 @@ def test_pipeline_manager_stops_when_step_returns_false() -> None:
     pm.register_step(NeverReachedStep())
 
     ctx = pm.execute_pipeline()
-    assert ctx.stopped is True
+    assert ctx.halted is True
+    assert ctx.ai_stopped is False      # P7: halting the pipeline is not the AI stopping
     assert NeverReachedStep.called is False
 
 
 def test_ingestion_step_confirms_new_theme_and_updates_logic_and_ai() -> None:
     rec = _make_record("FB-010")
     data = _make_mock_data([rec])
-    data.load_known_themes.side_effect = [
-        ["Facilities"],
-        ["Facilities", "Parking Fees"],
-    ]
+    # read once, after the new theme is saved (Logic, not this list, decides what is new)
+    data.load_known_themes.return_value = ["Facilities", "Parking Fees"]
     logic = _make_mock_logic()
     ai = MagicMock()
 
@@ -154,10 +157,8 @@ def test_ingestion_step_confirms_new_theme_and_updates_logic_and_ai() -> None:
 
 def test_ingestion_step_saves_themes_added_in_settings() -> None:
     data = _make_mock_data()
-    data.load_known_themes.side_effect = [
-        ["Facilities"],
-        ["Facilities", "Parking Fees"],
-    ]
+    # read once, after the new theme is saved (Logic, not this list, decides what is new)
+    data.load_known_themes.return_value = ["Facilities", "Parking Fees"]
     logic = _make_mock_logic()
     ai = MagicMock()
 
@@ -172,7 +173,7 @@ def test_ingestion_step_saves_themes_added_in_settings() -> None:
 
 def _summary_context(logic, *, sent: int, classified: int, stopped: bool = False) -> PipelineContext:
     return PipelineContext(records=[_make_record()], result=logic.aggregate.return_value,
-                           sent_to_ai=sent, classified_count=classified, stopped=stopped)
+                           sent_to_ai=sent, classified_count=classified, ai_stopped=stopped)
 
 
 def test_summary_step_keeps_last_ai_summary_when_nothing_new_was_sent() -> None:
@@ -263,7 +264,8 @@ def test_full_pipeline_completes_when_ai_is_down() -> None:
     session = FakeSession(records=[rec], source_file="outage.csv")
     ctx = pm.execute_pipeline(session)  # type: ignore[arg-type]
 
-    assert ctx.stopped is True
+    assert ctx.ai_stopped is True
+    assert ctx.halted is False          # P7: Call 1 stopping does not halt the pipeline
     assert ctx.classified_count == 0
     assert ctx.result is not None
     assert ctx.trend is not None
@@ -322,3 +324,101 @@ def test_full_run_with_real_data_manager_keeps_saved_records_and_actions(tmp_pat
     assert sorted(r.feedback_id for r in data.load_records()) == [r.feedback_id for r in saved]
     assert len(ctx.records) == 5
     assert len(ctx.impacts) == 1
+
+
+# ---- P1: a review decision's theme goes through Logic before it is stored or confirmed
+
+@pytest.mark.parametrize("label, stored, confirmed", [
+    ("wifi", "Facilities", None),            # an alias of a base theme
+    ("facilities", "Facilities", None),      # a case variant of a known theme
+    ("Unclear", "Unclear", None),            # the AI's "no real theme": never confirmed
+    ("other", "Unclear", None),
+    ("parking fees", "Parking Fees", "Parking Fees"),   # coined: kept, so confirmed (D16)
+])
+def test_review_theme_is_normalised_and_only_a_new_theme_is_confirmed(label, stored, confirmed) -> None:
+    from managers.logic_manager import LogicManager
+    from managers.models import THEMES
+
+    rec = _make_record("FB-020")
+    data = _make_mock_data([rec])
+    data.load_known_themes.return_value = list(THEMES)
+    ai = MagicMock()
+    session = FakeSession(decisions=[FakeDecision("FB-020", "update", theme=label)])
+
+    assert IngestionStep(data, LogicManager(), ai).execute(PipelineContext(session=session)) is True
+
+    [saved] = data.save_records.call_args.args[0]
+    assert (saved.theme, saved.verification) == (stored, REVIEWED)
+    if confirmed is None:
+        data.add_known_theme.assert_not_called()
+        ai.set_known_themes.assert_not_called()
+    else:
+        data.add_known_theme.assert_called_once_with(confirmed)
+
+
+def test_accepting_the_ai_values_on_two_records_confirms_a_coined_theme_once() -> None:
+    from managers.logic_manager import LogicManager
+    from managers.models import THEMES
+
+    data = _make_mock_data([_make_record("FB-021"), _make_record("FB-022")])
+    data.load_known_themes.return_value = list(THEMES)
+    session = FakeSession(decisions=[FakeDecision("FB-021", "update", theme="Parking"),
+                                     FakeDecision("FB-022", "update", theme="parking")])
+
+    IngestionStep(data, LogicManager(), MagicMock()).execute(PipelineContext(session=session))
+
+    data.add_known_theme.assert_called_once_with("Parking")
+
+
+def _real_pipeline(data, logic, ai) -> PipelineManager:
+    pm = PipelineManager()
+    for step in (IngestionStep(data, logic, ai), AIClassificationStep(ai, data),
+                 LogicStep(logic, data), SummaryStep(ai, logic),
+                 ImpactStep(logic, data), PersistenceStep(data)):
+        pm.register_step(step)
+    return pm
+
+
+# ---- P5: after a failed run the GUI sends the same session again; nothing is stored twice
+
+def test_rerunning_a_failed_run_stores_its_records_and_actions_once(tmp_path) -> None:
+    from managers.data_manager import DataManager
+    from managers.io_manager import RecordBuilder
+    from managers.logic_manager import LogicManager
+
+    data = DataManager(str(tmp_path))
+    session = FakeSession(records=[_make_record("FB-101"), _make_record("FB-102")],
+                          actions=[RecordBuilder().build_action("Facilities", "Fixed Wi-Fi", "2026-11-01")])
+    ai = MagicMock()
+    ai.classify_entries.side_effect = RuntimeError("network down")
+    pm = _real_pipeline(data, LogicManager(), ai)
+
+    with pytest.raises(RuntimeError):
+        pm.execute_pipeline(session)  # type: ignore[arg-type]
+    ai.classify_entries.side_effect = lambda recs, stored, on_classified: ([], list(recs), True)
+    pm.execute_pipeline(session)  # type: ignore[arg-type]
+
+    stored = [r.feedback_id for r in data.load_records() + data.load_pending()]
+    assert sorted(stored) == ["FB-101", "FB-102"]
+    assert len(data.load_actions()) == 1
+
+
+# ---- P6: a failed ImpactStep (errors swallowed by design) keeps the last saved impacts
+
+def test_a_failed_impact_step_does_not_erase_the_saved_impacts(tmp_path) -> None:
+    from managers.data_manager import DataManager
+    from managers.logic_manager import LogicManager
+
+    data = DataManager(str(tmp_path))
+    data.save_object("impact_output", [{"action_id": "a1", "verdict": "improved"}])
+    logic = LogicManager()
+    ai = MagicMock()
+    ai.classify_entries.side_effect = lambda recs, stored, on_classified: ([], list(recs), True)
+    pm = _real_pipeline(data, logic, ai)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(logic, "evaluate_actions", MagicMock(side_effect=RuntimeError("bad action")))
+        pm.execute_pipeline(FakeSession(records=[_make_record("FB-201")]))  # type: ignore[arg-type]
+
+    assert data.load_object("impact_output") == [{"action_id": "a1", "verdict": "improved"}]
+    assert [r.feedback_id for r in data.load_records()] == ["FB-201"]     # the run itself was saved

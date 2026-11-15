@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 class LogicStep(BaseStep):
+    description = "checking and counting the feedback"
+
     def __init__(self, logic: LogicManager, data: DataManager) -> None:
         self._logic = logic
         self._data = data

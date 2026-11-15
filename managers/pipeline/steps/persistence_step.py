@@ -12,6 +12,8 @@ if TYPE_CHECKING:
 
 
 class PersistenceStep(BaseStep):
+    description = "saving the results"
+
     def __init__(self, data: DataManager) -> None:
         self._data = data
 
@@ -36,5 +38,8 @@ class PersistenceStep(BaseStep):
         elif context.fallback_actions is not None:
             self._data.save_object("fallback_actions", context.fallback_actions)
 
-        self._data.save_object("impact_output", context.impacts)
+        # ImpactStep's errors do not stop the run, so keep the last saved impacts
+        # rather than overwrite them with nothing when it failed
+        if context.impacts is not None:
+            self._data.save_object("impact_output", context.impacts)
         return True

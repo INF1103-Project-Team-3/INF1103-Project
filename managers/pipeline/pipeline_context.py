@@ -25,8 +25,9 @@ class PipelineContext:
     result: AggregationResult | None = None
     trend: TrendReport | None = None
     summary: AISummary | None = None
-    impacts: list[ImpactReport] = field(default_factory=list)
+    impacts: list[ImpactReport] | None = None    # None: not measured this run (ImpactStep failed)
     fallback_actions: ActionSuggestions | None = None
     sent_to_ai: int = 0         # records sent to the AI this run (0 = nothing new to classify)
     classified_count: int = 0
-    stopped: bool = False
+    halted: bool = False        # a step returned False, so the later steps did not run
+    ai_stopped: bool = False    # Call 1 stopped early this run (AI down, D20)
