@@ -422,3 +422,21 @@ def test_a_failed_impact_step_does_not_erase_the_saved_impacts(tmp_path) -> None
 
     assert data.load_object("impact_output") == [{"action_id": "a1", "verdict": "improved"}]
     assert [r.feedback_id for r in data.load_records()] == ["FB-201"]     # the run itself was saved
+
+
+# L1: a previous run with a wrong-typed number is skipped, so the run completes
+@pytest.mark.parametrize("field, value", [("priority", None), ("priority", 50.5), ("count", "2")])
+def test_logic_step_skips_a_previous_run_with_a_wrong_type(field, value) -> None:
+    from managers.logic_manager import LogicManager
+
+    record = _make_record()
+    logic = LogicManager()
+    previous = logic.aggregate(logic.apply_rules([record])).to_dict()
+    previous["themes"][0][field] = value
+    data = _make_mock_data([record])
+    data.load_previous_run.return_value = {"run_at": "2026-11-10T10:00:00", "source_file": "a.csv",
+                                           "result": previous}
+    context = PipelineContext(session=FakeSession(), records=[record])
+
+    assert LogicStep(logic, data).execute(context) is True
+    assert context.trend.has_previous is False
