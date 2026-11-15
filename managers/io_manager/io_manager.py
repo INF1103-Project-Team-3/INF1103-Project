@@ -188,7 +188,10 @@ class IOManager:
         if result is None:
             self._view.show_message("Cancelled.")
             return False
-        self._view.show_message(f"Validated {len(result.records)} of {result.total} row(s).")
+        message = f"Validated {len(result.records)} of {result.total} row(s)"
+        if result.already_saved:
+            message += f"; {len(result.already_saved)} already saved, skipped"
+        self._view.show_message(message + ".")
         self._view.show_rejected_rows(result.rejected)
         if result.records:
             session.records.extend(result.records)
@@ -216,11 +219,12 @@ class IOManager:
         # imported here, not at the top, so an unfinished Logic or AI module can
         # never stop the whole I/O package from loading
         from managers.ai_manager import AISummary
-        from managers.logic_manager import AggregationResult, TrendReport
+        from managers.logic_manager import ActionSuggestions, AggregationResult, TrendReport
         queue = self._load_queue()
         self._view.show_dashboard(self._rebuild("aggregated_output", AggregationResult),
                                   self._rebuild("trend_output", TrendReport),
-                                  self._rebuild("summary", AISummary), queue)
+                                  self._rebuild("summary", AISummary), queue,
+                                  self._rebuild("fallback_actions", ActionSuggestions))
         # only offer a review if something is still undecided in this session
         waiting = [r for r in queue if r.feedback_id not in session.decided_ids()]
         if waiting and self._prompter.confirm("\nReview them now? (y/n): "):

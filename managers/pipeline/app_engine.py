@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 from managers.ai_manager import (
     AIManager,
+    AISummary,
     ConsoleProgressReporter,
     GroqClient,
     ProgressReporter,
@@ -206,9 +207,18 @@ class AppEngine:
             context = self.execute_run(session, view)
             if context is None:
                 return
-            view.show_dashboard(
-                context.result,
-                context.trend,
-                context.summary,
-                context.review_queue,
-            )
+            self._show_run_dashboard(context, view)
+
+    def _show_run_dashboard(self, context: PipelineContext, view) -> None:
+        """Show the run's results. When Call 2 did not run or failed, the last
+        AI summary is shown with its date, and this run's rule-based actions in
+        place of the AI's (D21)."""
+        summary = context.summary
+        if summary is None:
+            saved = self._data.load_object("summary")
+            try:
+                summary = AISummary.from_dict(saved) if saved else None
+            except (KeyError, TypeError, ValueError):
+                summary = None
+        view.show_dashboard(context.result, context.trend, summary, context.review_queue,
+                            context.fallback_actions)

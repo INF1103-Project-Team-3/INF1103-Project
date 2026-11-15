@@ -34,7 +34,9 @@ class QtFeedbackView(FeedbackView):
         self.__notice.open()
         self.__window.statusBar().showMessage(notice, MESSAGE_MS)
 
-    def show_dashboard(self, result, trend, summary, queue) -> None:
+    # fallback is accepted for the FeedbackView interface; the GUI's dashboard
+    # reads the saved rule-based actions itself (SummaryCard)
+    def show_dashboard(self, result, trend, summary, queue, fallback=None) -> None:
         self.__window.show_page(self.__dashboard.title)
         self.__dashboard.show_values(result, trend, summary, queue)
 

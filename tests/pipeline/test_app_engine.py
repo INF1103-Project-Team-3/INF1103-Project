@@ -170,3 +170,44 @@ def test_bootstrap_returns_nothing(monkeypatch, tmp_path):
     monkeypatch.setenv("GROQ_API_KEY", "")
     monkeypatch.setenv("GROQ_KEY_LABEL", "")
     assert AppEngine(str(tmp_path / "data")).bootstrap_system(reporter=None) is None
+
+
+# ---- I3 (D21): the end-of-run dashboard shows rule-based actions and keeps the last AI summary
+
+class DashboardView:
+    def show_dashboard(self, *args) -> None:
+        self.args = args
+
+
+def test_end_of_run_dashboard_shows_rule_based_actions_and_the_saved_summary(tmp_path):
+    from managers.ai_manager import AISummary
+    from managers.data_manager import DataManager
+    from managers.logic_manager import ActionSuggestions
+
+    engine = AppEngine(str(tmp_path / "data"))
+    engine._data = DataManager(str(tmp_path / "data"))
+    saved = AISummary("Old.", [{"theme": "Facilities", "suggested_action": "AI action."}], "2026-11-01T10:00:00")
+    engine._data.save_object("summary", saved)
+    context = PipelineContext()
+    context.fallback_actions = ActionSuggestions([{"theme": "Facilities", "suggested_action": "Rules."}])
+    view = DashboardView()
+
+    engine._show_run_dashboard(context, view)
+
+    assert view.args == (context.result, context.trend, saved, context.review_queue, context.fallback_actions)
+
+
+def test_end_of_run_dashboard_shows_this_runs_summary(tmp_path):
+    from managers.ai_manager import AISummary
+    from managers.data_manager import DataManager
+
+    engine = AppEngine(str(tmp_path / "data"))
+    engine._data = DataManager(str(tmp_path / "data"))
+    context = PipelineContext()
+    context.summary = AISummary("New.", [])
+    view = DashboardView()
+
+    engine._show_run_dashboard(context, view)
+
+    assert view.args[2] is context.summary
+    assert view.args[4] is None
