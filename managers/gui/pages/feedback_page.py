@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 from managers.io_manager import ReviewDecision
 from managers.models import SEVERITIES
 
+from ..style import SEGMENT_PADDING, Style
 from ..widgets.card import Card
 from ..widgets.combo_box import ComboBox
 from ..widgets.entry_card import EntryCard
@@ -28,13 +29,15 @@ class FeedbackPage(BasePage):
     save_requested = Signal()
     discard_requested = Signal()
 
-    def __init__(self, data, parent=None):
+    # logic answers whether a flagged entry's theme is new, for the Confirm new theme button.
+    def __init__(self, data, logic=None, parent=None):
         super().__init__("Feedback", "", parent)
         self.__data = data
         self.__records = {}
         self.__cards = {}
         self.__current = None
         self.__queued = {}
+        self.__queued_decisions = {}
         self.__queued_themes = []
 
         search_card = Card(padding=16, spacing=12)
@@ -57,14 +60,14 @@ class FeedbackPage(BasePage):
         self.__review_button.setProperty("side", "left")
         self.__all_button.setProperty("side", "right")
         self.__review_button.setChecked(True)
-        group.buttonClicked.connect(lambda _button: self.refresh())
+        group.buttonClicked.connect(lambda _button: self.__reload())
         bar.addWidget(segments)
         self.__search = QLineEdit()
         self.__search.setObjectName("searchBox")
         self.__search.setPlaceholderText("Search text, theme or severity…  (press Enter)")
         self.__search.setClearButtonEnabled(True)
-        self.__search.returnPressed.connect(self.refresh)
-        self.__search.textChanged.connect(lambda text: None if text else self.refresh())
+        self.__search.returnPressed.connect(self.__reload)
+        self.__search.textChanged.connect(lambda text: None if text else self.__reload())
         bar.addWidget(self.__search, 1)
         sort_label = QLabel("Sort by")
         sort_label.setObjectName("fieldLabel")
@@ -72,7 +75,7 @@ class FeedbackPage(BasePage):
         self.__sort.setObjectName("sortBox")
         self.__sort.addItems(list(SORTS))
         self.__sort.setToolTip("Recommended keeps the review queue's order: critical entries first.")
-        self.__sort.currentTextChanged.connect(lambda _text: self.refresh())
+        self.__sort.currentTextChanged.connect(lambda _text: self.__reload())
         bar.addWidget(sort_label)
         bar.addWidget(self.__sort)
         search_card.body.addLayout(bar)
@@ -98,7 +101,7 @@ class FeedbackPage(BasePage):
         list_note.setContentsMargins(4, 8, 4, 0)
         self.__list_card.body.addWidget(list_note)
 
-        self.__detail = EntryDetailPanel()
+        self.__detail = EntryDetailPanel(logic.is_new_theme if logic is not None else None)
         self.__detail.decision_requested.connect(self.__on_decision)
         self.__detail.undo_requested.connect(self.undo_requested)
         columns.addWidget(self.__list_card, 2, Qt.AlignmentFlag.AlignTop)
@@ -109,7 +112,13 @@ class FeedbackPage(BasePage):
     def review_count(self) -> int:
         return len(self.__data.load_review_queue())
 
+    # A refresh from outside (page switch, run end) keeps the selected entry (G2).
     def refresh(self) -> None:
+        self.__reload(keep_selection=True)
+
+    # The admin changed the list (sort, search, Needs review / All): it opens on its first entry,
+    # unless the selected one has unsaved Final values.
+    def __reload(self, keep_selection: bool = False) -> None:
         query = self.__search.text().strip()
         if query:
             records = self.__data.search_records(query)
@@ -120,7 +129,7 @@ class FeedbackPage(BasePage):
         else:
             records = self.__data.load_records()
 
-        self.__display(self.sort_records(records, self.__sort.currentText()))
+        self.__display(self.sort_records(records, self.__sort.currentText()), keep_selection)
 
     # Shows exactly these records (QtFeedbackView.show_search_results), in "All feedback".
     def show_records(self, records) -> None:
@@ -144,9 +153,15 @@ class FeedbackPage(BasePage):
     def __set_mode(self, review: bool) -> None:
         (self.__review_button if review else self.__all_button).setChecked(True)
 
-    def __display(self, records: list) -> None:
+    # A refresh keeps the selected entry and any unsaved Final values while it is still listed (G2).
+    def __display(self, records: list, keep_selection: bool = False) -> None:
+        listed = self.__current in {r.feedback_id for r in records}
+        edits = self.__detail.final_values() if listed and self.__detail.has_unsaved_changes() else None
+        keep = self.__current if listed and (keep_selection or edits) else None
         self.__review_button.setText(f"Needs review · {self.review_count()}")
         self.__all_button.setText(f"All feedback · {len(self.__data.load_records())}")
+        for button in (self.__review_button, self.__all_button):
+            Style.reserve_bold_width(button, SEGMENT_PADDING)     # bold when chosen
         self.__records = {r.feedback_id: r for r in records}
 
         for card in self.__cards.values():
@@ -165,7 +180,9 @@ class FeedbackPage(BasePage):
         self.__current = None
         self.__detail.clear()
         if records:
-            self.__select(records[0].feedback_id)
+            self.__select(keep or records[0].feedback_id)
+        if edits:
+            self.__detail.restore_edits(edits)
 
     def set_sort(self, name: str) -> None:
         self.__sort.setCurrentText(name)
@@ -191,10 +208,12 @@ class FeedbackPage(BasePage):
     # on the save bar; waiting is how many entries the same run would also send to the AI.
     def set_queued(self, decisions, waiting: int = 0) -> None:
         self.__queued = {d.feedback_id: self.describe(d) for d in decisions}
+        self.__queued_decisions = {d.feedback_id: d for d in decisions}
         for feedback_id, card in self.__cards.items():
             card.set_queued(self.__queued.get(feedback_id))
         if self.__current is not None:
             self.__detail.set_queued(self.__queued.get(self.__current))
+            self.__detail.show_queued_values(self.__queued_decisions.get(self.__current))
         count = len(self.__queued)
         text = f"<b>{count} {'change' if count == 1 else 'changes'} not saved yet.</b>"
         if waiting:
@@ -282,3 +301,4 @@ class FeedbackPage(BasePage):
         themes = known + [theme for theme in self.__queued_themes if theme not in known]
         self.__detail.show_record(self.__records[feedback_id], themes)
         self.__detail.set_queued(self.__queued.get(feedback_id))
+        self.__detail.show_queued_values(self.__queued_decisions.get(feedback_id))

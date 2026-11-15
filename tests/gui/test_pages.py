@@ -27,7 +27,10 @@ def test_feedback_page_counts_flagged_records(qtbot):
     page = FeedbackPage(data)
     qtbot.addWidget(page)
     page.refresh()
-    assert page.review_count() == len(data.load_review_queue()) > 0
+    # counted independently of review_count(), which is the queue's length (G15)
+    flagged = sum(1 for r in [*data.load_records(), *data.load_pending()] if r.needs_review)
+    assert flagged > 0 and page.review_count() == flagged
+    assert f"Needs review · {flagged}" in [b.text() for b in page.findChildren(QPushButton)]
 
 
 def test_detail_panel_shows_a_dash_while_ai_values_are_missing(qtbot):
@@ -93,24 +96,24 @@ def test_sidebar_badge_and_ampersand(qtbot):
 
 def test_critical_reasons_come_first():
     from types import SimpleNamespace
-    from managers.gui.widgets.record_tags import record_tags
+    from managers.gui.widgets.record_tags import RecordTags
     record = SimpleNamespace(needs_review=True, review_reasons=[
         "AI disagrees with the user on severity (user 'critical', AI 'high')", "Critical severity"])
-    assert record_tags(record) == [("Critical", "critical"), ("AI disagrees", "warn")]
+    assert RecordTags.tags(record) == [("Critical", "critical"), ("AI disagrees", "warn")]
 
 
 def test_each_logic_reason_gets_its_own_tag():
-    from managers.gui.widgets.record_tags import reason_tag
-    assert reason_tag("New theme 'Academic': confirm it or change it.") == ("New theme", "info")
-    assert reason_tag("Unclear theme (user said 'n/a') - needs a theme assigned") == ("Unclear theme", "caution")
-    assert reason_tag("Something new") == ("Something new", "warn")
+    from managers.gui.widgets.record_tags import RecordTags
+    assert RecordTags.reason_tag("New theme 'Academic': confirm it or change it.") == ("New theme", "info")
+    assert RecordTags.reason_tag("Unclear theme (user said 'n/a') - needs a theme assigned") == ("Unclear theme", "caution")
+    assert RecordTags.reason_tag("Something new") == ("Something new", "warn")
 
 
 def test_reason_is_shown_as_logic_wrote_it():
     from html import escape
-    from managers.gui.widgets.record_tags import explain_reason
+    from managers.gui.widgets.record_tags import RecordTags
     reason = "AI disagrees with the user on theme (user 'Academic', AI 'Facilities')"
-    assert explain_reason(reason) == "<b>AI disagrees:</b> " + escape(reason)
+    assert RecordTags.explain_reason(reason) == "<b>AI disagrees:</b> " + escape(reason)
 
 
 def test_sample_records_are_checked_by_the_real_logic():

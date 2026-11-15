@@ -8,13 +8,15 @@ from PySide6.QtWidgets import (
 from managers.io_manager import ReviewDecision
 from managers.models import SENTIMENTS, SEVERITIES, FeedbackRecord
 
-from ..style import restyle
+from ..style import Style
 from .combo_box import ComboBox
-from .record_tags import STATUS_TAGS, explain_reason, long_date
+from .date_text import DateText
+from .record_tags import RecordTags
 
 EMPTY = "—"
 FIELDS = ("theme", "sentiment", "severity")
-COLUMNS = (("Field", 2, 70), ("Student", 3, 90), ("AI", 3, 90), ("Final", 3, 120))
+# The Final dropdowns get the most room: their padding and arrow take about 42px (G13).
+COLUMNS = (("Field", 2, 92), ("Student", 3, 90), ("AI", 3, 90), ("Final", 5, 170))
 
 
 # Shows a record and turns the admin's buttons into a ReviewDecision.
@@ -22,9 +24,11 @@ class EntryDetailPanel(QFrame):
     decision_requested = Signal(object)
     undo_requested = Signal(str)
 
-    def __init__(self, parent=None):
+    # is_new_theme is Logic's check (LogicManager.is_new_theme); without it, no Confirm button.
+    def __init__(self, is_new_theme=None, parent=None):
         super().__init__(parent)
         self.setObjectName("card")
+        self.__is_new_theme = is_new_theme
         self.__record = None
         self.__loading = False
         self.__dirty = False
@@ -40,10 +44,12 @@ class EntryDetailPanel(QFrame):
         top.addWidget(self.__date)
 
         self.__text = QLabel("")
+        self.__text.setTextFormat(Qt.TextFormat.PlainText)     # shown as written (G6)
         self.__text.setObjectName("feedbackText")
         self.__text.setWordWrap(True)
         self.__text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.__summary = QLabel("")
+        self.__summary.setTextFormat(Qt.TextFormat.PlainText)
         self.__summary.setObjectName("smallNote")
         self.__summary.setWordWrap(True)
         self.__summary.hide()
@@ -74,6 +80,7 @@ class EntryDetailPanel(QFrame):
             user, ai = QLabel(EMPTY), QLabel(EMPTY)
             for cell in (user, ai):
                 cell.setObjectName("fieldValue")
+                cell.setWordWrap(True)          # a long theme wraps instead of being cut off
             self.__cells[(field, "user")] = user
             self.__cells[(field, "ai")] = ai
             self.__rows[field] = self.__row([name, user, ai, self.__boxes[field]])
@@ -161,6 +168,31 @@ class EntryDetailPanel(QFrame):
     def has_unsaved_changes(self) -> bool:
         return self.__dirty
 
+    # The Final boxes' current text, e.g. to put unsaved edits back after a refresh.
+    def final_values(self) -> dict[str, str]:
+        return {field: box.currentText() for field, box in self.__boxes.items()}
+
+    # Puts edited Final values back and keeps them marked unsaved.
+    def restore_edits(self, values: dict[str, str]) -> None:
+        for field, text in values.items():
+            box = self.__boxes[field]
+            if text and box.findText(text) == -1:
+                box.addItem(text)
+            box.setCurrentIndex(box.findText(text) if text else -1)
+        self.__dirty = True
+
+    # Shows a queued update's values in the Final column (G13); None or a delete leaves them.
+    def show_queued_values(self, decision) -> None:
+        if decision is None or decision.action != ReviewDecision.UPDATE:
+            return
+        self.__loading = True
+        for field in FIELDS:
+            box, text = self.__boxes[field], getattr(decision, field)
+            if box.findText(text) == -1:
+                box.addItem(text)
+            box.setCurrentIndex(box.findText(text))
+        self.__loading = False
+
     def clear(self) -> None:
         self.__loading = True
         self.__record = None
@@ -187,7 +219,7 @@ class EntryDetailPanel(QFrame):
         self.__record = record
         self.__heading.setText(record.feedback_id)
         source = record.source_file or "typed in"
-        self.__date.setText(f"Submitted {long_date(record.timestamp)} · {source}")
+        self.__date.setText(f"Submitted {DateText.long(record.timestamp)} · {source}")
         self.__text.setText(record.text)
         summary = (record.ai or {}).get("summary")
         self.__summary.setText(f"AI summary: {summary}" if summary else "")
@@ -245,15 +277,15 @@ class EntryDetailPanel(QFrame):
     @staticmethod
     def __reason_html(record: FeedbackRecord) -> str:
         if record.needs_review:
-            items = "".join(f"<li>{explain_reason(reason)}</li>" for reason in record.review_reasons)
+            items = "".join(f"<li>{RecordTags.explain_reason(reason)}</li>" for reason in record.review_reasons)
             return f'<ul style="margin:0; -qt-list-indent:1;">{items}</ul>'
-        status, _kind = STATUS_TAGS.get(record.verification, (record.verification, ""))
+        status, _kind = RecordTags.STATUS_TAGS.get(record.verification, (record.verification, ""))
         return f"Not flagged · {status}"
 
     @staticmethod
     def __set_mismatch(widget, mismatch: bool) -> None:
         widget.setProperty("mismatch", mismatch)
-        restyle(widget)
+        Style.restyle(widget)
 
     def __set_buttons_enabled(self, enabled: bool) -> None:
         for widget in (self.__save, self.__use_user, self.__use_ai, self.__delete, *self.__boxes.values()):
@@ -279,10 +311,10 @@ class EntryDetailPanel(QFrame):
         labels = dict(zip(FIELDS, values))
         self.decision_requested.emit(ReviewDecision.update(self.__record.feedback_id, labels))
 
-    # The theme NewThemeRule flagged on this record, or None.
-    @staticmethod
-    def __new_theme(record: FeedbackRecord) -> str | None:
-        if record.theme and any(reason.lower().startswith("new theme") for reason in record.review_reasons):
+    # The flagged record's theme if Logic says it is new (not yet confirmed), or None.
+    def __new_theme(self, record: FeedbackRecord) -> str | None:
+        if (record.needs_review and record.theme and self.__is_new_theme is not None
+                and self.__is_new_theme(record.theme)):
             return record.theme
         return None
 

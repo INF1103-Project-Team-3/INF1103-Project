@@ -36,7 +36,7 @@ def test_lists_the_known_themes_and_the_status(qtbot):
     page = settings(qtbot, ai_ready=True)
     text = labels(page)
     assert all(theme in text for theme in THEMES)
-    assert "AI connection" in text and "ready" in text
+    assert "AI connection" in text and "Key set" in text
     assert "Processed records" in text and "Waiting for review" in text and "Tokens used today" in text
 
 

@@ -1,6 +1,7 @@
 # DataReader: the GUI's read-only view of DataManager, turning its plain dicts into objects.
 
 import logging
+from datetime import date
 
 from managers.ai_manager import AISummary
 from managers.logic_manager import ActionSuggestions, AggregationResult, ImpactReport, TrendReport
@@ -48,25 +49,23 @@ class DataReader:
     # Part 2 runs, oldest first, in the shape the charts read: {"run": 1, "finished_at": "2026-11-10",
     # "theme_counts": {...}, "theme_priority": {...}}. Part 1 entries are skipped.
     def load_history(self) -> list[dict]:
-        runs = []
-        for entry in reversed(self.__data.load_history()):
-            try:
-                result = AggregationResult.from_dict(entry)
-            except ValueError:
-                continue
-            runs.append({"run": len(runs) + 1, "finished_at": (result.run_at or "")[:10],
-                         "theme_counts": {stats.theme: stats.count for stats in result.themes},
-                         "theme_priority": {stats.theme: stats.priority for stats in result.themes}})
-        return runs
+        return [{"run": number, "finished_at": result.run_at[:10],
+                 "theme_counts": {stats.theme: stats.count for stats in result.themes},
+                 "theme_priority": {stats.theme: stats.priority for stats in result.themes}}
+                for number, result in enumerate(self.load_runs(), start=1)]
 
     # Part 2 runs as AggregationResults, oldest first (same order as load_history), for compare_runs.
+    # A run without a readable date (only a hand edit makes one) is skipped too, as the charts
+    # place every run by its date (G12).
     def load_runs(self) -> list[AggregationResult]:
         runs = []
         for entry in reversed(self.__data.load_history()):
             try:
-                runs.append(AggregationResult.from_dict(entry))
+                result = AggregationResult.from_dict(entry)
+                date.fromisoformat((result.run_at or "")[:10])
             except ValueError:
                 continue
+            runs.append(result)
         return runs
 
     # The latest run's statistics, or None before the first run.

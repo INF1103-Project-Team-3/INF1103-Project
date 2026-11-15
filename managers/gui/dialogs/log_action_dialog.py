@@ -25,6 +25,10 @@ class LogActionDialog(QDialog):
         self.__theme.setObjectName("themeBox")
         self.__theme.addItems(known_themes)
         if theme:
+            # a pending or queued theme may not be in the list yet: add it rather than
+            # leave the first theme chosen (G3)
+            if self.__theme.findText(theme) == -1:
+                self.__theme.addItem(theme)
             self.__theme.setCurrentText(theme)
         self.__description = QLineEdit()
         self.__description.setObjectName("descriptionEdit")
