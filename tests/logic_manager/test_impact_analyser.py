@@ -168,3 +168,25 @@ def test_unverified_entries_give_a_warning():
                make_record("2026-10-21")]
     assert evaluate(records).warnings == ["2 of the measured entries are unverified: the AI hasn't checked them yet."]
     assert evaluate(window(1, 3)).warnings == []
+
+
+@pytest.mark.parametrize("complaints_after, others_after, warning", [
+    (2, 0, "Other feedback fell by 100% over the same period, at least as much as this, so the drop may not be "
+           "down to the action."),
+    (2, 2, "Other feedback fell by 33% over the same period, at least as much as this, so the drop may not be "
+           "down to the action."),
+    (2, 3, None),       # other feedback held steady: the drop is the theme's own
+    (3, 0, None),       # complaints didn't fall (No change), so there is no drop to explain
+])
+def test_a_drop_matched_by_other_feedback_gives_a_warning(complaints_after, others_after, warning):
+    # 3 Facilities complaints and 3 entries on another theme before the action
+    others = dict(theme="Assessment", text="Too many quizzes.")
+    records = (window(1, 3) + window(1, 3, **others)
+               + window(15, complaints_after, severity=LOW) + window(15, others_after, **others))
+    assert evaluate(records).warnings == ([warning] if warning else [])
+
+
+def test_fewer_but_more_serious_complaints_give_a_warning():
+    report = evaluate(window(1, 4, severity=LOW) + window(15, 2))
+    assert report.warnings == ["Fewer complaints, but more of them are serious: high or critical entries rose "
+                               "from 0 to 2."]

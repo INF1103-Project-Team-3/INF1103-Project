@@ -1,12 +1,33 @@
+# Settings shared by both services, written once
+x-feedbacklens: &feedbacklens
+  build: .
+  image: feedbacklens
+  volumes:
+    # Mount the repo root, so the container uses your local files:
+    # code changes apply without rebuilding, the API key is read from
+    # managers/config/.env, and all results are saved to data/ in the repo
+    - .:/Project
+
 services:
+  # Terminal mode:  docker compose run --rm app
   app:
-    build: .
-    image: feedbacklens
-    volumes:
-      # Mount the repo root, so the container uses your local files:
-      # code changes apply without rebuilding, the API key is read from
-      # managers/config/.env, and all results are saved to data/ in the repo
-      - .:/Project
+    <<: *feedbacklens
     # Keep the terminal interactive so you can type at the prompts
     stdin_open: true
     tty: true
+
+  # GUI mode:  docker compose up --build gui
+  # then open http://localhost:6080 (or click the 6080 port link in Docker Desktop)
+  gui:
+    <<: *feedbacklens
+    ports:
+      # Only this computer can open the GUI (not other devices on the network)
+      - "127.0.0.1:6080:6080"
+    environment:
+      # Qt draws the window into a VNC screen instead of a desktop
+      QT_QPA_PLATFORM: "vnc:size=1280x800"
+    # websockify serves the FeedbackLens page (docker/gui/index.html) and relays that VNC screen to it
+    command: >
+      sh -c "websockify --web /usr/share/novnc 6080 localhost:5900 > /dev/null 2>&1 &
+      echo 'FeedbackLens GUI: open http://localhost:6080' &&
+      exec python -m managers.main --gui"

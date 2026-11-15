@@ -16,6 +16,7 @@ from managers.gui.pages.trends_page import TrendsPage  # noqa: E402
 from managers.gui.widgets.entry_detail_panel import EntryDetailPanel  # noqa: E402
 from managers.gui.widgets.sparkline import Sparkline  # noqa: E402
 from managers.gui.widgets.trend_chart import TrendChart  # noqa: E402
+from managers.gui.widgets.combo_box import ComboBox  # noqa: E402
 from managers.io_manager import RecordBuilder, ReviewDecision, SessionResult  # noqa: E402
 from managers.logic_manager import LogicManager  # noqa: E402
 from managers.models import THEMES  # noqa: E402
@@ -32,10 +33,9 @@ def labels(widget):
 
 
 # Run 1 with the AI working (summary written), run 2 with it down (one unverified entry and
-# rule-based actions); Parking Fees, a new theme, is confirmed in run 2. A third run after an
-# AI-down run would hit the pipeline's leftover-pending bug (reported to Zheng Yi).
+# rule-based actions); Parking Fees, a new theme, is confirmed in run 2.
 @pytest.fixture
-def reader(tmp_path):
+def data(tmp_path):
     data = DataManager(str(tmp_path / "data"))
     logic = LogicManager()
     parking = entry("Parking costs too much", theme="Parking Fees")
@@ -43,7 +43,25 @@ def reader(tmp_path):
     build_pipeline(data, logic, StubAI(down=True)).execute_pipeline(
         SessionResult(records=[entry("Lab is cold", severity="high")],
                       decisions=[ReviewDecision.update(parking.feedback_id, parking.user)]))
+    return data
+
+
+# The pages read the two runs through DataReader.
+@pytest.fixture
+def reader(data):
     return DataReader(data)
+
+
+# With the AI back, an empty Process retries the unverified entry (D4) and keeps every entry (#89, #94).
+def test_a_run_after_the_ai_was_down_retries_the_unverified_entry(qtbot, data):
+    build_pipeline(data, LogicManager(), StubAI()).execute_pipeline(SessionResult())
+    reader = DataReader(data)
+    assert len(reader.load_records()) == 3 and not reader.load_pending()
+    assert len(reader.load_history()) == 3 and reader.load_result().unverified_count == 0
+    page = DashboardPage(reader)
+    qtbot.addWidget(page)
+    page.refresh()
+    assert "unverified." not in labels(page)
 
 
 def test_trend_chart_breaks_the_line_at_a_missing_run(qtbot):
@@ -80,7 +98,7 @@ def test_dashboard_shows_the_ai_notice_strip_and_themes(qtbot, reader):
     qtbot.addWidget(page)
     page.refresh()
     text = labels(page)
-    assert "AI unavailable for 1 entry" in text
+    assert "so 1 entry is unverified" in text
     assert "Compared with the run on" in text
     assert "Facilities" in text and "Parking Fees" in text
     assert "All fine." not in text and "summary and suggested actions are on Trends" in text
@@ -177,3 +195,56 @@ def test_summary_card_without_an_ai_summary_shows_rule_based_actions_below(qtbot
     page.refresh()
     text = labels(page)
     assert "No AI summary yet" in text and ActionSuggestions.LABEL in text and "Space out deadlines" in text
+
+
+# 25 flat runs, like many test runs with little new feedback.
+def many_runs(count=25):
+    from tests.gui.support.fake_data_manager import FakeDataManager
+    history = [{"run": i + 1, "finished_at": f"2026-10-{i + 1:02d}", "theme_counts": {"Facilities": 3},
+                "theme_priority": {"Facilities": 50}} for i in range(count)]
+    return FakeDataManager([], history=history)
+
+
+def test_trends_shows_the_last_10_runs_by_default_and_all_on_request(qtbot):
+    page = TrendsPage(many_runs())
+    qtbot.addWidget(page)
+    page.refresh()
+    assert page.chart.segments("Facilities") == [[(i, 50) for i in range(10)]]
+    page.findChild(ComboBox, "runSpan").setCurrentText("All runs")
+    assert len(page.chart.segments("Facilities")[0]) == 25
+    assert page.findChild(ComboBox, "compareFrom").count() == 25
+
+
+def test_trend_chart_skips_x_labels_that_would_overlap(qtbot):
+    chart = TrendChart()
+    qtbot.addWidget(chart)
+    chart.resize(700, 320)
+    chart.set_data([f"14 Nov · Run {i}" for i in range(1, 26)], {"Facilities": [50] * 25}, top=100)
+    shown = chart.label_indices()
+    assert shown[0] == 0 and shown[-1] == 24 and len(shown) < 25
+    chart.resize(2000, 320)
+    chart.set_data(["Run 1", "Run 2", "Run 3"], {"Facilities": [1, 2, 3]}, top=100)
+    assert chart.label_indices() == [0, 1, 2]
+
+
+def dashboard(qtbot, reader, ai_ready):
+    page = DashboardPage(reader, ai_ready)
+    qtbot.addWidget(page)
+    page.refresh()
+    return page
+
+
+# The AI notice says whether the AI is back (with Process now) or still down.
+def test_the_ai_notice_offers_process_now_once_the_ai_is_back(qtbot, reader):
+    page = dashboard(qtbot, reader, ai_ready=True)
+    assert "The AI was unavailable on the last run, so 1 entry is unverified" in labels(page)
+    process = [b for b in page.findChildren(QPushButton) if b.text() == "Process now"][0]
+    assert process.isVisibleTo(page)
+    with qtbot.waitSignal(page.run_requested, timeout=1000):
+        process.click()
+
+
+def test_the_ai_notice_says_the_ai_is_down_without_a_button(qtbot, reader):
+    page = dashboard(qtbot, reader, ai_ready=False)
+    assert "The AI is unavailable, so 1 entry is unverified" in labels(page)
+    assert not [b for b in page.findChildren(QPushButton) if b.text() == "Process now"][0].isVisibleTo(page)
