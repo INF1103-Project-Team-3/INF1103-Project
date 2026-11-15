@@ -184,6 +184,8 @@ QRadioButton::indicator:checked {{ background: {CARD}; border: 5px solid {BLUE};
 #feedbackBox {{ background: {CARD}; border: 1px solid {FIELD_BORDER}; border-radius: 10px; padding: 8px;
                 font-size: 15px; }}
 #feedbackBox:focus, #studentTheme:focus {{ border-color: {BLUE}; }}
+#entryTextBox {{ background: {CARD}; color: {INK}; border: 1px solid {FIELD_BORDER}; border-radius: 8px; padding: 6px; }}
+#entryTextBox:focus {{ border-color: {BLUE}; }}
 #studentTheme {{ min-height: 48px; border: 1px solid {FIELD_BORDER}; border-radius: 10px; padding: 0 14px; font-size: 15px; }}
 #chip {{ min-height: 36px; border-radius: 18px; padding: 0 12px; font-size: 13px; }}
 #optionCard {{ background: {CARD}; border: 1px solid {FIELD_BORDER}; border-radius: 10px; }}

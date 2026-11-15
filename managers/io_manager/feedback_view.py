@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Mapping, Sequence
 
 from managers.models import FeedbackRecord
 
@@ -45,3 +45,9 @@ class FeedbackView(ABC):
     @abstractmethod
     def show_rejected_rows(self, rejected: Sequence[tuple[int, str]]) -> None:
         """Show the rows an import rejected, with the reason for each."""
+
+    @abstractmethod
+    def show_settings(self, known_themes: Sequence[str], themes_to_add: Sequence[str],
+                      status: Mapping[str, str]) -> None:
+        """Show the known themes, the themes waiting to be added, and the
+        read-only system status (label -> value)."""

@@ -3,11 +3,12 @@
 import logging
 
 from managers.ai_manager import AISummary
-from managers.logic_manager import AggregationResult, ImpactReport, TrendReport
+from managers.logic_manager import ActionSuggestions, AggregationResult, ImpactReport, TrendReport
 from managers.models import Action, FeedbackRecord
 
 
 # Wraps DataManager for the pages. Never writes: changes go through the pipeline.
+# Accepts records and actions as objects (Data since #82) or as plain dicts.
 class DataReader:
     def __init__(self, data):
         self.__data = data
@@ -24,6 +25,14 @@ class DataReader:
     def search_records(self, query: str) -> list[FeedbackRecord]:
         return self.__records(self.__data.search_records(query))
 
+    # The AI's token log, read only (G3): {} if none yet, None if unreadable.
+    def load_token_log(self) -> dict | None:
+        return self.__data.load_token_log()
+
+    @property
+    def data_folder(self) -> str:
+        return str(getattr(self.__data, "data_dir", "") or "")
+
     def load_known_themes(self) -> list[str]:
         return list(self.__data.load_known_themes())
 
@@ -31,7 +40,7 @@ class DataReader:
         actions = []
         for entry in self.__data.load_actions():
             try:
-                actions.append(Action.from_dict(entry))
+                actions.append(entry if isinstance(entry, Action) else Action.from_dict(entry))
             except (KeyError, ValueError, TypeError) as error:
                 logging.warning("Skipped a corrupt action: %r", error)
         return actions
@@ -71,6 +80,11 @@ class DataReader:
     def load_summary(self) -> AISummary | None:
         return self.__object("summary", AISummary.from_dict)
 
+    # Rule-based actions saved when the AI's summary was skipped or failed (D21); the
+    # pipeline saves [] when the summary succeeds, which reads as None here.
+    def load_fallback_actions(self) -> ActionSuggestions | None:
+        return self.__object("fallback_actions", ActionSuggestions.from_dict)
+
     def load_impacts(self) -> list[ImpactReport]:
         reports = []
         for entry in self.__data.load_object("impact_output") or []:
@@ -95,7 +109,7 @@ class DataReader:
         records = []
         for entry in entries:
             try:
-                records.append(FeedbackRecord.from_dict(entry))
+                records.append(entry if isinstance(entry, FeedbackRecord) else FeedbackRecord.from_dict(entry))
             except (KeyError, TypeError) as error:
                 logging.warning("Skipped a record Data could not rebuild: %r", error)
         return records

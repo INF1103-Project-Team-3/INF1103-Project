@@ -20,10 +20,11 @@ class SessionResult:
     source_file: str | None = None                                # name of the last file imported
     decisions: list[ReviewDecision] = field(default_factory=list) # admin review choices
     actions: list[Action] = field(default_factory=list)           # actions the admin logged
+    themes_to_add: list[str] = field(default_factory=list)        # new themes from Settings
 
     def is_empty(self) -> bool:
         """True when nothing at all was collected."""
-        return not (self.records or self.decisions or self.actions)
+        return not (self.records or self.decisions or self.actions or self.themes_to_add)
 
     def decided_ids(self) -> set[str]:
         """IDs already reviewed in this session, so a record is not offered twice."""

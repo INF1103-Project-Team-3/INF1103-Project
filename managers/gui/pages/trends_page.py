@@ -12,6 +12,7 @@ from ..widgets.card import Card
 from ..widgets.combo_box import ComboBox
 from ..widgets.pill import Pill
 from ..widgets.record_tags import short_date
+from ..widgets.summary_card import SummaryCard
 from ..widgets.trend_chart import TrendChart
 from .base_page import BasePage
 
@@ -23,6 +24,8 @@ SHAPE_SYMBOLS = {"circle": "●", "square": "■", "triangle": "▲"}
 STATUS_KINDS = {"Escalating": "warn", "New": "info", "Easing": "good", "Steady": "neutral",
                 "Not reported": "neutral"}
 IMPACT_KINDS = {"Effective": "good", "Worse": "critical"}
+# How many of the latest runs the chart shows (None = all), first one by default.
+RUN_SPANS = {"Last 10 runs": 10, "Last 20 runs": 20, "All runs": None}
 
 
 # Emits action_logged(action). With a LogicManager and Data's runs, comparisons come from
@@ -46,6 +49,20 @@ class TrendsPage(BasePage):
         self.add_header_widget(self.__log_button)
 
         chart_card = Card("Priority across runs")
+        span = QHBoxLayout()
+        span.setSpacing(8)
+        span_label = QLabel("Show")
+        span_label.setObjectName("fieldLabel")
+        self.__span = ComboBox()
+        self.__span.setObjectName("runSpan")
+        self.__span.addItems(list(RUN_SPANS))
+        self.__span.setToolTip("Compare below can still pick any run.")
+        self.__span.setCurrentIndex(0)
+        self.__span.currentIndexChanged.connect(self.__update_chart)
+        span.addWidget(span_label)
+        span.addWidget(self.__span)
+        span.addStretch()
+        chart_card.body.addLayout(span)
         self.__legend = QGridLayout()
         self.__legend.setHorizontalSpacing(24)
         self.__legend.setVerticalSpacing(8)
@@ -83,6 +100,10 @@ class TrendsPage(BasePage):
         chart_card.body.addWidget(compare)
         self.content_layout.addWidget(chart_card)
 
+        self.__summary = SummaryCard()
+        self.__summary.log_action_requested.connect(self.open_log_dialog)
+        self.content_layout.addWidget(self.__summary)
+
         self.__actions_card = Card("Actions taken", spacing=0)
         self.__rows = QVBoxLayout()
         self.__rows.setSpacing(0)
@@ -95,9 +116,10 @@ class TrendsPage(BasePage):
     def chart(self) -> TrendChart:
         return self.__chart
 
-    def open_log_dialog(self, theme: str | None = None) -> None:
+    # description pre-fills the dialog, e.g. from a suggested action on the dashboard.
+    def open_log_dialog(self, theme: str | None = None, description: str | None = None) -> None:
         dialog = LogActionDialog(self.__data.load_known_themes(), self,
-                                 theme=theme if isinstance(theme, str) else None)
+                                 theme=theme if isinstance(theme, str) else None, description=description)
         if dialog.exec() and dialog.action is not None:
             self.__unsaved.append(dialog.action)
             self.action_logged.emit(dialog.action)
@@ -111,6 +133,7 @@ class TrendsPage(BasePage):
         self.__refresh_chart()
         self.__refresh_pickers()
         self.__refresh_actions()
+        self.__summary.show_summary(self.__data.load_summary(), self.__data.load_fallback_actions())
 
     # Shows Run x vs Run y (1-based run numbers) in the comparison row.
     def compare(self, older: int, newer: int) -> None:
@@ -129,9 +152,15 @@ class TrendsPage(BasePage):
         themes.sort(key=lambda theme: -(latest.get(theme) or 0))
         if len(history) != self.__history_size:
             self.__history_size = len(history)
-            self.__chart.set_data(self.__labels(), self.__series(themes))
+            runs = self.__shown_runs()
+            self.__chart.set_data(self.__labels(runs), self.__series(themes, runs))
             self.__build_legend(themes)
         self.__update_chart()
+
+    # The latest runs the "Show" box asks for; Compare still uses every run.
+    def __shown_runs(self) -> list[dict]:
+        limit = RUN_SPANS.get(self.__span.currentText())
+        return self.__history[-limit:] if limit else list(self.__history)
 
     def __build_legend(self, themes: list[str]) -> None:
         shown = {name for name, box in self.__checks.items() if box.isChecked()} or set(themes[:SHOWN_AT_START])
@@ -153,22 +182,25 @@ class TrendsPage(BasePage):
 
     def __update_chart(self, *_args) -> None:
         shown = {name for name, box in self.__checks.items() if box.isChecked()}
+        runs = self.__shown_runs()
         markers = []
         for action in [*self.__data.load_actions(), *self.__unsaved]:
             if action.theme in shown:
-                position = self.__run_position(self.__history, action.action_date)
+                position = self.__run_position(runs, action.action_date)
                 if position is not None:
                     markers.append((position, f"Action: {action.description}"))
-        self.__chart.set_data(self.__labels(), self.__series(list(self.__checks)), markers, top=100)
+        self.__chart.set_data(self.__labels(runs), self.__series(list(self.__checks), runs), markers, top=100)
         self.__chart.set_visible_series(shown)
 
-    def __labels(self) -> list[str]:
-        return [f"{short_date(run['finished_at'])} · Run {run['run']}" for run in self.__history]
+    def __labels(self, runs: list[dict] | None = None) -> list[str]:
+        runs = self.__history if runs is None else runs
+        return [f"{short_date(run['finished_at'])} · Run {run['run']}" for run in runs]
 
-    def __series(self, themes: list[str]) -> dict[str, list[float | None]]:
-        return {theme: [self.__priorities(run).get(theme) for run in self.__history] for theme in themes}
+    @classmethod
+    def __series(cls, themes: list[str], runs: list[dict]) -> dict[str, list[float | None]]:
+        return {theme: [cls.__priorities(run).get(theme) for run in runs] for theme in themes}
 
-    # Older history rows (the demo's) may only have counts; those runs then show no priority.
+    # Older history rows (e.g. the test fakes') may only have counts; those runs then show no priority.
     @staticmethod
     def __priorities(run: dict) -> dict:
         return run.get("theme_priority", {})

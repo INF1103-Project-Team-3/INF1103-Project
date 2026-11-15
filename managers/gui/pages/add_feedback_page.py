@@ -4,6 +4,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButton, QStackedWidget, QVBoxLayout
 
 from managers.io_manager import EntryValidator, RecordBuilder
+from managers.models import UNVERIFIED
 
 from ..progress_signals import ProgressSignals
 from ..widgets.card import Card
@@ -26,6 +27,7 @@ class AddFeedbackPage(BasePage):
         self.__data = data
         self.__busy = False
         self.__queued = 0
+        self.__queued_themes = []
 
         self.__single = SingleEntryForm(validator, builder)
         self.__single.record_added.connect(self.record_added)
@@ -85,15 +87,27 @@ class AddFeedbackPage(BasePage):
         self.__panel.set_running(busy)
         self.refresh()
 
+    # Themes added in Settings but not saved yet; the Single entry picker offers them too.
+    def set_queued_themes(self, themes: list[str]) -> None:
+        self.__queued_themes = list(themes)
+        self.refresh()
+
     # How many entries (student, typed or imported) are queued for the next run.
     def set_new_count(self, count: int) -> None:
         self.__queued = count
         self.refresh()
 
+    # Waiting for the AI: pending entries plus saved ones the AI couldn't check (D4: unverified
+    # entries go to the AI again on the next run, so Process must be possible without new feedback).
     def refresh(self) -> None:
-        self.__single.set_themes(self.__data.load_known_themes())
-        count = len(self.__data.load_pending()) + self.__queued
-        text = f"{count} {'entry' if count == 1 else 'entries'} waiting for the AI"
+        known = self.__data.load_known_themes()
+        self.__single.set_themes(known + [t for t in self.__queued_themes if t not in known])
+        pending, unverified = self.__waiting()
+        waiting = len(pending) + len(unverified)
+        count = waiting + self.__queued
+        text = f"{waiting} {'entry' if waiting == 1 else 'entries'} waiting for the AI"
+        if unverified:
+            text += f" ({len(unverified)} unverified, retried when you process)"
         if self.__queued:
             text += f" · {self.__queued} queued in this session"
         self.__pending.setText(text)
@@ -104,6 +118,17 @@ class AddFeedbackPage(BasePage):
             self.__process.setText(f"Process {count} {'entry' if count == 1 else 'entries'}"
                                    if count else "Nothing to process")
             self.__process.setEnabled(bool(count))
+
+    # How many saved entries the next run sends to the AI (pending plus unverified).
+    def waiting_for_ai(self) -> int:
+        pending, unverified = self.__waiting()
+        return len(pending) + len(unverified)
+
+    def __waiting(self) -> tuple[set, set]:
+        pending = {r.feedback_id for r in self.__data.load_pending()}
+        unverified = {r.feedback_id for r in self.__data.load_records()
+                      if r.ai is None and r.verification == UNVERIFIED} - pending
+        return pending, unverified
 
     def __build_segments(self) -> QFrame:
         segments = QFrame()

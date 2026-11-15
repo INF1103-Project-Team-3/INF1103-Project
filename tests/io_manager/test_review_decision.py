@@ -29,3 +29,9 @@ def test_session_result_knows_when_it_is_empty_and_what_was_decided():
     session.decisions.append(ReviewDecision.delete("fb_1"))
     assert not session.is_empty()
     assert session.decided_ids() == {"fb_1"}
+
+
+def test_a_session_that_only_adds_a_theme_is_not_empty():
+    # themes added in Settings must still reach the pipeline, which saves them
+    assert SessionResult().themes_to_add == []
+    assert not SessionResult(themes_to_add=["Parking Fees"]).is_empty()
