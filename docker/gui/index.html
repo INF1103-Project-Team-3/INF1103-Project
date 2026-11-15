@@ -32,6 +32,8 @@
     function connect() {
         const rfb = new RFB(screen, url);
         rfb.scaleViewport = true;      // fit the app to the browser window
+        rfb.qualityLevel = 9;          // best image quality: the default (6) blurs text
+        rfb.compressionLevel = 2;      // lossless zlib (doesn't blur), keeps the 2x screen quick
         rfb.background = '#f3f4f3';     // fill any spare space with the app's background colour
         rfb.addEventListener('connect', () => {
             status.classList.add('hidden');
