@@ -28,15 +28,20 @@ services:
       # (Qt's own "vnc" mode drops mouse-wheel scrolling and swaps red and blue)
       DISPLAY: ":1"
       QT_QPA_PLATFORM: "xcb"
+      # The app draws at 2x on a 2560x1600 screen (still a 1280x800 layout), so the browser only
+      # shrinks the picture and text stays sharp, also on laptops with Windows display scaling
+      QT_SCALE_FACTOR: "2"
     # 1. Clear the lock left behind if this container ran before, then start the virtual screen
-    # 2. Once it is up: the window manager keeps the GUI full-screen, x11vnc shares the screen,
+    # 2. Once it is up: the window manager keeps the GUI full-screen, x11vnc shares the screen
+    #    (-defer/-wait 5 ms instead of 20 sends changes sooner, so clicks feel quicker),
     #    and websockify serves the FeedbackLens page (docker/gui/index.html) and relays the screen to it
+    # The 2560x1600 screen with QT_SCALE_FACTOR 2 (above) keeps text sharp in the browser
     command: >
       sh -c "rm -f /tmp/.X1-lock /tmp/.X11-unix/X1;
-      Xvfb :1 -screen 0 1280x800x24 -nolisten tcp > /dev/null 2>&1 &
+      Xvfb :1 -screen 0 2560x1600x24 -nolisten tcp > /dev/null 2>&1 &
       while [ ! -e /tmp/.X11-unix/X1 ]; do sleep 0.1; done;
       matchbox-window-manager -use_titlebar no > /dev/null 2>&1 &
-      x11vnc -display :1 -rfbport 5900 -localhost -forever -shared -nopw -quiet > /dev/null 2>&1 &
+      x11vnc -display :1 -rfbport 5900 -localhost -forever -shared -nopw -quiet -defer 5 -wait 5 > /dev/null 2>&1 &
       websockify --web /usr/share/novnc 6080 localhost:5900 > /dev/null 2>&1 &
       echo 'FeedbackLens GUI: open http://localhost:6080' &&
       exec python -m managers.main --gui"
