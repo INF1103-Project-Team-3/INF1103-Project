@@ -26,6 +26,7 @@ class EntryCard(QFrame):
         # The queued tag sits on its own line, so its long text can't widen the list.
         queued = QHBoxLayout()
         self.__queued = Pill("", "caution")
+        self.__queued.setWordWrap(True)     # wraps, so a long theme name can't widen the list either
         self.__queued.hide()
         queued.addWidget(self.__queued)
         queued.addStretch()

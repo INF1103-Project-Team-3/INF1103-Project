@@ -52,7 +52,7 @@ class LogActionDialog(QDialog):
 
         title = QLabel("Log an action")
         title.setObjectName("dialogTitle")
-        hint = QLabel("The result shows \"Too early\" until 14 days have passed.")
+        hint = QLabel("The result shows \"Too early\" until 7 days have passed and at least 3 matching entries exist.")
         hint.setObjectName("statusLine")
         hint.setWordWrap(True)
         cancel = QPushButton("Cancel")

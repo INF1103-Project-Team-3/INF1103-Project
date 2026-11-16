@@ -5,6 +5,7 @@ from datetime import datetime
 
 from PySide6.QtWidgets import QFrame, QLabel, QPlainTextEdit, QProgressBar, QVBoxLayout
 
+from managers.ai_manager import AIManager
 from managers.ai_manager.console_progress_reporter import MIN_WAIT_LINE_S
 
 from ..progress_signals import ProgressSignals
@@ -18,6 +19,7 @@ class ProgressPanel(QFrame):
     def __init__(self, signals: ProgressSignals, parent=None):
         super().__init__(parent)
         self.setObjectName("progressCard")
+        self.__summary_batch = False      # the batch now showing is call 2 (the summary), not call 1
         self.__title = QLabel("No run yet")
         self.__title.setObjectName("cardTitle")
         self.__bar = QProgressBar()
@@ -78,7 +80,8 @@ class ProgressPanel(QFrame):
         self.__bar.setRange(0, max(total, 1))
         self.__bar.setValue(0)
         self.__status.setText(f"0 of {total} done")
-        self.__write(f"Started: {title} ({total} entries)")
+        self.__summary_batch = title == AIManager.SUMMARY_TITLE
+        self.__write(f"Started: {title} ({total} {'entry' if total == 1 else 'entries'})")
 
     def __on_attempt_started(self, request_id: str, attempt: int, max_attempts: int) -> None:
         self.__status.setText(f"{request_id}: attempt {attempt} of {max_attempts}")
@@ -106,10 +109,15 @@ class ProgressPanel(QFrame):
         self.__write(f"Batch stopped: {reason}", LOG_ERROR)
 
     def __on_batch_finished(self, ok: int, failed: int, total: int, tokens_today, daily_limit) -> None:
-        text = f"Finished: {ok} classified, {failed} failed, of {total}"
+        if self.__summary_batch:
+            title = "Finished: summary written" if ok else "Finished: no summary written (the last one is kept)"
+            text = title
+        else:
+            title = f"Finished: {ok} of {total} classified"
+            text = f"Finished: {ok} classified, {failed} failed, of {total}"
         if tokens_today is not None and daily_limit:
             text += f" · tokens today {tokens_today:,} of {daily_limit:,}"
-        self.__title.setText(f"Finished: {ok} of {total} classified")
+        self.__title.setText(title)
         self.__bar.setValue(self.__bar.maximum())
         self.__status.setText(text)
         self.__write(text)

@@ -35,6 +35,9 @@ class AIManager:
     """Public API for the app's two LLM calls. It decides what to send and
     what a result means for each record; RequestRunner decides how to send it."""
 
+    # call 2's batch title, so a reporter can word the summary step apart from call 1
+    SUMMARY_TITLE = "Summarising this run"
+
     def __init__(
         self,
         client: LLMClient,
@@ -132,7 +135,7 @@ class AIManager:
         task = SummaryTask(result.to_dict(), records, self.__prompts.summary_prompt, self.__summary_input_chars)
         tracker = ProgressTracker(1)
         self.__reporter.on_batch_start(
-            "Summarising this run", [self.__client.model, f"key: {self.__key_label}"], tracker.progress
+            self.SUMMARY_TITLE, [self.__client.model, f"key: {self.__key_label}"], tracker.progress
         )
         tracker.start_record()
         output = self.__runner.run(task, tracker)
