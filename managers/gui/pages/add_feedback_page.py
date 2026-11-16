@@ -48,6 +48,8 @@ class AddFeedbackPage(BasePage):
         text.setSpacing(4)
         self.__pending = QLabel("")
         self.__pending.setObjectName("cardTitle")
+        # wraps, so a long line never pushes the Process button out of the window (GUI-A)
+        self.__pending.setWordWrap(True)
         hint = QLabel("Already-processed entries are skipped.")
         hint.setObjectName("statusLine")
         text.addWidget(self.__pending)

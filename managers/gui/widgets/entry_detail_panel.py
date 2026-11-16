@@ -2,7 +2,8 @@
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox, QFrame, QHBoxLayout, QLabel, QMessageBox, QPushButton, QSizePolicy, QVBoxLayout,
+    QComboBox, QFrame, QHBoxLayout, QLabel, QMessageBox, QPushButton, QSizePolicy, QStyle,
+    QStyleOptionComboBox, QVBoxLayout,
 )
 
 from managers.io_manager import ReviewDecision
@@ -16,7 +17,8 @@ from .record_tags import RecordTags
 EMPTY = "—"
 FIELDS = ("theme", "sentiment", "severity")
 # The Final dropdowns get the most room: their padding and arrow take about 42px (G13).
-COLUMNS = (("Field", 2, 92), ("Student", 3, 90), ("AI", 3, 90), ("Final", 5, 170))
+FINAL_MIN_WIDTH = 170
+COLUMNS = (("Field", 2, 92), ("Student", 3, 90), ("AI", 3, 90), ("Final", 5, FINAL_MIN_WIDTH))
 
 
 # Shows a record and turns the admin's buttons into a ReviewDecision.
@@ -234,6 +236,7 @@ class EntryDetailPanel(QFrame):
             if theme and theme not in themes:
                 themes.append(theme)
         self.__theme_box.addItems(themes)
+        self.__fit_theme_box(themes)
 
         for field in FIELDS:
             mismatch = bool(ai.get(field)) and ai[field].lower() != user[field].lower()
@@ -256,6 +259,20 @@ class EntryDetailPanel(QFrame):
             self.__confirm.setText(f"Confirm new theme '{new_theme}'")
         self.__dirty = False
         self.__loading = False
+
+    # The theme box is made wide enough to show its longest theme in full: the text width plus
+    # what the style takes for padding and the arrow (GUI-B; the Docker GUI draws at 2x).
+    def __fit_theme_box(self, themes: list[str]) -> None:
+        box = self.__theme_box
+        option = QStyleOptionComboBox()
+        box.initStyleOption(option)
+        field = box.style().subControlRect(QStyle.ComplexControl.CC_ComboBox, option,
+                                           QStyle.SubControl.SC_ComboBoxEditField, box)
+        chrome = box.width() - field.width()
+        widest = max((box.fontMetrics().horizontalAdvance(theme) for theme in themes), default=0)
+        width = max(FINAL_MIN_WIDTH, widest + chrome + 2)
+        for final_box in self.__boxes.values():     # all three, so the Final column stays aligned
+            final_box.setMinimumWidth(width)
 
     # One table row.
     def __row(self, widgets, header: bool = False) -> QFrame:
