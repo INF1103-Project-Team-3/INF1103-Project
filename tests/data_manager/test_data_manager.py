@@ -139,3 +139,57 @@ def test_read_rows_of_a_folder_raises_value_error(tmp_path, name):
     (tmp_path / name).mkdir()
     with pytest.raises(ValueError):
         DataManager(str(tmp_path / "data")).read_rows(tmp_path / name)
+
+
+# ---- F2: search matches what a record says, not the names of its fields
+
+def test_search_matches_values_not_field_names_or_empty_values(tmp_path):
+    data = DataManager(str(tmp_path))
+    data.save_records([record("fb_001", "The lift is broken.")])
+    for query in ("theme", "sentiment", "severity", "summary", "none", "null", "true", "false"):
+        assert data.search_records(query) == [], query
+
+
+def test_search_matches_id_text_summary_and_labels(tmp_path):
+    data = DataManager(str(tmp_path))
+    saved = record("fb_001", "The lift is broken.")
+    saved.set_ai("Facilities", NEGATIVE, HIGH, "Elevator out of service.")
+    saved.mark_reviewed("Parking", NEGATIVE, HIGH)
+    data.save_records([saved])
+    for query in ("fb_001", "LIFT", "elevator", "facilities", "negative", "high", "parking", "lift facilities"):
+        assert [r.feedback_id for r in data.search_records(query)] == ["fb_001"], query
+
+
+# ---- F5: an app data file that cannot be opened loads empty instead of crashing (DR 8.6)
+
+def test_app_file_that_cannot_be_opened_loads_empty_and_stays_put(tmp_path):
+    (tmp_path / "processed_feedback.json").mkdir()
+    data = DataManager(str(tmp_path))
+    assert data.load_records() == []
+    assert (tmp_path / "processed_feedback.json").is_dir()
+
+
+def test_token_log_that_cannot_be_opened_reads_as_unreadable(tmp_path, monkeypatch):
+    monkeypatch.setattr(DataManager, "_token_log_path", lambda self: tmp_path)
+    assert DataManager(str(tmp_path / "data")).load_token_log() is None
+
+
+# ---- F10: the CSV store saves an empty list like the JSON store (LSP, DR 8.6)
+
+def test_csv_store_saves_an_empty_list(tmp_path):
+    from managers.data_manager.csv_file_store import CsvFileStore
+    path = tmp_path / "out.csv"
+    path.write_text("a\n1\n", encoding="utf-8")
+    assert CsvFileStore().save(path, []) is True
+    assert CsvFileStore().load(path) == []
+
+
+# ---- F11: delete_record says whether anything was removed (DR 8.6: -> bool)
+
+def test_delete_record_is_true_only_when_a_store_held_the_id(tmp_path):
+    data = DataManager(str(tmp_path))
+    assert data.delete_record("fb_x") is False
+    data.save_records([record("fb_001")])
+    assert data.delete_record("fb_x") is False
+    assert data.delete_record("fb_001") is True
+    assert data.load_records() == []

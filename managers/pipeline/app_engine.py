@@ -114,7 +114,7 @@ class AppEngine:
         if any(isinstance(h.formatter, ConsoleLogFormatter) for h in target.handlers):
             return
         handler = logging.StreamHandler()
-        handler.setFormatter(ConsoleLogFormatter())
+        handler.setFormatter(ConsoleLogFormatter(clear_line=handler.stream.isatty()))
         target.addHandler(handler)
         target.setLevel(logging.WARNING)
 
@@ -207,7 +207,9 @@ class AppEngine:
             context = self.execute_run(session, view)
             if context is None:
                 return
-            self._show_run_dashboard(context, view)
+            # a student only gives feedback; the statistics and review queue are for admins
+            if io_mgr.last_role == IOManager.ROLE_ADMIN:
+                self._show_run_dashboard(context, view)
 
     def _show_run_dashboard(self, context: PipelineContext, view) -> None:
         """Show the run's results. When Call 2 did not run or failed, the last

@@ -38,7 +38,8 @@ class IngestionStep(BaseStep):
 
             for decision in session.decisions:
                 if decision.action == ReviewDecision.DELETE:
-                    self._data.delete_record(decision.feedback_id)
+                    if not self._data.delete_record(decision.feedback_id):
+                        logger.warning("Delete of %s removed nothing: no store held it", decision.feedback_id)
                     existing_records.pop(decision.feedback_id, None)
                 elif decision.action == ReviewDecision.UPDATE:
                     record = existing_records.get(decision.feedback_id)

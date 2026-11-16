@@ -211,3 +211,70 @@ def test_end_of_run_dashboard_shows_this_runs_summary(tmp_path):
 
     assert view.args[2] is context.summary
     assert view.args[4] is None
+
+
+# ---- F8: a log line clears the progress bar's line first, on a terminal only
+
+class _Stream:
+    def __init__(self, tty: bool):
+        self.text, self.tty = "", tty
+
+    def write(self, text):
+        self.text += text
+
+    def flush(self):
+        pass
+
+    def isatty(self):
+        return self.tty
+
+
+@pytest.mark.parametrize("tty, expected", [(True, "\r\x1b[KWarning: token log not written\n"),
+                                           (False, "Warning: token log not written\n")])
+def test_console_log_line_clears_the_bar_only_on_a_terminal(monkeypatch, tty, expected):
+    import logging
+    stream = _Stream(tty)
+    monkeypatch.setattr("sys.stderr", stream)
+    logger = logging.getLogger(f"f8-test-{tty}")
+    logger.propagate = False
+    AppEngine.configure_logging(logger)
+    logger.warning("token log not written")
+    assert stream.text == expected
+
+
+# ---- the terminal shows the end-of-run dashboard after admin sessions only
+
+def test_terminal_shows_the_dashboard_after_admin_sessions_only(monkeypatch, tmp_path):
+    import managers.pipeline.app_engine as app_engine
+    from managers.io_manager import IOManager, SessionResult
+
+    monkeypatch.setattr(app_engine, "ENV_FILE", tmp_path / "missing.env")
+    monkeypatch.setattr(app_engine, "GroqClient", RecordingClient)
+    monkeypatch.setattr(app_engine.AppEngine, "configure_logging", staticmethod(lambda logger=None: None))
+    for name in ("GROQ_API_KEY", "GROQ_KEY_LABEL", "ADMIN_PASSWORD"):
+        monkeypatch.setenv(name, "")
+
+    class FakeIO:
+        ROLE_ADMIN = IOManager.ROLE_ADMIN
+        create_importers = staticmethod(IOManager.create_importers)
+        role = None
+
+        def __init__(self, **kwargs):
+            pass
+
+        def run_session(self):
+            return SessionResult()
+
+        @property
+        def last_role(self):
+            return FakeIO.role
+
+    monkeypatch.setattr(app_engine, "IOManager", FakeIO)
+    shown = []
+    for role in ("user", "admin"):
+        FakeIO.role = role
+        engine = AppEngine(str(tmp_path / "data"))
+        monkeypatch.setattr(engine, "execute_run", lambda session, view: PipelineContext())
+        monkeypatch.setattr(engine, "_show_run_dashboard", lambda context, view, role=role: shown.append(role))
+        engine.run("cli")
+    assert shown == ["admin"]

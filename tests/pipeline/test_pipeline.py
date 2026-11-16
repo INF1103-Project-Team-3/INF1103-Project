@@ -440,3 +440,16 @@ def test_logic_step_skips_a_previous_run_with_a_wrong_type(field, value) -> None
 
     assert LogicStep(logic, data).execute(context) is True
     assert context.trend.has_previous is False
+
+
+# F11: a delete that finds the record in no store is logged, not silent
+@pytest.mark.parametrize("removed, warned", [(False, True), (True, False)])
+def test_ingestion_step_warns_when_a_delete_removes_nothing(caplog, removed, warned) -> None:
+    data = _make_mock_data([])
+    data.delete_record.return_value = removed
+    session = FakeSession(decisions=[FakeDecision(feedback_id="FB-404", action="delete")])
+    with caplog.at_level("WARNING"):
+        assert IngestionStep(data, _make_mock_logic(), MagicMock()).execute(
+            PipelineContext(session=session)) is True  # type: ignore[arg-type]
+    data.delete_record.assert_called_once_with("FB-404")
+    assert any("FB-404" in message for message in caplog.messages) is warned

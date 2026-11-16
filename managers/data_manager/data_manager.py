@@ -7,7 +7,7 @@ from .storage_backend import StorageBackend
 from .json_file_store import JsonFileStore
 from .csv_file_store import CsvFileStore
 
-from managers.models import THEMES, FeedbackRecord, Action
+from managers.models import LABEL_FIELDS, THEMES, FeedbackRecord, Action
 
 
 class DataManager:
@@ -87,22 +87,29 @@ class DataManager:
         return saved
 
     def delete_record(self, feedback_id: str) -> bool:
-        success_proc = self._remove_from_store_file(feedback_id, "processed_feedback.json")
-        success_rev = self._remove_from_store_file(feedback_id, "for_review.json")
-        success_pend = self._remove_from_store_file(feedback_id, "feedback_before_ai.json")
-        return success_proc or success_rev or success_pend
+        """Removes the record from every store. True only if a store held it
+        and was saved without it."""
+        removed = [self._remove_from_store_file(feedback_id, filename)
+                   for filename in ("processed_feedback.json", "for_review.json", "feedback_before_ai.json")]
+        return any(removed)
 
     def _remove_from_store_file(self, feedback_id: str, filename: str) -> bool:
+        """True if the file held the record and was saved without it."""
         filepath = self._get_path(filename)
         data = self._json_store.load(filepath)
         if isinstance(data, dict) and isinstance(data.get("records"), list):
-            filtered = [item for item in data["records"] if item.get("feedback_id") != feedback_id]
-            data["records"] = filtered
-            return self._json_store.save(filepath, data)
+            items = data["records"]
         elif isinstance(data, list):
-            filtered = [item for item in data if item.get("feedback_id") != feedback_id]
-            return self._json_store.save(filepath, filtered)
-        return True
+            items = data
+        else:
+            return False
+        kept = [item for item in items if item.get("feedback_id") != feedback_id]
+        if len(kept) == len(items):
+            return False
+        if isinstance(data, dict):
+            data["records"] = kept
+            return self._json_store.save(filepath, data)
+        return self._json_store.save(filepath, kept)
 
     def load_pending(self, filename: str = "feedback_before_ai.json") -> List[Any]:
         raw_list = self._load_raw_records(filename)
@@ -158,13 +165,20 @@ class DataManager:
         if not query.strip():
             return records
         terms = query.lower().split()
-        results = []
-        for record in records:
-            rec_dict = record.to_dict() if hasattr(record, "to_dict") else record
-            content = " ".join(str(val) for val in rec_dict.values()).lower()
-            if all(term in content for term in terms):
-                results.append(record)
-        return results
+        return [record for record in records
+                if all(term in self._searchable_text(record) for term in terms)]
+
+    @staticmethod
+    def _searchable_text(record: FeedbackRecord) -> str:
+        """What a search matches: the ID, the text, the AI's summary and the theme,
+        sentiment and severity values (user's, AI's and final), lowercased. Field
+        names, empty values and true/false are left out, so they match nothing."""
+        ai = record.ai or {}
+        values = [record.feedback_id, record.text, ai.get("summary")]
+        values += [record.user.get(name) for name in LABEL_FIELDS]
+        values += [ai.get(name) for name in LABEL_FIELDS]
+        values += [record.theme, record.sentiment, record.severity]
+        return " ".join(v for v in values if isinstance(v, str)).lower()
 
     def save_review_queue(self, records: List[Any]) -> bool:
         filepath = self._get_path("for_review.json")
@@ -314,6 +328,10 @@ class DataManager:
                 return data if isinstance(data, dict) else None
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             logging.error("Corrupt token log at '%s': %s. Returning None safely.", filepath, e)
+            return None
+        except OSError as e:
+            # None, so the ledger never saves over a log it could not read
+            logging.error("Token log at '%s' could not be opened: %s. Returning None safely.", filepath, e)
             return None
 
     def load_prompts(self) -> tuple[str, str]:

@@ -28,7 +28,12 @@ class CsvFileStore(FileStore):
         temp_path = path.with_name(path.name + ".tmp")
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            if data and isinstance(data[0], dict):
+            if not data:
+                # an empty list is an empty file, as JsonFileStore saves one (LSP)
+                temp_path.write_text("", encoding="utf-8")
+                temp_path.replace(path)
+                return True
+            if isinstance(data[0], dict):
                 fieldnames = list(data[0].keys())
                 with open(temp_path, "w", encoding="utf-8", newline="") as f:
                     writer = csv.DictWriter(f, fieldnames=fieldnames)

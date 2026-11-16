@@ -56,7 +56,7 @@ class IOManager:
 
     # what Settings shows for the AI connection; AppEngine knows (it reads the
     # API key), I do not, because only AppEngine reads environment variables
-    AI_STATUS = {True: "ready", False: "not configured (no API key)", None: "not reported"}
+    AI_STATUS = {True: "Key set", False: "not configured (no API key or key label)", None: "not reported"}
 
     def __init__(self, view: FeedbackView, prompter: Prompter,
                  importers: Sequence[FeedbackImporter], data: "DataManager",
@@ -71,6 +71,7 @@ class IOManager:
         self._password = PasswordValidator(admin_password)
         self._roles = ChoiceValidator(self.ROLES, error="please enter 'user' or 'admin'")
         self._ai_ready = ai_ready
+        self._last_role: str | None = None
         # one theme validator, shared by the form and Settings, so a typed theme
         # is cleaned up by Logic the same way wherever it is typed
         self._theme_validator = ThemeValidator(logic)
@@ -108,11 +109,19 @@ class IOManager:
 
     # ---- public API ------------------------------------------------------
 
+    @property
+    def last_role(self) -> str | None:
+        """The role of the last session (ROLE_USER or ROLE_ADMIN), or None before
+        one ran or if the person quit or did not log in. AppEngine reads it to show
+        the end-of-run dashboard to admins only."""
+        return self._last_role
+
     def run_session(self) -> SessionResult | None:
         """Run one session. Returns what was collected, or None if the person
         quit or collected nothing."""
         self._view.show_message("=== Feedback Manager ===")
         role = self._select_role()
+        self._last_role = role
         if role is None:
             self._view.show_message("Goodbye.")
             return None

@@ -10,9 +10,10 @@ class JsonFileStore(FileStore):
     """Concrete implementation for JSON persistence with safe corruption fallback."""
 
     def __init__(self, quarantine_corrupt: bool = True) -> None:
-        """quarantine_corrupt: move a corrupt file aside before returning empty, so
-        the next save cannot overwrite what was in it. False leaves the file as it is
-        (for a user's import file, which the app must not rename)."""
+        """quarantine_corrupt: True for the app's own files: a corrupt one is moved
+        aside before returning empty, so the next save cannot overwrite what was in
+        it, and one that cannot be opened returns empty. False for a user's import
+        file: it is never renamed, and an OSError is raised for the caller to report."""
         self._quarantine_corrupt = quarantine_corrupt
 
     def load(self, path: Path) -> Any:
@@ -26,6 +27,13 @@ class JsonFileStore(FileStore):
                 self._move_aside(path, e)
             else:
                 logging.error("Corrupt JSON at '%s': %s. Returning empty store safely.", path, e)
+            return {}
+        except OSError as e:
+            # an import file raises, so read_rows can say why it was not read
+            if not self._quarantine_corrupt:
+                raise
+            # an app file is left where it is: its content may be fine, only unreadable now
+            logging.error("Could not open '%s': %s. Returning empty store safely.", path, e)
             return {}
 
     def save(self, path: Path, data: Any) -> bool:
