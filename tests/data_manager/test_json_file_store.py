@@ -50,3 +50,14 @@ def test_store_without_quarantine_leaves_a_corrupt_file_in_place(tmp_path):
     assert JsonFileStore(quarantine_corrupt=False).load(path) == {}
     assert path.read_text(encoding="utf-8") == "{not json"
     assert list(tmp_path.glob("*.corrupt-*")) == []
+
+
+# F5: an unopenable app file loads empty; an import file still raises, so read_rows can say why (I1)
+def test_unopenable_file_loads_empty_for_app_data_and_raises_for_imports(tmp_path):
+    import pytest
+    folder = tmp_path / "actions.json"
+    folder.mkdir()
+    assert JsonFileStore().load(folder) == {}
+    assert folder.is_dir()
+    with pytest.raises(OSError):
+        JsonFileStore(quarantine_corrupt=False).load(folder)
