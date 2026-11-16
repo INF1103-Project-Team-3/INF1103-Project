@@ -170,13 +170,13 @@ def test_settings_shows_the_system_status_read_from_data(prompter, screen, data,
                    [], data, logic, PASSWORD, ai_ready=True)
     io.run_session()
     assert f"Known themes ({len(data.themes)})" in screen.lines
-    assert status_line(screen, "AI connection") == "ready"
+    assert status_line(screen, "AI connection") == "Key set"
     assert status_line(screen, "Processed records") == "2"
     assert status_line(screen, "Waiting for review") == "1"
     assert status_line(screen, "Last analysis run") == "2026-11-10 08:00:00"
 
 
-@pytest.mark.parametrize("ai_ready, shown", [(True, "ready"), (False, "not configured (no API key)"),
+@pytest.mark.parametrize("ai_ready, shown", [(True, "Key set"), (False, "not configured (no API key or key label)"),
                                              (None, "not reported")])
 def test_the_ai_connection_is_whatever_app_engine_reports(prompter, screen, data, logic, ai_ready, shown):
     # only AppEngine may read the API key, so it tells IOManager whether the AI is ready
@@ -276,3 +276,23 @@ def test_dashboard_shows_saved_rule_based_actions(session, screen, data, result_
     session(["admin", "3", FINISH])
     assert "SUGGESTED BY RULES (AI UNAVAILABLE), 2026-11-15 09:00:00" in screen.lines
     assert "Ask timetabling." in screen.text
+
+
+# ---- the role of the last session, so AppEngine shows the dashboard to admins only
+
+@pytest.mark.parametrize("answers, secrets, role", [
+    (["user", "Good lectures", "1", "positive", "low"], [PASSWORD], "user"),
+    (["admin", FINISH], [PASSWORD], "admin"),
+    (["quit"], [PASSWORD], None),
+])
+def test_last_role_is_the_role_of_the_session(prompter, screen, data, logic, answers, secrets, role):
+    io = IOManager(screen.view, prompter(answers, secrets), [], data, logic, PASSWORD)
+    assert io.last_role is None
+    io.run_session()
+    assert io.last_role == role
+
+
+def test_no_role_when_admin_login_is_disabled(prompter, screen, data, logic):
+    io = IOManager(screen.view, prompter(["admin"]), [], data, logic, admin_password=None)
+    io.run_session()
+    assert io.last_role is None

@@ -12,7 +12,7 @@ from ..widgets.card import Card
 from ..widgets.pill import Pill
 from .base_page import BasePage
 
-AI_STATUS = {True: "Key set", False: "not configured (no API key)", None: "not reported"}
+AI_STATUS = {True: "Key set", False: "not configured (no API key or key label)", None: "not reported"}
 THEME_COLUMNS = 3
 
 

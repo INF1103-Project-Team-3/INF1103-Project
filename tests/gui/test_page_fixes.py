@@ -196,6 +196,13 @@ def test_settings_says_key_set_rather_than_ready(qtbot):
     assert page.status()["AI connection"] == "Key set"
 
 
+# F9: the AI is also not ready when the key is set but GROQ_KEY_LABEL is missing (P2)
+def test_settings_names_both_settings_when_the_ai_is_not_ready(qtbot):
+    page = SettingsPage(FakeDataManager(build_sample_records()), ThemeValidator(LogicManager()), False)
+    qtbot.addWidget(page)
+    assert page.status()["AI connection"] == "not configured (no API key or key label)"
+
+
 # G12: a hand-edited run with no date is skipped instead of crashing the Trends page
 def test_an_undated_run_is_skipped(qtbot, tmp_path):
     data = DataManager(str(tmp_path / "data"))
