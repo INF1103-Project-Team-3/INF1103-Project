@@ -262,16 +262,25 @@ class MainWindow(QMainWindow):
     # entries, so an entry using one is counted under it.
     def __themes(self) -> list[str]:
         known = self.__data.load_known_themes()
-        return known + [theme for theme in self.__themes_to_add if theme not in known]
+        return known + [theme for theme in self.__queued_themes() if theme not in known]
+
+    # Themes the next run will confirm: those added in Settings, then those a queued review
+    # decision keeps as a new theme (GUI-E, 7.4: a variant can be folded into one at once).
+    def __queued_themes(self) -> list[str]:
+        themes = list(self.__themes_to_add)
+        for decision in self.__decisions:
+            if (decision.action == ReviewDecision.UPDATE and isinstance(decision.theme, str)
+                    and decision.theme.strip() and self.__logic.is_new_theme(decision.theme)):
+                name = self.__logic.normalise_theme(decision.theme)
+                if name not in themes:
+                    themes.append(name)
+        return themes
 
     # A theme added in Settings, saved by the pipeline on the next run; the theme pickers offer it
     # straight away.
     def __queue_theme(self, theme: str) -> None:
         self.__themes_to_add.append(theme)
         self.__settings.set_queued(self.__themes_to_add)
-        self.__add_feedback.set_queued_themes(self.__themes_to_add)
-        self.__feedback.set_queued_themes(self.__themes_to_add)
-        self.__trends.set_queued_themes(self.__themes_to_add)
         self.__update_queue()
         self.statusBar().showMessage(f"Theme '{theme}' added (saved on the next run)", 8000)
 
@@ -281,6 +290,10 @@ class MainWindow(QMainWindow):
     def __update_queue(self) -> None:
         changes = len(self.__decisions) + len(self.__actions) + len(self.__themes_to_add)
         self.__add_feedback.set_new_count(len(self.__new_records), changes)
+        self.__dashboard.set_queued(len(self.__new_records))
+        themes = self.__queued_themes()
+        for page in (self.__add_feedback, self.__feedback, self.__trends):
+            page.set_queued_themes(themes)
         waiting = self.__add_feedback.waiting_for_ai() + len(self.__new_records)
         self.__feedback.set_queued(self.__decisions, waiting)
 
@@ -323,9 +336,6 @@ class MainWindow(QMainWindow):
         if not self.__new_records:
             self.__source_file = None
         self.__settings.set_queued(self.__themes_to_add)
-        self.__add_feedback.set_queued_themes(self.__themes_to_add)
-        self.__feedback.set_queued_themes(self.__themes_to_add)
-        self.__trends.set_queued_themes(self.__themes_to_add)
         self.__update_queue()
         self.__trends.forget_unsaved(self.__actions)
         message = "Run finished."
