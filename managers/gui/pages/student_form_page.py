@@ -254,7 +254,7 @@ class StudentFormPage(QWidget):
 
         theme = entry["theme"]
         where = f"filed under {theme}" if theme in self.__themes else "staff will sort it into a theme"
-        self.__banner_text.setText(f"Reference {record.feedback_id} · \"{typed_theme}\" {where}")
+        self.__banner_text.setText(f"Reference {record.feedback_id} · \"{typed_theme}\": {where}")
         self.__banner.show()
         self.__clear_form()
         self.__scroll.verticalScrollBar().setValue(0)

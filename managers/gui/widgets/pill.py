@@ -2,7 +2,7 @@
 
 from PySide6.QtWidgets import QLabel, QSizePolicy
 
-from ..style import restyle
+from ..style import Style
 
 KINDS = ("critical", "warn", "info", "caution", "good", "neutral", "running")
 
@@ -19,4 +19,4 @@ class Pill(QLabel):
         if kind not in KINDS:
             raise ValueError(f"Unknown pill kind: {kind}")
         self.setProperty("kind", kind)
-        restyle(self)
+        Style.restyle(self)

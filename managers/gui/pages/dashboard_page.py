@@ -36,6 +36,8 @@ class DashboardPage(BasePage):
         super().__init__("Dashboard", "", parent)
         self.__data = data
         self.__ai_ready = ai_ready
+        self.__pending = None      # saved entries waiting for the AI, as last shown
+        self.__queued = 0          # entries queued in this session, not saved yet (MainWindow)
         self.__values = {}
         self.__feet = {}
 
@@ -114,18 +116,20 @@ class DashboardPage(BasePage):
         unverified = result.unverified_count if result else 0
         if records is not None:
             total, counted = len(records), sum(1 for r in records if r.counted)
-            critical = sum(1 for r in records if r.severity == CRITICAL)
         else:
             total = result.total_entries if result else 0
             counted = result.counted_entries if result else 0
-            critical = sum(1 for r in queue if r.current_labels.get("severity") == CRITICAL)
+        # critical entries waiting for review, as CriticalSeverityRule flags them (final severity),
+        # counted the same way on every path (G11)
+        critical = sum(1 for r in queue if r.severity == CRITICAL)
         self.__values["Total entries"].setText(str(total))
         self.__values["Counted in statistics"].setText(str(counted))
         self.__feet["Counted in statistics"].setText(f"incl. {unverified} unverified (AI retries next run)")
         self.__values["Needs review"].setText(str(len(queue)))
         self.__values["Critical"].setText(str(critical))
         if pending is not None:
-            self.set_subtitle(f"{pending} entries waiting for the AI" if pending else "Every entry has been processed")
+            self.__pending = pending
+            self.__fill_subtitle()
 
         self.__fill_notice(unverified, summary)
         self.__fill_strip(trend)
@@ -134,6 +138,21 @@ class DashboardPage(BasePage):
         self.__fill_waiting(result)
         self.__fill_actions()
 
+    # Entries queued in this session that Process has not saved yet (GUI-D).
+    def set_queued(self, count: int) -> None:
+        self.__queued = count
+        self.__fill_subtitle()
+
+    def __fill_subtitle(self) -> None:
+        if self.__pending is None:
+            return
+        parts = []
+        if self.__pending:
+            parts.append(f"{self.__pending} {'entry' if self.__pending == 1 else 'entries'} waiting for the AI")
+        if self.__queued:
+            parts.append(f"{self.__queued} queued in this session")
+        self.set_subtitle(" · ".join(parts) if parts else "Every entry has been processed")
+
     # Shown when the AI couldn't check some counted entries (D20, A26), worded by whether the AI
     # is ready now: back (offer Process now), still down, or not reported.
     def __fill_notice(self, unverified: int, summary) -> None:
@@ -141,7 +160,8 @@ class DashboardPage(BasePage):
         self.__notice_button.setVisible(bool(unverified) and self.__ai_ready is True)
         if not unverified:
             return
-        entries = f"{unverified} {'entry is' if unverified == 1 else 'entries are'} unverified"
+        # counted entries only: Add feedback also counts entries not in the statistics (GUI-D)
+        entries = f"{unverified} counted {'entry is' if unverified == 1 else 'entries are'} unverified"
         when = f" The last AI summary is from {self.__date(summary.created_at)}." if summary else ""
         if self.__ai_ready is True:
             text = (f"<b>The AI was unavailable on the last run, so {entries}.</b> It's connected again: "

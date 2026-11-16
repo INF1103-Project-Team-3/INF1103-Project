@@ -3,9 +3,10 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
 
-from ..style import restyle
+from ..style import Style
 from .pill import Pill
-from .record_tags import is_critical, record_tags, short_date
+from .date_text import DateText
+from .record_tags import RecordTags
 
 PREVIEW_CHARS = 110
 
@@ -19,18 +20,19 @@ class EntryCard(QFrame):
         self.setObjectName("entryCard")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.__feedback_id = record.feedback_id
-        self.setProperty("critical", is_critical(record) and record.needs_review)
+        self.setProperty("critical", RecordTags.is_critical(record) and record.needs_review)
         self.setProperty("selected", False)
 
         # The queued tag sits on its own line, so its long text can't widen the list.
         queued = QHBoxLayout()
         self.__queued = Pill("", "caution")
+        self.__queued.setWordWrap(True)     # wraps, so a long theme name can't widen the list either
         self.__queued.hide()
         queued.addWidget(self.__queued)
         queued.addStretch()
         tags = QHBoxLayout()
         tags.setSpacing(6)
-        for text, kind in record_tags(record):
+        for text, kind in RecordTags.tags(record):
             tags.addWidget(Pill(text, kind))
         tags.addStretch()
 
@@ -38,6 +40,7 @@ class EntryCard(QFrame):
         shown = (record.ai or {}).get("summary") or record.text
         preview = shown[:PREVIEW_CHARS].rstrip() + ("…" if len(shown) > PREVIEW_CHARS else "")
         text = QLabel(preview)
+        text.setTextFormat(Qt.TextFormat.PlainText)     # shown as written (G6)
         text.setObjectName("entryText")
         text.setWordWrap(True)
         meta = QLabel(self.__meta_line(record))
@@ -69,7 +72,7 @@ class EntryCard(QFrame):
         self.setProperty("selected", selected)
         margin = 11 if selected else 12
         self.layout().setContentsMargins(margin, margin, margin, margin)
-        restyle(self)
+        Style.restyle(self)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -82,4 +85,4 @@ class EntryCard(QFrame):
         if record.needs_review and ai.get("theme") and ai["theme"] != record.user["theme"]:
             return f"{record.feedback_id} · Student: {record.user['theme']} · AI: {ai['theme']}"
         theme = record.theme or record.user["theme"]
-        return f"{record.feedback_id} · {theme} · {short_date(record.timestamp)}"
+        return f"{record.feedback_id} · {theme} · {DateText.short(record.timestamp)}"

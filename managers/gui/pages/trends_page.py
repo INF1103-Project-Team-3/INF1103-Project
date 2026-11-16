@@ -11,7 +11,7 @@ from ..dialogs.log_action_dialog import LogActionDialog
 from ..widgets.card import Card
 from ..widgets.combo_box import ComboBox
 from ..widgets.pill import Pill
-from ..widgets.record_tags import short_date
+from ..widgets.date_text import DateText
 from ..widgets.summary_card import SummaryCard
 from ..widgets.trend_chart import TrendChart
 from .base_page import BasePage
@@ -39,6 +39,7 @@ class TrendsPage(BasePage):
         self.__data = data
         self.__logic = logic
         self.__unsaved = []
+        self.__queued_themes = []
         self.__checks = {}
         self.__history_size = -1
         self.__history = []
@@ -84,6 +85,8 @@ class TrendsPage(BasePage):
         self.__run_y = ComboBox()
         self.__run_y.setObjectName("compareTo")
         for box in (self.__run_x, self.__run_y):
+            # resized when runs are added, not only when first shown, so "Run 10" fits (G13)
+            box.setSizeAdjustPolicy(ComboBox.SizeAdjustPolicy.AdjustToContents)
             box.currentIndexChanged.connect(self.__build_comparison)
         picker.addWidget(title)
         picker.addWidget(self.__run_x)
@@ -118,15 +121,22 @@ class TrendsPage(BasePage):
 
     # description pre-fills the dialog, e.g. from a suggested action on the dashboard.
     def open_log_dialog(self, theme: str | None = None, description: str | None = None) -> None:
-        dialog = LogActionDialog(self.__data.load_known_themes(), self,
+        known = self.__data.load_known_themes()
+        themes = known + [t for t in self.__queued_themes if t not in known]
+        dialog = LogActionDialog(themes, self,
                                  theme=theme if isinstance(theme, str) else None, description=description)
         if dialog.exec() and dialog.action is not None:
             self.__unsaved.append(dialog.action)
             self.action_logged.emit(dialog.action)
             self.refresh()
 
-    def forget_unsaved(self) -> None:
-        self.__unsaved.clear()
+    # After a run: the actions it saved are no longer unsaved; keep lists those still queued.
+    def forget_unsaved(self, keep=()) -> None:
+        self.__unsaved = [a for a in self.__unsaved if any(a is k for k in keep)]
+
+    # Themes added in Settings but not saved yet; the log dialog offers them too (G3).
+    def set_queued_themes(self, themes: list[str]) -> None:
+        self.__queued_themes = list(themes)
 
     def refresh(self) -> None:
         self.__history = self.__data.load_history()
@@ -194,7 +204,7 @@ class TrendsPage(BasePage):
 
     def __labels(self, runs: list[dict] | None = None) -> list[str]:
         runs = self.__history if runs is None else runs
-        return [f"{short_date(run['finished_at'])} · Run {run['run']}" for run in runs]
+        return [f"{DateText.short(run['finished_at'])} · Run {run['run']}" for run in runs]
 
     @classmethod
     def __series(cls, themes: list[str], runs: list[dict]) -> dict[str, list[float | None]]:
@@ -297,9 +307,10 @@ class TrendsPage(BasePage):
         text = QVBoxLayout()
         text.setSpacing(2)
         title = QLabel(action.description)
+        title.setTextFormat(Qt.TextFormat.PlainText)    # shown as typed (G6)
         title.setObjectName("actionTitle")
         title.setWordWrap(True)
-        meta = f"{action.theme} · {short_date(action.action_date)}"
+        meta = f"{action.theme} · {DateText.short(action.action_date)}"
         if action.keyword:
             meta += f" · keyword \"{action.keyword}\""
         meta_label = QLabel(meta)
@@ -334,7 +345,7 @@ class TrendsPage(BasePage):
             chart.setObjectName("impactChart")
             chart.setMinimumHeight(200)
             weeks = report.weekly
-            chart.set_data([short_date(week["week_start"]) for week in weeks],
+            chart.set_data([DateText.short(week["week_start"]) for week in weeks],
                            {"Negative": [week.get("negative") for week in weeks],
                             "All entries": [week.get("total") for week in weeks]},
                            [(self.__week_position(weeks, action.action_date), "Action")])

@@ -1,6 +1,5 @@
 # ImportPanel: pick a CSV or JSON file and preview what I/O's importer accepts and rejects.
 
-from dataclasses import replace
 from html import escape
 
 from PySide6.QtCore import Signal
@@ -75,17 +74,16 @@ class ImportPanel(Card):
         except (ValueError, OSError) as error:
             self.__show_error(f"Couldn't import {path}: {error}")
             return
-        saved = {r.feedback_id for r in [*self.__data.load_records(), *self.__data.load_pending()]}
-        new = [r for r in result.records if r.feedback_id not in saved]
-        skipped = len(result.records) - len(new)
-        self.__result = replace(result, records=new)
+        new = result.records            # the importer has already left out saved IDs
+        skipped = len(result.already_saved)
+        self.__result = result
 
         parts = [f"{len(new)} ready"]
         if result.rejected:
             parts.append(f"{len(result.rejected)} rejected")
         if skipped:
             parts.append(f"{skipped} already saved")
-        self.__summary.setText(f"{result.source_file}: {result.total} rows · {', '.join(parts)}")
+        self.__summary.setText(f"{result.source_file}: {result.total} {'row' if result.total == 1 else 'rows'} · {', '.join(parts)}")
         self.__details.setText(self.__describe(new, result.rejected, skipped))
         self.__add.setText(f"Add {len(new)} {'entry' if len(new) == 1 else 'entries'} to queue")
         self.__add.setEnabled(bool(new))
@@ -108,7 +106,8 @@ class ImportPanel(Card):
         result = self.__result
         self.import_ready.emit(result)
         self.__clear()
-        self.__summary.setText(f"Queued {len(result.records)} entries from {result.source_file}.")
+        count = len(result.records)
+        self.__summary.setText(f"Queued {count} {'entry' if count == 1 else 'entries'} from {result.source_file}.")
         self.__summary.show()
 
     @staticmethod
@@ -120,7 +119,8 @@ class ImportPanel(Card):
             if len(rejected) > MAX_LISTED:
                 lines.append(f"…and {len(rejected) - MAX_LISTED} more")
         if skipped:
-            lines.append(f"{skipped} rows have IDs that are already saved, so they are skipped.")
+            lines.append("1 row has an ID that is already saved, so it is skipped." if skipped == 1 else
+                         f"{skipped} rows have IDs that are already saved, so they are skipped.")
         if new:
             lines.append("<b>First entries</b>")
             for record in new[:PREVIEWED]:

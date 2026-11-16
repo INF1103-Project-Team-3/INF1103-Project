@@ -4,9 +4,10 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButton, QStackedWidget, QVBoxLayout
 
 from managers.io_manager import EntryValidator, RecordBuilder
-from managers.models import UNVERIFIED
+from managers.models import PENDING
 
 from ..progress_signals import ProgressSignals
+from ..style import SEGMENT_PADDING, Style
 from ..widgets.card import Card
 from ..widgets.import_panel import ImportPanel
 from ..widgets.progress_panel import ProgressPanel
@@ -27,6 +28,7 @@ class AddFeedbackPage(BasePage):
         self.__data = data
         self.__busy = False
         self.__queued = 0
+        self.__changes = 0
         self.__queued_themes = []
 
         self.__single = SingleEntryForm(validator, builder)
@@ -46,6 +48,8 @@ class AddFeedbackPage(BasePage):
         text.setSpacing(4)
         self.__pending = QLabel("")
         self.__pending.setObjectName("cardTitle")
+        # wraps, so a long line never pushes the Process button out of the window (GUI-A)
+        self.__pending.setWordWrap(True)
         hint = QLabel("Already-processed entries are skipped.")
         hint.setObjectName("statusLine")
         text.addWidget(self.__pending)
@@ -92,19 +96,23 @@ class AddFeedbackPage(BasePage):
         self.__queued_themes = list(themes)
         self.refresh()
 
-    # How many entries (student, typed or imported) are queued for the next run.
-    def set_new_count(self, count: int) -> None:
-        self.__queued = count
+    # How many entries (student, typed or imported) and other changes (review decisions,
+    # actions, new themes) are queued for the next run.
+    def set_new_count(self, entries: int, changes: int = 0) -> None:
+        self.__queued = entries
+        self.__changes = changes
         self.refresh()
 
     # Waiting for the AI: pending entries plus saved ones the AI couldn't check (D4: unverified
     # entries go to the AI again on the next run, so Process must be possible without new feedback).
     def refresh(self) -> None:
+        for button in self.__segments:
+            Style.reserve_bold_width(button, SEGMENT_PADDING)     # bold when chosen
         known = self.__data.load_known_themes()
         self.__single.set_themes(known + [t for t in self.__queued_themes if t not in known])
         pending, unverified = self.__waiting()
         waiting = len(pending) + len(unverified)
-        count = waiting + self.__queued
+        entries = waiting + self.__queued
         text = f"{waiting} {'entry' if waiting == 1 else 'entries'} waiting for the AI"
         if unverified:
             text += f" ({len(unverified)} unverified, retried when you process)"
@@ -115,20 +123,27 @@ class AddFeedbackPage(BasePage):
             self.__process.setText("Processing…")
             self.__process.setEnabled(False)
         else:
-            self.__process.setText(f"Process {count} {'entry' if count == 1 else 'entries'}"
-                                   if count else "Nothing to process")
-            self.__process.setEnabled(bool(count))
+            self.__process.setText(self.process_label(entries, self.__changes))
+            self.__process.setEnabled(bool(entries or self.__changes))
+
+    # "Process 1 entry, 2 changes", "Process 3 entries", "Process 1 change" or "Nothing to process" (G8).
+    @staticmethod
+    def process_label(entries: int, changes: int) -> str:
+        parts = [f"{n} {one if n == 1 else many}" for n, one, many in
+                 ((entries, "entry", "entries"), (changes, "change", "changes")) if n]
+        return f"Process {', '.join(parts)}" if parts else "Nothing to process"
 
     # How many saved entries the next run sends to the AI (pending plus unverified).
     def waiting_for_ai(self) -> int:
         pending, unverified = self.__waiting()
         return len(pending) + len(unverified)
 
+    # (pending, unverified) IDs of the saved entries the next run sends to the AI, as the
+    # pipeline picks them (FeedbackRecord.awaiting_ai).
     def __waiting(self) -> tuple[set, set]:
-        pending = {r.feedback_id for r in self.__data.load_pending()}
-        unverified = {r.feedback_id for r in self.__data.load_records()
-                      if r.ai is None and r.verification == UNVERIFIED} - pending
-        return pending, unverified
+        waiting = [r for r in [*self.__data.load_pending(), *self.__data.load_records()] if r.awaiting_ai]
+        pending = {r.feedback_id for r in waiting if r.verification == PENDING}
+        return pending, {r.feedback_id for r in waiting} - pending
 
     def __build_segments(self) -> QFrame:
         segments = QFrame()
@@ -137,6 +152,7 @@ class AddFeedbackPage(BasePage):
         layout.setContentsMargins(1, 1, 1, 1)
         layout.setSpacing(0)
         group = QButtonGroup(self)
+        self.__segments = []
         for index, (name, side) in enumerate((("Single entry", "left"), ("Import file", "right"))):
             button = QPushButton(name)
             button.setObjectName("segment")
@@ -144,6 +160,7 @@ class AddFeedbackPage(BasePage):
             button.setChecked(index == 0)
             button.setProperty("side", side)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.__segments.append(button)
             group.addButton(button, index)
             layout.addWidget(button)
         group.idClicked.connect(self.__tabs.setCurrentIndex)

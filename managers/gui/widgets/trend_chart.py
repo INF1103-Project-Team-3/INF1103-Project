@@ -1,10 +1,13 @@
 # TrendChart: a line chart of each theme across runs, drawn with QPainter.
 
 import math
+import zlib
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import QSizePolicy, QWidget
+
+from managers.models import THEMES
 
 from ..style import BORDER_SOFT, MUTED
 
@@ -36,7 +39,7 @@ class TrendChart(QWidget):
                  markers: list[tuple[float, str]] | None = None, top: int | None = None) -> None:
         self.__labels = list(run_labels)
         self.__series = {name: list(values) for name, values in series.items()}
-        self.__colours = {name: SERIES_COLOURS[i % len(SERIES_COLOURS)] for i, name in enumerate(self.__series)}
+        self.__colours = {name: self.colour_for(name) for name in self.__series}
         self.__markers = list(markers or [])
         self.__top = top
         self.update()
@@ -58,9 +61,18 @@ class TrendChart(QWidget):
     def colour(self, name: str) -> str:
         return self.__colours.get(name, MUTED)
 
+    # A theme's colour depends only on its name, so adding a theme never recolours the others
+    # (G13): the base themes in their fixed order, any other name by a stable checksum.
+    @classmethod
+    def colour_for(cls, name: str) -> str:
+        return SERIES_COLOURS[cls.__index(name) % len(SERIES_COLOURS)]
+
+    @staticmethod
+    def __index(name: str) -> int:
+        return THEMES.index(name) if name in THEMES else zlib.crc32(name.encode("utf-8"))
+
     def shape(self, name: str) -> str:
-        names = list(self.__series)
-        return SHAPES[names.index(name) % len(SHAPES)] if name in names else "circle"
+        return SHAPES[self.__index(name) % len(SHAPES)] if name in self.__series else "circle"
 
     def set_visible_series(self, names: set[str]) -> None:
         self.__hidden = set(self.__series) - set(names)

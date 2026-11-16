@@ -98,7 +98,7 @@ def test_dashboard_shows_the_ai_notice_strip_and_themes(qtbot, reader):
     qtbot.addWidget(page)
     page.refresh()
     text = labels(page)
-    assert "so 1 entry is unverified" in text
+    assert "so 1 counted entry is unverified" in text
     assert "Compared with the run on" in text
     assert "Facilities" in text and "Parking Fees" in text
     assert "All fine." not in text and "summary and suggested actions are on Trends" in text
@@ -108,7 +108,7 @@ def test_confirm_new_theme_builds_an_update_that_keeps_the_theme(qtbot, monkeypa
     from PySide6.QtWidgets import QMessageBox
     monkeypatch.setattr(QMessageBox, "question", lambda *_args: QMessageBox.StandardButton.Yes)
     record = [r for r in build_sample_records() if any(x.startswith("New theme") for x in r.review_reasons)][0]
-    panel = EntryDetailPanel()
+    panel = EntryDetailPanel(LogicManager().is_new_theme)
     qtbot.addWidget(panel)
     panel.show_record(record, list(THEMES))
     confirm = [b for b in panel.findChildren(QPushButton) if b.text().startswith("Confirm new theme")][0]
@@ -122,7 +122,17 @@ def test_confirm_new_theme_builds_an_update_that_keeps_the_theme(qtbot, monkeypa
 def test_confirm_button_is_hidden_without_a_new_theme(qtbot):
     record = [r for r in build_sample_records() if r.review_reasons
               and not any(x.startswith("New theme") for x in r.review_reasons)][0]
-    panel = EntryDetailPanel()
+    panel = EntryDetailPanel(LogicManager().is_new_theme)
+    qtbot.addWidget(panel)
+    panel.show_record(record, list(THEMES))
+    confirm = [b for b in panel.findChildren(QPushButton) if b.text().startswith("Confirm new theme")][0]
+    assert not confirm.isVisibleTo(panel)
+
+
+# G14: Logic decides whether the theme is new; a theme confirmed since is not offered again
+def test_confirm_button_asks_logic_not_the_reason_text(qtbot):
+    record = [r for r in build_sample_records() if any(x.startswith("New theme") for x in r.review_reasons)][0]
+    panel = EntryDetailPanel(LogicManager(known_themes=[*THEMES, record.theme]).is_new_theme)
     qtbot.addWidget(panel)
     panel.show_record(record, list(THEMES))
     confirm = [b for b in panel.findChildren(QPushButton) if b.text().startswith("Confirm new theme")][0]
@@ -237,7 +247,7 @@ def dashboard(qtbot, reader, ai_ready):
 # The AI notice says whether the AI is back (with Process now) or still down.
 def test_the_ai_notice_offers_process_now_once_the_ai_is_back(qtbot, reader):
     page = dashboard(qtbot, reader, ai_ready=True)
-    assert "The AI was unavailable on the last run, so 1 entry is unverified" in labels(page)
+    assert "The AI was unavailable on the last run, so 1 counted entry is unverified" in labels(page)
     process = [b for b in page.findChildren(QPushButton) if b.text() == "Process now"][0]
     assert process.isVisibleTo(page)
     with qtbot.waitSignal(page.run_requested, timeout=1000):
@@ -246,5 +256,5 @@ def test_the_ai_notice_offers_process_now_once_the_ai_is_back(qtbot, reader):
 
 def test_the_ai_notice_says_the_ai_is_down_without_a_button(qtbot, reader):
     page = dashboard(qtbot, reader, ai_ready=False)
-    assert "The AI is unavailable, so 1 entry is unverified" in labels(page)
+    assert "The AI is unavailable, so 1 counted entry is unverified" in labels(page)
     assert not [b for b in page.findChildren(QPushButton) if b.text() == "Process now"][0].isVisibleTo(page)

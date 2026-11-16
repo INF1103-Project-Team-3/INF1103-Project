@@ -17,7 +17,7 @@ from .pages.trends_page import TrendsPage
 from .pipeline_worker import PipelineWorker
 from .qt_feedback_view import QtFeedbackView
 from .qt_progress_reporter import QtProgressReporter
-from .style import STYLE, app_font, light_palette
+from .style import STYLE, Style
 from .widgets.sidebar import Sidebar
 
 DASHBOARD, ADD_FEEDBACK, FEEDBACK, TRENDS = "Dashboard", "Add feedback", "Feedback", "Trends & actions"
@@ -45,6 +45,9 @@ class MainWindow(QMainWindow):
         self.__actions = []
         self.__new_records = []
         self.__sent_records = []
+        self.__sent_decisions = []
+        self.__sent_actions = []
+        self.__sent_themes = []
         self.__themes_to_add = []
         self.__close_after_run = False
         self.__run_ok = False
@@ -55,13 +58,13 @@ class MainWindow(QMainWindow):
         # Fusion and a light palette for the whole app, so Windows dark mode can't darken any box.
         app = QApplication.instance()
         app.setStyle("Fusion")
-        app.setPalette(light_palette())
-        self.setPalette(light_palette())
-        self.setFont(app_font())
+        app.setPalette(Style.light_palette())
+        self.setPalette(Style.light_palette())
+        self.setFont(Style.app_font())
         self.setStyleSheet(STYLE)
         self.__dashboard = DashboardPage(data, ai_ready)
         self.__add_feedback = AddFeedbackPage(data, reporter.signals, validators, self.__builder, importers)
-        self.__feedback = FeedbackPage(data)
+        self.__feedback = FeedbackPage(data, logic)
         self.__trends = TrendsPage(data, logic)
         self.__settings = SettingsPage(data, ThemeValidator(logic), ai_ready)
         self.__pages = {DASHBOARD: self.__dashboard, ADD_FEEDBACK: self.__add_feedback,
@@ -83,6 +86,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.__stack, 1)
 
         self.__start = StartPage()
+        if password is None or not password.is_configured:
+            self.__start.disable_login("Admin login is disabled: no admin password is configured.")
         self.__student = StudentFormPage(data.load_known_themes(), validators, self.__builder)
         self.__start.student_chosen.connect(self.show_student_form)
         self.__start.login_requested.connect(self.__on_login)
@@ -215,11 +220,16 @@ class MainWindow(QMainWindow):
         box.exec()
         return {process: "process", close: "close"}.get(box.clickedButton(), "cancel")
 
+    # What a run is sent is remembered, so only that is cleared when it ends: work queued
+    # while it runs (the other pages stay usable) waits for the next run (G1).
     def __build_session(self) -> SessionResult:
         self.__sent_records = list(self.__new_records)
+        self.__sent_decisions = list(self.__decisions)
+        self.__sent_actions = list(self.__actions)
+        self.__sent_themes = list(self.__themes_to_add)
         return SessionResult(records=list(self.__sent_records), source_file=self.__source_file,
-                             decisions=list(self.__decisions), actions=list(self.__actions),
-                             themes_to_add=list(self.__themes_to_add))
+                             decisions=list(self.__sent_decisions), actions=list(self.__sent_actions),
+                             themes_to_add=list(self.__sent_themes))
 
     def __on_login(self, password: str) -> None:
         accepted = self.__password is not None and self.__password.check(password)[0]
@@ -252,15 +262,25 @@ class MainWindow(QMainWindow):
     # entries, so an entry using one is counted under it.
     def __themes(self) -> list[str]:
         known = self.__data.load_known_themes()
-        return known + [theme for theme in self.__themes_to_add if theme not in known]
+        return known + [theme for theme in self.__queued_themes() if theme not in known]
+
+    # Themes the next run will confirm: those added in Settings, then those a queued review
+    # decision keeps as a new theme (GUI-E, 7.4: a variant can be folded into one at once).
+    def __queued_themes(self) -> list[str]:
+        themes = list(self.__themes_to_add)
+        for decision in self.__decisions:
+            if (decision.action == ReviewDecision.UPDATE and isinstance(decision.theme, str)
+                    and decision.theme.strip() and self.__logic.is_new_theme(decision.theme)):
+                name = self.__logic.normalise_theme(decision.theme)
+                if name not in themes:
+                    themes.append(name)
+        return themes
 
     # A theme added in Settings, saved by the pipeline on the next run; the theme pickers offer it
     # straight away.
     def __queue_theme(self, theme: str) -> None:
         self.__themes_to_add.append(theme)
         self.__settings.set_queued(self.__themes_to_add)
-        self.__add_feedback.set_queued_themes(self.__themes_to_add)
-        self.__feedback.set_queued_themes(self.__themes_to_add)
         self.__update_queue()
         self.statusBar().showMessage(f"Theme '{theme}' added (saved on the next run)", 8000)
 
@@ -268,18 +288,26 @@ class MainWindow(QMainWindow):
     # actions and new themes. The Feedback page's save bar shows the decisions, and the
     # entries the same run would send to the AI.
     def __update_queue(self) -> None:
-        count = (len(self.__new_records) + len(self.__decisions) + len(self.__actions)
-                 + len(self.__themes_to_add))
-        self.__add_feedback.set_new_count(count)
+        changes = len(self.__decisions) + len(self.__actions) + len(self.__themes_to_add)
+        self.__add_feedback.set_new_count(len(self.__new_records), changes)
+        self.__dashboard.set_queued(len(self.__new_records))
+        themes = self.__queued_themes()
+        for page in (self.__add_feedback, self.__feedback, self.__trends):
+            page.set_queued_themes(themes)
         waiting = self.__add_feedback.waiting_for_ai() + len(self.__new_records)
         self.__feedback.set_queued(self.__decisions, waiting)
 
     # An imported file's new records; the run records the file as its source.
     def __on_import(self, result) -> None:
+        before = len(self.__new_records)
         for record in result.records:
             self.__queue_record(record)
+        added = len(self.__new_records) - before
         self.__source_file = result.source_file
-        self.statusBar().showMessage(f"{len(result.records)} entries from {result.source_file} queued", 8000)
+        message = f"{added} {'entry' if added == 1 else 'entries'} from {result.source_file} queued"
+        if added < len(result.records):
+            message += f" ({len(result.records) - added} already queued)"
+        self.statusBar().showMessage(message, 8000)
 
     # A later decision for the same record replaces the earlier one.
     def __on_decision(self, decision: ReviewDecision) -> None:
@@ -299,26 +327,31 @@ class MainWindow(QMainWindow):
 
     def __on_run_completed(self, context) -> None:
         self.__run_ok = True
-        self.__decisions.clear()
-        self.__actions.clear()
         sent = {record.feedback_id for record in self.__sent_records}
         self.__new_records = [r for r in self.__new_records if r.feedback_id not in sent]
-        self.__sent_records = []
-        self.__source_file = None
-        self.__themes_to_add.clear()
-        self.__settings.set_queued([])
-        self.__add_feedback.set_queued_themes([])
-        self.__feedback.set_queued_themes([])
+        self.__decisions = [d for d in self.__decisions if not any(d is s for s in self.__sent_decisions)]
+        self.__actions = [a for a in self.__actions if not any(a is s for s in self.__sent_actions)]
+        self.__themes_to_add = [t for t in self.__themes_to_add if t not in self.__sent_themes]
+        self.__sent_records, self.__sent_decisions, self.__sent_actions, self.__sent_themes = [], [], [], []
+        if not self.__new_records:
+            self.__source_file = None
+        self.__settings.set_queued(self.__themes_to_add)
         self.__update_queue()
-        self.__trends.forget_unsaved()
-        self.__add_feedback.progress_panel.show_message("Run finished.")
-        self.statusBar().showMessage("Run finished", 8000)
+        self.__trends.forget_unsaved(self.__actions)
+        message = "Run finished."
+        if context.ai_stopped:
+            left = context.sent_to_ai - context.classified_count
+            message = (f"Run finished, but the AI stopped: {left} "
+                       f"{'entry' if left == 1 else 'entries'} left for the next run.")
+        self.__add_feedback.progress_panel.show_message(message)
+        self.statusBar().showMessage(message.rstrip("."), 8000)
 
     def __on_run_failed(self, message: str) -> None:
         self.__add_feedback.progress_panel.show_message(f"Run failed: {message}")
         QMessageBox.warning(self, "Run failed", message)
 
     def __on_worker_finished(self) -> None:
+        self.__worker.wait()
         self.__worker.deleteLater()
         self.__worker = None
         self.__add_feedback.set_busy(False)

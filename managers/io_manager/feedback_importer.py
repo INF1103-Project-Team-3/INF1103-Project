@@ -56,11 +56,17 @@ class FeedbackImporter(ABC):
         return Path(path).suffix.lower() == self.extension
 
     def import_file(self, path: str) -> ImportResult:
-        """Import one file. Raises ValueError if Data cannot read it or it has no rows."""
+        """Import one file. Raises ValueError if Data cannot read it or it has no rows.
+
+        A row whose feedback_id is already saved or pending is skipped and
+        listed in already_saved, so no entry is processed twice."""
         rows = list(self._data.read_rows(path))
         if not rows:
             raise ValueError("the file has no rows")
         accepted, rejected = self._validator.validate_rows(rows, self._row_problem)
         source = Path(path).name
         records = [self._builder.build(entry, source_file=source) for entry in accepted]
-        return ImportResult(source, records, rejected)
+        stored = {r.feedback_id for r in [*self._data.load_records(), *self._data.load_pending()]}
+        new = [r for r in records if r.feedback_id not in stored]
+        already_saved = [r.feedback_id for r in records if r.feedback_id in stored]
+        return ImportResult(source, new, rejected, already_saved)

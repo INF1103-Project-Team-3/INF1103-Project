@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable, Sequence
 
-from managers.models import UNCLEAR_THEME, FeedbackRecord
+from managers.models import FeedbackRecord
 
 from .choice_validator import ChoiceValidator
 from .csv_importer import CsvImporter
@@ -56,7 +56,7 @@ class IOManager:
 
     # what Settings shows for the AI connection; AppEngine knows (it reads the
     # API key), I do not, because only AppEngine reads environment variables
-    AI_STATUS = {True: "ready", False: "not configured (no API key)", None: "not reported"}
+    AI_STATUS = {True: "Key set", False: "not configured (no API key or key label)", None: "not reported"}
 
     def __init__(self, view: FeedbackView, prompter: Prompter,
                  importers: Sequence[FeedbackImporter], data: "DataManager",
@@ -71,6 +71,7 @@ class IOManager:
         self._password = PasswordValidator(admin_password)
         self._roles = ChoiceValidator(self.ROLES, error="please enter 'user' or 'admin'")
         self._ai_ready = ai_ready
+        self._last_role: str | None = None
         # one theme validator, shared by the form and Settings, so a typed theme
         # is cleaned up by Logic the same way wherever it is typed
         self._theme_validator = ThemeValidator(logic)
@@ -108,11 +109,19 @@ class IOManager:
 
     # ---- public API ------------------------------------------------------
 
+    @property
+    def last_role(self) -> str | None:
+        """The role of the last session (ROLE_USER or ROLE_ADMIN), or None before
+        one ran or if the person quit or did not log in. AppEngine reads it to show
+        the end-of-run dashboard to admins only."""
+        return self._last_role
+
     def run_session(self) -> SessionResult | None:
         """Run one session. Returns what was collected, or None if the person
         quit or collected nothing."""
         self._view.show_message("=== Feedback Manager ===")
         role = self._select_role()
+        self._last_role = role
         if role is None:
             self._view.show_message("Goodbye.")
             return None
@@ -188,7 +197,10 @@ class IOManager:
         if result is None:
             self._view.show_message("Cancelled.")
             return False
-        self._view.show_message(f"Validated {len(result.records)} of {result.total} row(s).")
+        message = f"Validated {len(result.records)} of {result.total} row(s)"
+        if result.already_saved:
+            message += f"; {len(result.already_saved)} already saved, skipped"
+        self._view.show_message(message + ".")
         self._view.show_rejected_rows(result.rejected)
         if result.records:
             session.records.extend(result.records)
@@ -216,11 +228,12 @@ class IOManager:
         # imported here, not at the top, so an unfinished Logic or AI module can
         # never stop the whole I/O package from loading
         from managers.ai_manager import AISummary
-        from managers.logic_manager import AggregationResult, TrendReport
+        from managers.logic_manager import ActionSuggestions, AggregationResult, TrendReport
         queue = self._load_queue()
         self._view.show_dashboard(self._rebuild("aggregated_output", AggregationResult),
                                   self._rebuild("trend_output", TrendReport),
-                                  self._rebuild("summary", AISummary), queue)
+                                  self._rebuild("summary", AISummary), queue,
+                                  self._rebuild("fallback_actions", ActionSuggestions))
         # only offer a review if something is still undecided in this session
         waiting = [r for r in queue if r.feedback_id not in session.decided_ids()]
         if waiting and self._prompter.confirm("\nReview them now? (y/n): "):
@@ -272,11 +285,11 @@ class IOManager:
         if theme is None:
             self._view.show_message("Cancelled.")
             return
-        known = {name.lower() for name in self._data.load_known_themes()}
-        known |= {name.lower() for name in session.themes_to_add}
-        if theme == UNCLEAR_THEME:              # Logic treats filler words as Unclear
+        outcome = self._theme_validator.new_theme_outcome(
+            theme, [*self._data.load_known_themes(), *session.themes_to_add])
+        if outcome == ThemeValidator.UNUSABLE:
             self._view.show_message("  Invalid: that is not a usable theme name.")
-        elif theme.lower() in known:
+        elif outcome == ThemeValidator.KNOWN:
             self._view.show_message(f"  '{theme}' is already a known theme.")
         else:
             session.themes_to_add.append(theme)

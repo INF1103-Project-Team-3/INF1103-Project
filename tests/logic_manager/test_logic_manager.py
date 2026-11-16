@@ -275,3 +275,18 @@ def test_suggest_actions_gives_one_action_per_theme_in_the_results_order(logic):
     suggestions = logic.suggest_actions(logic.aggregate(records), records)
     assert isinstance(suggestions, ActionSuggestions)
     assert [action["theme"] for action in suggestions.theme_actions] == ["Workload", "Facilities"]
+
+
+# ---- P1: the pipeline asks Logic whether a reviewed theme is new
+
+@pytest.mark.parametrize("label, new", [
+    ("Parking Fees", True), ("parking fees", True), ("wifi", False), ("Facilities", False),
+    ("Unclear", False), ("other", False), ("", False),
+])
+def test_is_new_theme_uses_the_normalising_rule(logic, label, new):
+    assert logic.is_new_theme(label) is new
+
+
+def test_a_confirmed_theme_is_no_longer_new(logic):
+    logic.set_known_themes(["Parking Fees"])
+    assert logic.is_new_theme("parking-fees") is False

@@ -25,6 +25,10 @@ class LogActionDialog(QDialog):
         self.__theme.setObjectName("themeBox")
         self.__theme.addItems(known_themes)
         if theme:
+            # a pending or queued theme may not be in the list yet: add it rather than
+            # leave the first theme chosen (G3)
+            if self.__theme.findText(theme) == -1:
+                self.__theme.addItem(theme)
             self.__theme.setCurrentText(theme)
         self.__description = QLineEdit()
         self.__description.setObjectName("descriptionEdit")
@@ -48,7 +52,7 @@ class LogActionDialog(QDialog):
 
         title = QLabel("Log an action")
         title.setObjectName("dialogTitle")
-        hint = QLabel("The result shows \"Too early\" until 14 days have passed.")
+        hint = QLabel("The result shows \"Too early\" until 7 days have passed and at least 3 matching entries exist.")
         hint.setObjectName("statusLine")
         hint.setWordWrap(True)
         cancel = QPushButton("Cancel")

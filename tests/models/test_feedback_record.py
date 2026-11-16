@@ -151,3 +151,20 @@ def test_from_dict_with_only_creation_fields_gives_a_pending_record():
 def test_from_dict_missing_required_key_raises():
     with pytest.raises(KeyError):
         FeedbackRecord.from_dict({"feedback_id": "fb_003"})
+
+
+# G14: the one rule for "the next run sends this to the AI", used by the pipeline and the GUI
+def test_awaiting_ai_while_pending_or_unverified_without_ai_values():
+    from managers.models import UNVERIFIED
+    record = make_record()
+    assert record.awaiting_ai                                   # new, pending
+    record.set_final("Facilities", NEGATIVE, HIGH, UNVERIFIED)
+    assert record.awaiting_ai                                   # counted while the AI was down
+    record.set_ai("Facilities", NEGATIVE, HIGH)
+    assert not record.awaiting_ai
+
+
+def test_a_reviewed_record_without_ai_values_is_not_sent_again():
+    record = make_record()
+    record.mark_reviewed("Facilities", NEGATIVE, HIGH)
+    assert record.ai is None and not record.awaiting_ai

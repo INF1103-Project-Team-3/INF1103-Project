@@ -103,6 +103,9 @@ class AggregationResult(Serializable):
         body = data["result"] if "result" in data else data
         try:
             themes = [ThemeStats.from_dict(stats) for stats in body["themes"]]
+            total = body["total_entries"]
+            if isinstance(total, bool) or not isinstance(total, int):
+                raise ValueError(f"total_entries must be a whole number, got {total!r}")
             return cls(themes, body["total_entries"], body.get("pending_themes"),
                        data.get("run_at"), data.get("source_file"))
         except (KeyError, TypeError, ValueError) as error:
