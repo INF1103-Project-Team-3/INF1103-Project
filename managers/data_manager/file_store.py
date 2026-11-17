@@ -5,8 +5,6 @@ from pathlib import Path
 from typing import Any
 from .storage_backend import StorageBackend
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
 class FileStore(StorageBackend, ABC):
     """Abstract base class handling shared atomic writes and logging."""
 

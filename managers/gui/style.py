@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PySide6.QtGui import QColor, QFont, QPalette
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPalette
 
 INK = "#1C1C1A"
 INK_SOFT = "#3A3A37"
@@ -24,6 +24,7 @@ LOG_WARN = "#FFD08A"
 LOG_ERROR = "#FFB4A0"
 
 FONT_FAMILIES = ["Inter", "Segoe UI", "Arial"]
+SEGMENT_PADDING = 36    # a segment button's side padding (2 x 16px) plus a little room
 ASSETS = Path(__file__).resolve().parent / "assets"
 ARROW = (ASSETS / "chevron-down.png").as_posix()
 ARROW_DISABLED = (ASSETS / "chevron-down-disabled.png").as_posix()
@@ -184,6 +185,8 @@ QRadioButton::indicator:checked {{ background: {CARD}; border: 5px solid {BLUE};
 #feedbackBox {{ background: {CARD}; border: 1px solid {FIELD_BORDER}; border-radius: 10px; padding: 8px;
                 font-size: 15px; }}
 #feedbackBox:focus, #studentTheme:focus {{ border-color: {BLUE}; }}
+#entryTextBox {{ background: {CARD}; color: {INK}; border: 1px solid {FIELD_BORDER}; border-radius: 8px; padding: 6px; }}
+#entryTextBox:focus {{ border-color: {BLUE}; }}
 #studentTheme {{ min-height: 48px; border: 1px solid {FIELD_BORDER}; border-radius: 10px; padding: 0 14px; font-size: 15px; }}
 #chip {{ min-height: 36px; border-radius: 18px; padding: 0 12px; font-size: 13px; }}
 #optionCard {{ background: {CARD}; border: 1px solid {FIELD_BORDER}; border-radius: 10px; }}
@@ -208,33 +211,45 @@ QMessageBox {{ background: {CARD}; }}
 """
 
 
-# Inter if it is installed, otherwise Segoe UI (Windows) or Arial.
-def app_font() -> QFont:
-    font = QFont()
-    font.setFamilies(FONT_FAMILIES)
-    font.setPixelSize(14)
-    return font
+# The app's font, palette and restyling in one class, so nothing here is a loose function (G14).
+class Style:
+    # Inter if it is installed, otherwise Segoe UI (Windows) or Arial.
+    @staticmethod
+    def app_font() -> QFont:
+        font = QFont()
+        font.setFamilies(FONT_FAMILIES)
+        font.setPixelSize(14)
+        return font
 
+    # A light palette, so Windows dark mode doesn't turn boxes dark under our dark text.
+    @staticmethod
+    def light_palette() -> QPalette:
+        palette = QPalette()
+        colours = {
+            QPalette.ColorRole.Window: PAGE, QPalette.ColorRole.WindowText: INK,
+            QPalette.ColorRole.Base: CARD, QPalette.ColorRole.AlternateBase: PAGE,
+            QPalette.ColorRole.Text: INK, QPalette.ColorRole.Button: CARD,
+            QPalette.ColorRole.ButtonText: INK, QPalette.ColorRole.Highlight: BLUE_SOFT,
+            QPalette.ColorRole.HighlightedText: BLUE_DARK, QPalette.ColorRole.ToolTipBase: INK,
+            QPalette.ColorRole.ToolTipText: "#FFFFFF", QPalette.ColorRole.PlaceholderText: "#8A8A85",
+            QPalette.ColorRole.Link: BLUE,
+        }
+        for role, colour in colours.items():
+            palette.setColor(role, QColor(colour))
+        return palette
 
-# A light palette, so Windows dark mode doesn't turn boxes dark under our dark text.
-def light_palette() -> QPalette:
-    palette = QPalette()
-    colours = {
-        QPalette.ColorRole.Window: PAGE, QPalette.ColorRole.WindowText: INK,
-        QPalette.ColorRole.Base: CARD, QPalette.ColorRole.AlternateBase: PAGE,
-        QPalette.ColorRole.Text: INK, QPalette.ColorRole.Button: CARD,
-        QPalette.ColorRole.ButtonText: INK, QPalette.ColorRole.Highlight: BLUE_SOFT,
-        QPalette.ColorRole.HighlightedText: BLUE_DARK, QPalette.ColorRole.ToolTipBase: INK,
-        QPalette.ColorRole.ToolTipText: "#FFFFFF", QPalette.ColorRole.PlaceholderText: "#8A8A85",
-        QPalette.ColorRole.Link: BLUE,
-    }
-    for role, colour in colours.items():
-        palette.setColor(role, QColor(colour))
-    return palette
+    # Re-applies the style sheet after a dynamic property (e.g. selected) changes.
+    @staticmethod
+    def restyle(widget) -> None:
+        widget.style().unpolish(widget)
+        widget.style().polish(widget)
+        widget.update()
 
-
-# Re-applies the style sheet after a dynamic property (e.g. selected) changes.
-def restyle(widget) -> None:
-    widget.style().unpolish(widget)
-    widget.style().polish(widget)
-    widget.update()
+    # Keeps room for the widget's text in bold, so a state that turns it bold (a checked
+    # segment, the active page's name) never clips it: Qt sizes it for the normal weight (G13).
+    @staticmethod
+    def reserve_bold_width(widget, padding: int = 0) -> None:
+        widget.ensurePolished()
+        font = QFont(widget.font())
+        font.setWeight(QFont.Weight.DemiBold)
+        widget.setMinimumWidth(QFontMetrics(font).horizontalAdvance(widget.text()) + padding)

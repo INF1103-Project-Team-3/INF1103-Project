@@ -1,5 +1,5 @@
-from .data_manager import DataManager, _read_list_strict
+from .data_manager import DataManager
 from .storage_backend import StorageBackend
 from .json_file_store import JsonFileStore
 
-__all__ = ["DataManager", "StorageBackend", "JsonFileStore", "_read_list_strict"]
+__all__ = ["DataManager", "StorageBackend", "JsonFileStore"]

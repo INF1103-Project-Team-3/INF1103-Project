@@ -93,7 +93,14 @@ def test_from_dict_rejects_a_part_1_history_entry():
         AggregationResult.from_dict(part_1_entry)
 
 
-@pytest.mark.parametrize("data", [None, [], {}, {"themes": [{"theme": "Facilities"}], "total_entries": 1}])
+@pytest.mark.parametrize("data", [
+    None, [], {}, {"themes": [{"theme": "Facilities"}], "total_entries": 1},
+    # wrong types (L1)
+    {**make_result().to_dict(), "total_entries": 8.0},
+    {**make_result().to_dict(), "total_entries": "8"},
+    {**make_result().to_dict(), "total_entries": None},
+    {**make_result().to_dict(), "themes": [{**make_stats("Facilities", 1, 0, 0).to_dict(), "priority": None}]},
+])
 def test_from_dict_raises_value_error_for_anything_unreadable(data):
     with pytest.raises(ValueError):
         AggregationResult.from_dict(data)

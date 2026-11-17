@@ -73,9 +73,27 @@ class ThemeStats(Serializable):
 
     @classmethod
     def from_dict(cls, data: dict) -> Self:
-        """Raises KeyError if a field is missing."""
+        """Raises KeyError if a field is missing, and ValueError if one has the
+        wrong type, so a hand-edited or corrupt run can be skipped."""
+        if not isinstance(data["theme"], str):
+            raise ValueError(f"theme must be text, got {data['theme']!r}")
+        for name in ("count", "priority", "unverified"):
+            if not cls._is_whole_number(data[name]):
+                raise ValueError(f"{name} must be a whole number, got {data[name]!r}")
+        average = data["avg_sentiment"]
+        if isinstance(average, bool) or not isinstance(average, (int, float)):
+            raise ValueError(f"avg_sentiment must be a number, got {average!r}")
+        for name in ("severity_counts", "sentiment_counts"):
+            counts = data[name]
+            if not isinstance(counts, dict) or not all(cls._is_whole_number(n) for n in counts.values()):
+                raise ValueError(f"{name} must map each label to a whole number, got {counts!r}")
         return cls(data["theme"], data["count"], data["severity_counts"], data["sentiment_counts"],
-                   data["avg_sentiment"], data["priority"], data["unverified"])
+                   average, data["priority"], data["unverified"])
+
+    @staticmethod
+    def _is_whole_number(value: object) -> bool:
+        # bool is a subclass of int, but true/false in a saved run is not a count
+        return isinstance(value, int) and not isinstance(value, bool)
 
     def __eq__(self, other) -> bool:
         return isinstance(other, ThemeStats) and self.to_dict() == other.to_dict()

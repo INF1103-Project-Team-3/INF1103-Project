@@ -11,6 +11,13 @@ class ComboBox(QComboBox):
         self.setView(QListView())
         self.setMaxVisibleItems(12)
 
+    # The wheel scrolls the page, never a closed dropdown's value (G4); an open list still scrolls.
+    def wheelEvent(self, event) -> None:
+        if self.view().isVisible():
+            super().wheelEvent(event)
+        else:
+            event.ignore()
+
     def showPopup(self) -> None:
         widest = max((self.fontMetrics().horizontalAdvance(self.itemText(i)) for i in range(self.count())),
                      default=0)

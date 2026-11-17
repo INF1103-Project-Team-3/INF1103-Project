@@ -114,6 +114,7 @@ class FakeData:
         self.files = {}
         self.themes = list(THEMES)
         self.records = []
+        self.pending = []           # load_pending(): records stored but not yet run
         self.queue = []
         self.objects = {}
         self.history = []           # newest first, as the real one stores it

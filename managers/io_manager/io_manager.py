@@ -51,6 +51,10 @@ class IOManager:
     # API key), I do not, because only AppEngine reads environment variables
     AI_STATUS = {True: "Key set", False: "not configured (no API key or key label)", None: "not reported"}
 
+    # what Settings shows for the AI connection; AppEngine knows (it reads the
+    # API key), I do not, because only AppEngine reads environment variables
+    AI_STATUS = {True: "Key set", False: "not configured (no API key or key label)", None: "not reported"}
+
     def __init__(self, view: FeedbackView, prompter: Prompter,
                  importers: Sequence[FeedbackImporter], data: "DataManager",
                  logic: "LogicManager", admin_password: str | None,
