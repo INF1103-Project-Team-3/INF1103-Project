@@ -47,12 +47,9 @@ class IOManager:
     ROLE_ADMIN = "admin"
     ROLES = (ROLE_USER, ROLE_ADMIN)
 
-    # notices AppEngine shows through show_notice() in terminal mode, around one
-    # pipeline run: nothing collected, about to run, and the end of the program.
-    # Progress during the run is the ProgressReporter's job, not the view's.
-    NOTICE_NOTHING_NEW = "NOTICE: Nothing new to process. Exiting runtime."
-    NOTICE_CONNECTING = "CONNECTING TO API & RUNNING"
-    NOTICE_GOODBYE = "Thank you for using Feedback Manager. Goodbye."
+    # what Settings shows for the AI connection; AppEngine knows (it reads the
+    # API key), I do not, because only AppEngine reads environment variables
+    AI_STATUS = {True: "Key set", False: "not configured (no API key or key label)", None: "not reported"}
 
     # what Settings shows for the AI connection; AppEngine knows (it reads the
     # API key), I do not, because only AppEngine reads environment variables
@@ -126,10 +123,6 @@ class IOManager:
             self._view.show_message("Goodbye.")
             return None
         return self._flows[role]()
-
-    def show_notice(self, notice: str) -> None:
-        """Show a status notice (one of the NOTICE_* attributes)."""
-        self._view.show_notice(notice)
 
     # ---- choosing the role -------------------------------------------------
 
