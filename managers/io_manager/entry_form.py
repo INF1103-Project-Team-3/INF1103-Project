@@ -61,7 +61,7 @@ class EntryForm:
         if severity is None:
             return None
         return self._builder.build(
-            {"text": text}, {"theme": theme, "sentiment": sentiment, "severity": severity})
+            {"text": text, "theme": theme, "sentiment": sentiment, "severity": severity})
 
     def collect_action(self) -> Action | None:
         """A known theme, what was done, the date, and an optional keyword."""
