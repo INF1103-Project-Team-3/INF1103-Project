@@ -1,10 +1,10 @@
 """ImpactAnalyser: was an action followed by less negative feedback on its theme?"""
 
-import re
 from datetime import date, timedelta
 
 from managers.models import CRITICAL, HIGH, NEGATIVE, UNVERIFIED, Action, FeedbackRecord
 
+from .keyword_matcher import KeywordMatcher
 from .results import ImpactReport
 from .theme_aggregator import ThemeAggregator
 from .theme_normaliser import ThemeNormaliser
@@ -33,7 +33,8 @@ class ImpactAnalyser:
         other_actions are checked for overlap; the action itself is skipped."""
         start = date.fromisoformat(action.action_date)
         theme = self.__normaliser.normalise(action.theme)
-        matching = [r for r in records if r.counted and r.theme == theme and self.__mentions(r, action.keyword)]
+        matching = [r for r in records if r.counted and r.theme == theme
+                    and (action.keyword is None or KeywordMatcher.mentions(r.text, action.keyword))]
         weekly = self.__weekly(matching, start, today)
         if start >= today:
             return ImpactReport(action, ImpactReport.TOO_EARLY,
@@ -161,13 +162,6 @@ class ImpactAnalyser:
         return (f"Since {action.description} ({action.action_date}), negative {theme} feedback{mentioning} "
                 f"{moved(before['negative_per_week'], after['negative_per_week'], 'fell', 'rose', ' per week')}, "
                 f"and its priority {moved(before['priority'], after['priority'], 'dropped', 'rose')}.")
-
-    @staticmethod
-    def __mentions(record: FeedbackRecord, keyword: str | None) -> bool:
-        """True with no keyword, or when the text has the keyword as a whole word, in any case."""
-        if keyword is None:
-            return True
-        return re.search(rf"(?<!\w){re.escape(keyword)}(?!\w)", record.text, re.IGNORECASE) is not None
 
     @staticmethod
     def __day(record: FeedbackRecord) -> date:

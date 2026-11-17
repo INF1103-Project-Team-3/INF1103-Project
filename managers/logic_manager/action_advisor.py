@@ -1,9 +1,8 @@
 """ActionAdvisor: suggested actions from keyword rules, for when the AI's summary can't run."""
 
-import re
-
 from managers.models import CRITICAL, NEGATIVE, FeedbackRecord
 
+from .keyword_matcher import KeywordMatcher
 from .results import ActionSuggestions, AggregationResult
 
 
@@ -130,15 +129,10 @@ class ActionAdvisor:
         rules, default = self.__RULES[theme]
         best, best_count = default, 0
         for keywords, action in rules:
-            count = sum(any(self.__mentions(text, word) for word in keywords) for text in texts)
+            count = sum(any(KeywordMatcher.mentions(text, word) for word in keywords) for text in texts)
             if count > best_count:
                 best, best_count = action, count
         return best
-
-    @staticmethod
-    def __mentions(text: str, word: str) -> bool:
-        """True when text has word as a whole word, in any case."""
-        return re.search(rf"(?<!\w){re.escape(word)}(?!\w)", text, re.IGNORECASE) is not None
 
     @staticmethod
     def __plural(count: int, one: str, many: str) -> str:
