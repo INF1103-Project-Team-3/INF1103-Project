@@ -24,10 +24,6 @@ class FeedbackView(ABC):
         """Show an ordinary message."""
 
     @abstractmethod
-    def show_notice(self, notice: str) -> None:
-        """Show a prominent status notice."""
-
-    @abstractmethod
     def show_dashboard(self, result: "AggregationResult | None",
                        trend: "TrendReport | None",
                        summary: "AISummary | None",
