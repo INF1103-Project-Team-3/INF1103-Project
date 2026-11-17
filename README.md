@@ -19,8 +19,8 @@ It is object-oriented Python 3.11, split into five managers that talk through a 
 - **AI summary (Call 2):** an overall summary and one suggested action per theme, sent the entries' one-line summaries.
 - **AI down:** with no key, a lost connection or a rejected key, the run still completes: entries keep the student's values, are marked Unverified and sent to the AI again next run, and suggested actions come from keyword rules, labelled as such.
 - **Review:** admins set their own values, accept the AI's, or delete the entry; the GUI also offers the student's values and Confirm new theme.
-- **Action tracking and impact (new feature):** admins log an action against a theme; each run compares negative feedback in the two weeks before and after it and labels it Effective, No change, Worse or Too early to tell, with a weekly chart.
-- **GUI (advanced feature):** a PySide6 window (Dashboard, Add feedback, Feedback, Trends and actions, Settings) that runs the pipeline on a background thread, so pages stay usable during a run.
+- **Action tracking and impact (new feature):** admins log an action against a theme; each run compares negative feedback in two equal windows before and after it (up to 14 days each, shorter while the action is newer) and labels it Effective, No change, Worse or Too early to tell, with a weekly chart. It stays Too early to tell until there are 7 days of feedback since the action (its own day included) and at least 3 matching entries across the two windows.
+- **GUI (advanced feature):** a PySide6 window (Dashboard, Add feedback, Feedback, Trends & actions, Settings) that runs the pipeline on a background thread, so pages stay usable during a run.
 - **Safe storage:** corrupt data files are moved aside instead of overwritten, writes are atomic, and saved entries are never processed twice.
 
 ---
@@ -43,7 +43,7 @@ It is object-oriented Python 3.11, split into five managers that talk through a 
 │       └── .env.example                             # copy to .env and fill in
 ├── data/                    # what the app saves (git-ignored); test-input.json is a sample
 ├── submission/              # execution_script.py and its sample AI replies
-├── tests/                   # pytest tests, one folder per manager plus the pipeline and GUI
+├── tests/                   # pytest tests: one folder per manager, plus models, pipeline, GUI and the execution script
 ├── requirements/            # requirements.txt (app) and gui.txt (PySide6, pytest-qt)
 ├── Dockerfile, docker-compose.yml, pytest.ini
 └── .github/workflows/ci.yml
@@ -100,7 +100,7 @@ The repository is mounted into the container, so code changes apply without rebu
 
 Choose **user** or **admin** at the start. Type `quit` at a prompt to cancel it.
 
-**User:** enter one piece of feedback with its theme, sentiment and severity. In the terminal it is processed straight away; in the GUI it waits until an admin presses Process.
+**User:** enter one piece of feedback with its theme, sentiment and severity. In the terminal it is processed straight away; in the GUI it waits until an admin presses Process. The dashboard after a run is shown to admins only.
 
 **Admin** (the password is `ADMIN_PASSWORD`):
 
