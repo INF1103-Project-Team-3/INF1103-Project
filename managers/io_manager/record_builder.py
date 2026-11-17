@@ -20,23 +20,20 @@ class RecordBuilder:
     def __init__(self, clock: Callable[[], datetime] = datetime.now):
         self._clock = clock         # a parameter so a test can pass a fixed time
 
-    def build(self, entry: Mapping[str, str], user: Mapping[str, str] | None = None,
-              source_file: str | None = None) -> FeedbackRecord:
-        """Build one record from a checked entry.
+    def build(self, entry: Mapping[str, str], source_file: str | None = None) -> FeedbackRecord:
+        """Build one record from a checked entry: its text plus the writer's own
+        theme, sentiment and severity.
 
         Imported rows already carry a feedback_id and timestamp, so I keep them;
-        typed feedback has only its text, so I create a new ID and use the
-        current time. user is the writer's theme, sentiment and severity; if it
-        is not given I take them from entry.
+        typed feedback has only its text and labels, so I create a new ID and
+        use the current time.
         """
-        if user is None:
-            user = {name: entry[name] for name in LABEL_FIELDS}
         return FeedbackRecord(
             entry.get("feedback_id") or self._new_id("fb"),
             entry["text"],
             entry.get("timestamp") or self._now(),
             source_file,
-            dict(user))
+            {name: entry[name] for name in LABEL_FIELDS})
 
     def build_action(self, theme: str, description: str, action_date: str,
                      keyword: str | None = None) -> Action:

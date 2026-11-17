@@ -12,9 +12,9 @@ from .theme_validator import ThemeValidator
 class EntryValidator:
     """Checks one whole feedback entry (a dictionary) and returns it cleaned up.
 
-    Two callers use EntryValidator: the importers check every row of a file through
-    validate_rows(), and the GUI's student form checks its fields through
-    validate(). Built from the smaller validators instead of re-writing
+    Two kinds of caller use EntryValidator: the importers check every row of a
+    file through validate_rows(), and the GUI's student form and single-entry
+    form check their fields through validate(). Built from the smaller validators instead of re-writing
     their rules, so a typed answer and an imported row obey exactly the same
     rules. I only return errors and never print them, so each front end can show
     them its own way.

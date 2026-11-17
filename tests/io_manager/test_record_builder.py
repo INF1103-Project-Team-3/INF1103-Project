@@ -17,7 +17,7 @@ def builder():
 
 
 def test_typed_feedback_gets_a_new_id_and_the_current_time(builder):
-    record = builder.build({"text": "Too many deadlines"}, LABELS)
+    record = builder.build({"text": "Too many deadlines", **LABELS})
     assert re.fullmatch(r"fb_[0-9a-f]{8}", record.feedback_id)
     assert record.timestamp == "2026-11-09T14:30:05"
     assert record.source_file is None
@@ -25,8 +25,20 @@ def test_typed_feedback_gets_a_new_id_and_the_current_time(builder):
 
 
 def test_each_record_gets_a_different_id(builder):
-    ids = {builder.build({"text": "x"}, LABELS).feedback_id for _ in range(50)}
+    ids = {builder.build({"text": "x", **LABELS}).feedback_id for _ in range(50)}
     assert len(ids) == 50
+
+
+def test_the_labels_are_read_from_the_entry_itself(builder):
+    # build() takes one checked entry: its text plus the theme, sentiment and severity
+    record = builder.build({"text": "x", "theme": "Facilities", "sentiment": "neutral",
+                            "severity": "low", "summary": "not a label"})
+    assert record.user == {"theme": "Facilities", "sentiment": "neutral", "severity": "low"}
+
+
+def test_an_entry_without_its_labels_cannot_be_built(builder):
+    with pytest.raises(KeyError):
+        builder.build({"text": "x"})
 
 
 def test_imported_row_keeps_its_own_id_and_timestamp(builder):
@@ -34,11 +46,11 @@ def test_imported_row_keeps_its_own_id_and_timestamp(builder):
     record = builder.build(entry, source_file="week5.csv")
     assert (record.feedback_id, record.timestamp, record.source_file) == (
         "a1", "2026-10-01T09:00:00", "week5.csv")
-    assert record.user == LABELS                # taken from the entry when user is not given
+    assert record.user == LABELS                # the writer's labels come from the entry
 
 
 def test_only_the_input_sides_fields_are_filled(builder):
-    record = builder.build({"text": "x"}, LABELS)
+    record = builder.build({"text": "x", **LABELS})
     # the AI, Logic and the pipeline fill these in later
     assert record.ai is None
     assert (record.theme, record.sentiment, record.severity) == (None, None, None)

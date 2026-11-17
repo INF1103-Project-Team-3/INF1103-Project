@@ -49,10 +49,6 @@ class ConsoleView(FeedbackView):
     def show_message(self, message: str) -> None:
         self._block([message])
 
-    def show_notice(self, notice: str) -> None:
-        bar = "=" * self.WIDTH
-        self._block([bar, f"    {notice}", bar])
-
     def show_dashboard(self, result, trend, summary, queue: Sequence[FeedbackRecord],
                        fallback=None) -> None:
         if not self._get(result, "themes"):
