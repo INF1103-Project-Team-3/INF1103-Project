@@ -3,7 +3,7 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout
 
-from ..style import restyle
+from ..style import Style
 
 
 # A small heading (kicker), a title and one line of text. Emits clicked().
@@ -30,9 +30,9 @@ class ChoiceCard(QFrame):
         self.setProperty("selected", selected)
         margin = 23 if selected else 24
         self.layout().setContentsMargins(margin, margin, margin, margin)
-        restyle(self)
+        Style.restyle(self)
         for child in self.findChildren(QLabel):
-            restyle(child)
+            Style.restyle(child)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:

@@ -111,6 +111,12 @@ class FeedbackRecord(Serializable):
         return bool(self.__review_reasons)
 
     @property
+    def awaiting_ai(self) -> bool:
+        """True while the AI has not classified the record: it is new (pending), or it
+        was counted unverified while the AI was down. The next run sends it (D4)."""
+        return self.__ai is None and self.__verification in (PENDING, UNVERIFIED)
+
+    @property
     def counted(self) -> bool:
         """True once Logic has checked the record and no reason excludes it from statistics."""
         return self.__verification != PENDING and not self.__excluded
@@ -176,7 +182,14 @@ class FeedbackRecord(Serializable):
     def from_dict(cls, data: dict) -> Self:
         """Rebuilds a record saved by to_dict(). Values are restored as saved,
         not checked: RecordValidator reports bad ones. Raises KeyError if
-        feedback_id, text, timestamp or user is missing."""
+        feedback_id, text, timestamp or user is missing, and ValueError if user
+        or ai is not a dict or review_reasons is not a list, as the record
+        cannot be built from them."""
+        cls.__check_container(data, "user", dict)
+        if data.get("ai") is not None:
+            cls.__check_container(data, "ai", dict)
+        if "review_reasons" in data:
+            cls.__check_container(data, "review_reasons", list)
         record = cls(data["feedback_id"], data["text"], data["timestamp"],
                      data.get("source_file"), data["user"])
         record.__ai = dict(data["ai"]) if data.get("ai") is not None else None
@@ -185,8 +198,16 @@ class FeedbackRecord(Serializable):
         record.__severity = data.get("severity")
         record.__verification = data.get("verification", PENDING)
         record.__review_reasons = list(data.get("review_reasons", []))
-        record.__excluded = not data.get("counted", False)
+        # an admin's decision is always counted, so a reviewed record with no saved
+        # "counted" stays counted (the rules never re-check it to correct this)
+        record.__excluded = not data.get("counted", record.__verification == REVIEWED)
         return record
+
+    @staticmethod
+    def __check_container(data: dict, key: str, kind: type) -> None:
+        """Raises KeyError if key is missing, ValueError if its value is not a kind."""
+        if not isinstance(data[key], kind):
+            raise ValueError(f"{key} must be a {kind.__name__}, got {data[key]!r}")
 
     def __repr__(self) -> str:
         return f"FeedbackRecord({self.__feedback_id!r}, verification={self.__verification!r})"

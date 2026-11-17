@@ -9,3 +9,6 @@ Project Part 1 - LLM Design Kickoff.md
 claude-project-export.zip
 key.txt
 tests/logic_output/
+# Runtime data the app writes; only the sample input is kept in the repo
+data/*
+!data/test-input.json

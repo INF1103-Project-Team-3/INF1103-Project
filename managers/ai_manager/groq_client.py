@@ -64,7 +64,7 @@ class GroqClient(LLMClient):
         try:
             payload = response.json()
             content = payload["choices"][0]["message"]["content"]
-            total_tokens = (payload.get("usage") or {}).get("total_tokens", 0)
+            total_tokens = (payload.get("usage") or {}).get("total_tokens") or 0
         except (ValueError, KeyError, IndexError, TypeError) as exc:
             logger.debug("malformed response: %r", exc)
             raise LLMRequestError("malformed response", LLMRequestError.OUTPUT, True) from exc

@@ -42,3 +42,34 @@ def test_missing_field_raises_key_error():
     del data["priority"]
     with pytest.raises(KeyError):
         ThemeStats.from_dict(data)
+
+
+# A wrong type raises ValueError, so LogicStep skips a bad previous run (L1)
+@pytest.mark.parametrize("field, value", [
+    ("theme", None),
+    ("theme", 3),
+    ("count", "4"),
+    ("count", 4.0),
+    ("count", True),
+    ("priority", None),
+    ("priority", "67"),
+    ("priority", 67.5),
+    ("unverified", None),
+    ("avg_sentiment", "-0.75"),
+    ("avg_sentiment", None),
+    ("severity_counts", []),
+    ("severity_counts", {HIGH: "2"}),
+    ("sentiment_counts", None),
+    ("sentiment_counts", {NEGATIVE: 3.0}),
+])
+def test_wrong_type_raises_value_error(field, value):
+    data = make_stats().to_dict()
+    data[field] = value
+    with pytest.raises(ValueError, match=field):
+        ThemeStats.from_dict(data)
+
+
+def test_whole_number_average_is_accepted():
+    data = make_stats().to_dict()
+    data["avg_sentiment"] = -1
+    assert ThemeStats.from_dict(data).avg_sentiment == -1

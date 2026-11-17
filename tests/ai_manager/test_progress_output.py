@@ -4,9 +4,10 @@ import threading
 from types import SimpleNamespace
 
 import pytest
+import requests
 
 from managers.ai_manager import (
-    AIManager, BatchProgress, ConsoleProgressReporter, ProgressReporter, PromptLibrary
+    AIManager, BatchProgress, ConsoleProgressReporter, GroqClient, ProgressReporter, PromptLibrary
 )
 from managers.ai_manager import request_runner as request_runner_module
 from managers.ai_manager.progress_tracker import ProgressTracker
@@ -405,12 +406,17 @@ def test_live_timer_thread_stops_cleanly():
     assert not [thread for thread in threading.enumerate() if thread.name == "ai-progress-timer"]
 
 
-def test_output_does_not_contain_the_api_key(prompts, sleeps, entry):
+# A real client holding a key, so the key could leak into the output
+def test_output_does_not_contain_the_api_key(prompts, sleeps, entry, monkeypatch):
     stream = io.StringIO()
-    rejected = LLMRequestError("key rejected (HTTP 401)", LLMRequestError.AUTH, False)
-    manager = build_manager(StubLLMClient([rejected]), prompts, ConsoleProgressReporter(stream))
+    rejected = requests.Response()
+    rejected.status_code = 401
+    rejected._content = b"{}"
+    monkeypatch.setattr(requests.Session, "post", lambda *a, **k: rejected)
+    manager = build_manager(GroqClient("gsk_test_secret"), prompts, ConsoleProgressReporter(stream))
 
     manager.classify_entries([entry], [], discard)
 
     assert "key rejected (HTTP 401)" in stream.getvalue()
+    assert "gsk_test_secret" not in stream.getvalue()
     assert "Bearer" not in stream.getvalue()

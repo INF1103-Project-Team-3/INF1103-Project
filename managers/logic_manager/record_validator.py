@@ -1,15 +1,11 @@
 """RecordValidator: checks records before Logic uses them."""
 
-from datetime import datetime
-
 from managers.models import REVIEWED, SENTIMENTS, SEVERITIES, VERIFICATION, FeedbackRecord
 
 
 class RecordValidator:
     """Splits records into valid and invalid. One bad record never stops the
     rest, and each invalid record keeps the reasons it failed."""
-
-    __TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S"
 
     def validate(self, records) -> tuple[list[FeedbackRecord], list[tuple[FeedbackRecord, list[str]]]]:
         """Returns (valid, invalid), where invalid is a list of (record, problems)."""
@@ -36,7 +32,7 @@ class RecordValidator:
         for field, value in (("feedback_id", record.feedback_id), ("text", record.text)):
             if not self.__is_text(value):
                 problems.append(f"'{field}' must be non-empty text, got {value!r}")
-        if not self.__is_timestamp(record.timestamp):
+        if not FeedbackRecord.is_valid_timestamp(record.timestamp):
             problems.append(f"'timestamp' must be YYYY-MM-DDTHH:MM:SS, got {record.timestamp!r}")
         problems += self.__value_problems("user", record.user)
         if record.ai is not None:
@@ -64,11 +60,3 @@ class RecordValidator:
     @staticmethod
     def __is_text(value) -> bool:
         return isinstance(value, str) and bool(value.strip())
-
-    def __is_timestamp(self, value) -> bool:
-        """True only for a real date and time written exactly as YYYY-MM-DDTHH:MM:SS."""
-        try:
-            parsed = datetime.strptime(value, self.__TIMESTAMP_FORMAT)
-        except (TypeError, ValueError):
-            return False
-        return parsed.strftime(self.__TIMESTAMP_FORMAT) == value
