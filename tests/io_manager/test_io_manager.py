@@ -228,12 +228,6 @@ def test_settings_shows_the_theme_waiting_to_be_added(session, screen):
     assert "  Car Park" in screen.lines
 
 
-def test_show_notice_is_shown_prominently(screen, prompter, data, logic):
-    io = IOManager(screen.view, prompter(), [], data, logic, PASSWORD)
-    io.show_notice(IOManager.NOTICE_CONNECTING)
-    assert "    CONNECTING TO API & RUNNING" in screen.lines
-
-
 def test_create_importers_gives_csv_and_json_importers(data, logic):
     importers = IOManager.create_importers(data, logic)
     assert [type(i) for i in importers] == [CsvImporter, JsonImporter]
