@@ -7,7 +7,7 @@ from managers.models import FeedbackRecord
 
 if TYPE_CHECKING:
     from managers.ai_manager import AISummary
-    from managers.logic_manager import AggregationResult, TrendReport
+    from managers.logic_manager import ActionSuggestions, AggregationResult, TrendReport
 
 
 class FeedbackView(ABC):
@@ -31,8 +31,11 @@ class FeedbackView(ABC):
     def show_dashboard(self, result: "AggregationResult | None",
                        trend: "TrendReport | None",
                        summary: "AISummary | None",
-                       queue: Sequence[FeedbackRecord]) -> None:
-        """Show the theme statistics, trend, AI summary and review queue."""
+                       queue: Sequence[FeedbackRecord],
+                       fallback: "ActionSuggestions | None" = None) -> None:
+        """Show the theme statistics, trend, AI summary and review queue.
+        fallback holds the rule-based actions saved while the AI was down
+        (D21); when given, they are shown, labelled, in place of the AI's."""
 
     @abstractmethod
     def show_search_results(self, records: Sequence[FeedbackRecord]) -> None:

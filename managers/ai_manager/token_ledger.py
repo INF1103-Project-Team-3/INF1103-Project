@@ -32,12 +32,17 @@ class TokenLedger:
         return TPD_LIMITS.get(self.__model)
 
     def today_total(self, key_label: str) -> int | None:
-        """Return today's recorded tokens for this key, or None if the ledger is unreadable."""
+        """Return today's recorded tokens for this key, or None if the ledger is
+        unreadable or of the wrong shape."""
         log = self.__load_log()
         if log is None:
             return None
         today = datetime.now(timezone.utc).date().isoformat()
-        return log.get(today, {}).get(key_label, {}).get("totals", {}).get(self.__model, 0)
+        try:
+            total = log.get(today, {}).get(key_label, {}).get("totals", {}).get(self.__model, 0)
+        except AttributeError:
+            return None
+        return total if isinstance(total, int) else None
 
     def record(self, key_label: str, request_id: str, total_tokens: int) -> None:
         """Add one request's token usage to the ledger, warning near the daily cap.
@@ -46,9 +51,12 @@ class TokenLedger:
         key_label, because the cap applies per API key. Same schema as the
         comparison harness's ledger. total_tokens covers only attempts that
         returned usage; a request whose every attempt failed is still recorded,
-        with 0. Ledger problems are logged, never raised, since tracking is
-        advisory.
+        with 0. An empty key_label names no key (the AI is down), so nothing
+        is recorded. Ledger problems are logged, never raised, since tracking
+        is advisory; a ledger of the wrong shape counts as unreadable.
         """
+        if not key_label:
+            return
         log = self.__load_log()
         if log is None:
             # Never overwrite a ledger that failed to load.
@@ -56,17 +64,22 @@ class TokenLedger:
             return
 
         today = datetime.now(timezone.utc).date().isoformat()
-        key_log = log.setdefault(today, {}).setdefault(key_label, {})
-        totals = key_log.setdefault("totals", {})
-        usage = key_log.setdefault("candidates", {}).setdefault(
-            self.__usage_label, {"model": self.__model, "total_tokens": 0, "requests": []}
-        )
-        before = totals.get(self.__model, 0)
-        if total_tokens > 0:
-            totals[self.__model] = before + total_tokens
-        # "feedback_id" is the harness's key name; it holds any request_id.
-        usage["requests"].append({"feedback_id": request_id, "total_tokens": total_tokens})
-        usage["total_tokens"] += total_tokens
+        try:
+            key_log = log.setdefault(today, {}).setdefault(key_label, {})
+            totals = key_log.setdefault("totals", {})
+            usage = key_log.setdefault("candidates", {}).setdefault(
+                self.__usage_label, {"model": self.__model, "total_tokens": 0, "requests": []}
+            )
+            before = totals.get(self.__model, 0)
+            if total_tokens > 0:
+                totals[self.__model] = before + total_tokens
+            # "feedback_id" is the harness's key name; it holds any request_id.
+            usage["requests"].append({"feedback_id": request_id, "total_tokens": total_tokens})
+            usage["total_tokens"] += total_tokens
+        except (AttributeError, KeyError, TypeError):
+            # Never overwrite a ledger of the wrong shape.
+            logger.warning("token ledger unreadable, usage not recorded")
+            return
 
         try:
             self.__save_log(log)

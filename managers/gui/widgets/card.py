@@ -2,7 +2,7 @@
 
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from ..style import restyle
+from ..style import Style
 
 
 # A white box with a 1px border.
@@ -33,6 +33,6 @@ class Card(QFrame):
     # "" for a plain card, "critical" for the light orange one.
     def set_tone(self, tone: str) -> None:
         self.setProperty("tone", tone)
-        restyle(self)
+        Style.restyle(self)
         for child in self.findChildren(QWidget):
-            restyle(child)
+            Style.restyle(child)

@@ -7,8 +7,8 @@ pytest.importorskip("pytestqt")
 
 from PySide6.QtWidgets import QLabel, QLineEdit, QPlainTextEdit, QPushButton  # noqa: E402
 
-from demo.fake_data_manager import FakeDataManager  # noqa: E402
-from demo.sample_data import build_sample_records  # noqa: E402
+from tests.gui.support.fake_data_manager import FakeDataManager  # noqa: E402
+from tests.gui.support.sample_data import build_sample_records  # noqa: E402
 from managers.gui.widgets.import_panel import ImportPanel  # noqa: E402
 from managers.gui.widgets.single_entry_form import OTHER, SingleEntryForm  # noqa: E402
 from managers.io_manager import (  # noqa: E402
@@ -100,21 +100,27 @@ def test_import_previews_rejected_rows_and_skips_saved_ids(qtbot, tmp_path):
     assert [r.feedback_id for r in result.records] == ["new_001"] and result.source_file == "week6.csv"
 
 
+# A good file is previewed first, so the button starts enabled and the unsupported file must
+# clear it: on a fresh panel it is disabled already and the check could not fail (G15).
 def test_import_explains_an_unsupported_file(qtbot, tmp_path):
+    path = tmp_path / "week6.csv"
+    path.write_text(HEADER + "new_001,Wifi drops in the lab,2026-11-10T09:00:00,Facilities,negative,medium\n",
+                    encoding="utf-8")
     panel = import_panel(qtbot, FakeDataManager([]))
+    panel.load_file(str(path))
+    assert button(panel, "Add 1 entry").isEnabled()
     panel.load_file(str(tmp_path / "notes.txt"))
     assert "Only .csv and .json" in panel.findChild(QLabel, "errorText").text()
     assert not button(panel, "Add to queue").isEnabled()
 
 
 def test_main_window_sends_imported_entries_with_their_source_file(qtbot, tmp_path):
-    from demo.fake_pipeline import FakePipeline
-    from demo.sample_data import load_ai_answers
+    from tests.gui.support.stub_pipeline import StubPipeline
     from managers.gui import MainWindow, QtProgressReporter
     data = FakeDataManager(build_sample_records())
     reporter = QtProgressReporter()
     check, builder = validator(), RecordBuilder()
-    window = MainWindow(FakePipeline(reporter, data, load_ai_answers()), data, LogicManager(), check,
+    window = MainWindow(StubPipeline(), data, LogicManager(), check,
                         [CsvImporter(data, check, builder)], reporter)
     qtbot.addWidget(window)
     path = tmp_path / "week6.csv"
@@ -125,3 +131,23 @@ def test_main_window_sends_imported_entries_with_their_source_file(qtbot, tmp_pa
     button(page, "Add 1 entry").click()
     session = window._MainWindow__build_session()
     assert [r.feedback_id for r in session.records] == ["new_001"] and session.source_file == "week6.csv"
+
+
+def test_process_counts_unverified_entries_so_the_ai_can_retry_them(qtbot, tmp_path):
+    from managers.data_manager import DataManager
+    from managers.gui import QtProgressReporter
+    from managers.gui.data_reader import DataReader
+    from managers.gui.pages.add_feedback_page import AddFeedbackPage
+    from managers.models import UNVERIFIED
+    data = DataManager(str(tmp_path / "data"))
+    record = RecordBuilder().build({"text": "Wifi drops", "theme": "Facilities",
+                                    "sentiment": "negative", "severity": "medium"})
+    record.set_final("Facilities", "negative", "medium", UNVERIFIED)
+    data.save_records([record])
+    page = AddFeedbackPage(DataReader(data), QtProgressReporter().signals, validator(), RecordBuilder())
+    qtbot.addWidget(page)
+    page.refresh()
+    text = " ".join(label.text() for label in page.findChildren(QLabel))
+    assert "1 entry waiting for the AI (1 unverified" in text
+    process = button(page, "Process")
+    assert process.text() == "Process 1 entry" and process.isEnabled()

@@ -53,7 +53,8 @@ class ConsoleView(FeedbackView):
         bar = "=" * self.WIDTH
         self._block([bar, f"    {notice}", bar])
 
-    def show_dashboard(self, result, trend, summary, queue: Sequence[FeedbackRecord]) -> None:
+    def show_dashboard(self, result, trend, summary, queue: Sequence[FeedbackRecord],
+                       fallback=None) -> None:
         if not self._get(result, "themes"):
             self._block(["No aggregated data yet."])
         else:
@@ -67,7 +68,7 @@ class ConsoleView(FeedbackView):
             self._block(self._merged_table(rows) if self._has_trend(trend)
                         else self._plain_table(rows))
             self._block(self._pending(result))
-            self._block(self._actions(summary, rows))
+            self._block(self._actions(summary, rows, fallback))
         self._show_review_queue(queue)
 
     def show_search_results(self, records: Sequence[FeedbackRecord]) -> None:
@@ -154,14 +155,23 @@ class ConsoleView(FeedbackView):
         return ["NEW THEMES WAITING FOR CONFIRMATION"] + [
             f"  {name} ({count} record(s))" for name, count in pending.items()]
 
-    def _actions(self, summary: Any, rows: list[tuple]) -> list[str]:
-        """The AI's suggested action per theme, in the same order as the table."""
+    def _actions(self, summary: Any, rows: list[tuple], fallback: Any = None) -> list[str]:
+        """The suggested action per theme, in the same order as the table: the
+        rule-based ones, labelled and dated, when the AI was down (D21),
+        otherwise the AI's."""
+        source = fallback if fallback is not None else summary
         suggested = {self._get(a, "theme"): self._get(a, "suggested_action")
-                     for a in self._get(summary, "theme_actions", []) or []
+                     for a in self._get(source, "theme_actions", []) or []
                      if self._get(a, "theme") != UNCLEAR_THEME}    # nothing useful to suggest
         if not suggested:
             return []
-        lines = ["SUGGESTED ACTIONS", "-" * self.WIDTH]
+        title = "SUGGESTED ACTIONS"
+        if fallback is not None:
+            # imported here, as in IOManager, so an unfinished Logic module cannot stop I/O loading
+            from managers.logic_manager import ActionSuggestions
+            created = str(self._get(fallback, "created_at") or "").replace("T", " ")
+            title = ActionSuggestions.LABEL.upper() + (f", {created}" if created else "")
+        lines = [title, "-" * self.WIDTH]
         for name, stats, _, _ in rows:
             if stats is not None and name in suggested:
                 lines.append(textwrap.fill(

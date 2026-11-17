@@ -1,4 +1,4 @@
-# FakeDataManager: in-memory stand-in for DataManager, for the GUI demo and tests.
+# FakeDataManager: in-memory stand-in for DataManager in the GUI tests.
 
 import csv
 import json
@@ -62,6 +62,14 @@ class FakeDataManager:
         return None
 
     def load_summary(self):
+        return None
+
+    def load_token_log(self):
+        return {}
+
+    data_folder = ""
+
+    def load_fallback_actions(self):
         return None
 
     def load_impacts(self):

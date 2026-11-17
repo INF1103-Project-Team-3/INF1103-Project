@@ -38,6 +38,11 @@ class LogicManager:
         """A base or confirmed theme, "Unclear", or the cleaned new label (7.4)."""
         return self.__normaliser.normalise(label)
 
+    def is_new_theme(self, label: str) -> bool:
+        """True for a real label not known yet (not an alias, a known theme or
+        Unclear), i.e. one an admin's review would confirm (D16, 7.4)."""
+        return self.__normaliser.is_new(label)
+
     def validate(self, records: list[FeedbackRecord]) -> tuple[list, list]:
         """Returns (valid, invalid), where invalid is a list of (record, problems)."""
         return self.__validator.validate(records)

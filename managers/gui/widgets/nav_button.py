@@ -3,7 +3,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton
 
-from ..style import restyle
+from ..style import Style
 from .pill import Pill
 
 
@@ -47,4 +47,5 @@ class NavButton(QPushButton):
 
     def __on_toggled(self, checked: bool) -> None:
         self.__name.setProperty("active", checked)
-        restyle(self.__name)
+        Style.restyle(self.__name)
+        Style.reserve_bold_width(self.__name, 2)       # bold while its page is open

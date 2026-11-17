@@ -1,4 +1,4 @@
-# Sample FeedbackRecords for the GUI demo, built from the stress-test files in tests/.
+# Sample FeedbackRecords for the GUI tests, built from the stress-test files in tests/.
 
 import json
 from datetime import date, datetime, timedelta
@@ -7,7 +7,7 @@ from pathlib import Path
 from managers.logic_manager import LogicManager
 from managers.models import SENTIMENTS, SEVERITIES, Action, FeedbackRecord
 
-SAMPLES = Path(__file__).resolve().parent.parent / "tests" / "ai_manager_samples"
+SAMPLES = Path(__file__).resolve().parents[2] / "ai_manager_samples"
 CHECKED_COUNT = 6
 
 

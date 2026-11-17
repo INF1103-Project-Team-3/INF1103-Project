@@ -45,7 +45,8 @@ class ImpactAnalyser:
         after = self.__measure(theme, matching, records, start, days)
 
         label, message = self.__judge(action, theme, before, after)
-        warnings = self.__overlaps(action, theme, before, after, other_actions) + self.__unverified(before, after)
+        warnings = (self.__overlaps(action, theme, before, after, other_actions) + self.__unverified(before, after)
+                    + self.__other_explanations(label, before, after))
         return ImpactReport(action, label, message, before, after, weekly, warnings)
 
     def __weekly(self, matching: list[FeedbackRecord], start: date, today: date) -> list[dict]:
@@ -82,6 +83,21 @@ class ImpactAnalyser:
         entries = "entry is" if count == 1 else "entries are"
         return [f"{count} of the measured {entries} unverified: the AI hasn't checked them yet."]
 
+    def __other_explanations(self, label: str, before: dict, after: dict) -> list[str]:
+        """Warnings for a fall in complaints that the action may not explain.
+        Totals are compared directly, as the two windows are the same length."""
+        warnings = []
+        # the rest of the feedback is the comparison: if it fell as much, fewer students were writing in
+        if label == ImpactReport.EFFECTIVE:
+            others = self.__percent_change(before["other_entries"], after["other_entries"])
+            if others <= self.__percent_change(before["negative"], after["negative"]):
+                warnings.append(f"Other feedback fell by {round(-others)}% over the same period, at least as much "
+                                f"as this, so the drop may not be down to the action.")
+        if after["negative"] < before["negative"] and after["high_or_critical"] > before["high_or_critical"]:
+            warnings.append(f"Fewer complaints, but more of them are serious: high or critical entries rose "
+                            f"from {before['high_or_critical']} to {after['high_or_critical']}.")
+        return warnings
+
     def __measure(self, theme: str, matching: list[FeedbackRecord], records: list[FeedbackRecord],
                   first_day: date, days: int) -> dict:
         """The numbers for one window: first_day and the days after it."""
@@ -98,6 +114,7 @@ class ImpactAnalyser:
             "negative": negative,
             "negative_per_week": round(negative * 7 / days, 1),
             "share_percent": round(100 * len(inside) / counted_in_window) if counted_in_window else 0,
+            "other_entries": counted_in_window - len(inside),
             "priority": stats.priority if stats else 0,
             "high_or_critical": sum(r.severity in (HIGH, CRITICAL) for r in inside),
             "unverified": sum(r.verification == UNVERIFIED for r in inside),

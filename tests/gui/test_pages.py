@@ -5,8 +5,8 @@ pytest.importorskip("pytestqt")
 
 from PySide6.QtWidgets import QComboBox, QLabel, QPushButton  # noqa: E402
 
-from demo.fake_data_manager import FakeDataManager  # noqa: E402
-from demo.sample_data import build_sample_records  # noqa: E402
+from tests.gui.support.fake_data_manager import FakeDataManager  # noqa: E402
+from tests.gui.support.sample_data import build_sample_records  # noqa: E402
 from managers.gui.pages.base_page import BasePage  # noqa: E402
 from managers.gui.pages.feedback_page import FeedbackPage  # noqa: E402
 from managers.gui.widgets.entry_detail_panel import EMPTY, EntryDetailPanel  # noqa: E402
@@ -27,7 +27,10 @@ def test_feedback_page_counts_flagged_records(qtbot):
     page = FeedbackPage(data)
     qtbot.addWidget(page)
     page.refresh()
-    assert page.review_count() == len(data.load_review_queue()) > 0
+    # counted independently of review_count(), which is the queue's length (G15)
+    flagged = sum(1 for r in [*data.load_records(), *data.load_pending()] if r.needs_review)
+    assert flagged > 0 and page.review_count() == flagged
+    assert f"Needs review · {flagged}" in [b.text() for b in page.findChildren(QPushButton)]
 
 
 def test_detail_panel_shows_a_dash_while_ai_values_are_missing(qtbot):
@@ -70,7 +73,7 @@ def test_save_builds_an_update_with_the_final_values(qtbot):
     theme.setCurrentText("Administration")
     sentiment.setCurrentText("neutral")
     severity.setCurrentText("low")
-    decision = click_for_decision(qtbot, panel, "Save final labels")
+    decision = click_for_decision(qtbot, panel, "Use these labels")
     assert decision == ReviewDecision(record.feedback_id, ReviewDecision.UPDATE, "Administration", "neutral", "low")
 
 
@@ -93,24 +96,24 @@ def test_sidebar_badge_and_ampersand(qtbot):
 
 def test_critical_reasons_come_first():
     from types import SimpleNamespace
-    from managers.gui.widgets.record_tags import record_tags
+    from managers.gui.widgets.record_tags import RecordTags
     record = SimpleNamespace(needs_review=True, review_reasons=[
         "AI disagrees with the user on severity (user 'critical', AI 'high')", "Critical severity"])
-    assert record_tags(record) == [("Critical", "critical"), ("AI disagrees", "warn")]
+    assert RecordTags.tags(record) == [("Critical", "critical"), ("AI disagrees", "warn")]
 
 
 def test_each_logic_reason_gets_its_own_tag():
-    from managers.gui.widgets.record_tags import reason_tag
-    assert reason_tag("New theme 'Academic': confirm it or change it.") == ("New theme", "info")
-    assert reason_tag("Unclear theme (user said 'n/a') - needs a theme assigned") == ("Unclear theme", "caution")
-    assert reason_tag("Something new") == ("Something new", "warn")
+    from managers.gui.widgets.record_tags import RecordTags
+    assert RecordTags.reason_tag("New theme 'Academic': confirm it or change it.") == ("New theme", "info")
+    assert RecordTags.reason_tag("Unclear theme (user said 'n/a') - needs a theme assigned") == ("Unclear theme", "caution")
+    assert RecordTags.reason_tag("Something new") == ("Something new", "warn")
 
 
 def test_reason_is_shown_as_logic_wrote_it():
     from html import escape
-    from managers.gui.widgets.record_tags import explain_reason
+    from managers.gui.widgets.record_tags import RecordTags
     reason = "AI disagrees with the user on theme (user 'Academic', AI 'Facilities')"
-    assert explain_reason(reason) == "<b>AI disagrees:</b> " + escape(reason)
+    assert RecordTags.explain_reason(reason) == "<b>AI disagrees:</b> " + escape(reason)
 
 
 def test_sample_records_are_checked_by_the_real_logic():
@@ -150,3 +153,174 @@ def test_choosing_a_sort_reorders_the_list_and_selects_the_new_first_entry(qtbot
     panel = page.findChild(EntryDetailPanel)
     queue = data.load_review_queue()
     assert panel.record.feedback_id == min(queue, key=lambda r: r.timestamp).feedback_id
+
+
+def feedback_window(qtbot):
+    from managers.gui import MainWindow, QtProgressReporter
+    from managers.io_manager import EntryValidator, ThemeValidator
+    from managers.logic_manager import LogicManager
+    from tests.gui.support.stub_pipeline import StubPipeline
+    data = FakeDataManager(build_sample_records())
+    logic, reporter = LogicManager(), QtProgressReporter()
+    window = MainWindow(StubPipeline(), data, logic, EntryValidator(ThemeValidator(logic)), [], reporter)
+    qtbot.addWidget(window)
+    page = window.findChild(FeedbackPage)
+    window.show_page("Feedback")
+    return window, page, page.findChild(EntryDetailPanel), data
+
+
+def visible_tags(page):
+    from managers.gui.widgets.entry_card import EntryCard
+    return {c.feedback_id: c.queued_text for c in page.findChildren(EntryCard) if not c.isHidden()}
+
+
+def test_a_decision_tags_the_card_and_opens_the_next_entry(qtbot):
+    window, page, panel, data = feedback_window(qtbot)
+    first = panel.record.feedback_id
+    button(panel, "Use student's").click()
+    assert visible_tags(page)[first].startswith("Will be saved as")
+    assert panel.record.feedback_id != first
+
+
+def test_delete_shows_will_be_deleted_and_undo_clears_it(qtbot, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "question", lambda *_args: QMessageBox.StandardButton.Yes)
+    window, page, panel, data = feedback_window(qtbot)
+    first = panel.record.feedback_id
+    button(panel, "Delete").click()
+    assert visible_tags(page)[first] == "Will be deleted"
+    page._FeedbackPage__select(first)
+    assert "Will be deleted" in " ".join(l.text() for l in panel.findChildren(QLabel))
+    assert not button(panel, "Use student's").isEnabled()
+    button(panel, "Undo").click()
+    assert visible_tags(page)[first] == "" and window._MainWindow__build_session().decisions == []
+    assert button(panel, "Use student's").isEnabled()
+
+
+def save_bar_text(page):
+    return page._FeedbackPage__save_text.text()
+
+
+def test_the_save_bar_counts_decisions_and_warns_about_waiting_entries(qtbot):
+    window, page, panel, data = feedback_window(qtbot)
+    bar = page._FeedbackPage__save_bar
+    assert not bar.isVisibleTo(page)
+    button(panel, "Use student's").click()
+    button(panel, "Use student's").click()
+    assert bar.isVisibleTo(page) and "2 changes not saved yet" in save_bar_text(page)
+    from managers.io_manager import RecordBuilder
+    waiting = window._MainWindow__add_feedback.waiting_for_ai() + 1
+    window._MainWindow__queue_record(RecordBuilder().build(
+        {"text": "Wifi drops", "theme": "Facilities", "sentiment": "negative", "severity": "low"}))
+    assert f"Saving also sends {waiting} waiting" in save_bar_text(page)
+
+
+def test_save_changes_runs_the_decisions_and_stays_on_feedback(qtbot):
+    window, page, panel, data = feedback_window(qtbot)
+    first = panel.record.feedback_id
+    button(panel, "Use student's").click()
+    button(page, "Save changes").click()
+    pipeline = window._MainWindow__pipeline
+    qtbot.waitUntil(lambda: window._MainWindow__worker is None, timeout=3000)
+    assert [d.feedback_id for d in pipeline.sessions[0].decisions] == [first]
+    assert window._MainWindow__stack.currentWidget() is page
+    assert not page._FeedbackPage__save_bar.isVisibleTo(page) and visible_tags(page).get(first, "") == ""
+
+
+def test_discard_all_drops_every_queued_decision(qtbot, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "question", lambda *_args: QMessageBox.StandardButton.Yes)
+    window, page, panel, data = feedback_window(qtbot)
+    button(panel, "Use student's").click()
+    button(panel, "Use student's").click()
+    button(page, "Discard all").click()
+    assert window._MainWindow__build_session().decisions == []
+    assert not page._FeedbackPage__save_bar.isVisibleTo(page) and not any(visible_tags(page).values())
+
+
+# MainWindow sets Fusion and the light palette app-wide, so Windows dark mode can't darken the admin text box.
+def test_main_window_forces_fusion_and_a_light_text_box(qtbot):
+    from PySide6.QtGui import QPalette
+    from PySide6.QtWidgets import QApplication, QPlainTextEdit
+    from managers.gui.style import CARD
+    window, *_ = feedback_window(qtbot)
+    app = QApplication.instance()
+    assert app.style().name().lower() == "fusion"
+    assert app.palette().color(QPalette.ColorRole.Base).name().upper() == CARD
+    box = window.findChild(QPlainTextEdit, "entryTextBox")
+    assert box.palette().color(QPalette.ColorRole.Base).name().upper() == CARD
+
+
+def queue_entry(window):
+    from managers.io_manager import RecordBuilder
+    record = RecordBuilder().build({"text": "Lab is cold", "theme": "Facilities", "sentiment": "negative",
+                                    "severity": "low"})
+    window._MainWindow__queue_record(record)
+    return record
+
+
+# G1: closing with queued work asks first; with nothing queued it closes straight away.
+def test_closing_with_nothing_queued_does_not_ask(qtbot, monkeypatch):
+    window, *_ = feedback_window(qtbot)
+    monkeypatch.setattr(window, "_ask_unsaved", lambda _text: pytest.fail("should not ask"))
+    assert window.unsaved_summary() == "" and window.may_close()
+
+
+def test_closing_with_queued_work_asks_and_can_cancel_or_close(qtbot, monkeypatch):
+    window, page, panel, data = feedback_window(qtbot)
+    queue_entry(window)
+    button(panel, "Use student's").click()
+    asked = []
+    monkeypatch.setattr(window, "_ask_unsaved", lambda text: asked.append(text) or "cancel")
+    assert not window.may_close() and asked == ["1 entry and 1 review decision"]
+    monkeypatch.setattr(window, "_ask_unsaved", lambda _text: "close")
+    assert window.may_close()
+
+
+def test_process_and_close_runs_the_queue_then_closes(qtbot, monkeypatch):
+    window, *_ = feedback_window(qtbot)
+    record = queue_entry(window)
+    closed = []
+    monkeypatch.setattr(window, "_ask_unsaved", lambda _text: "process")
+    monkeypatch.setattr(window, "close", lambda: closed.append(True))
+    assert not window.may_close()
+    qtbot.waitUntil(lambda: window._MainWindow__worker is None, timeout=3000)
+    assert [r.feedback_id for r in window._MainWindow__pipeline.sessions[0].records] == [record.feedback_id]
+    assert closed == [True] and window.unsaved_summary() == ""
+
+
+def test_the_unsaved_dialog_offers_three_choices_and_dismissing_cancels(qtbot, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    seen = []
+    monkeypatch.setattr(QMessageBox, "exec", lambda box: seen.append(
+        ([b.text() for b in box.buttons()], box.text())) or 0)
+    window, *_ = feedback_window(qtbot)
+    assert window._ask_unsaved("1 entry") == "cancel"
+    labels, text = seen[0]
+    assert {"Process and close", "Close anyway"} <= set(labels) and "Not saved yet: 1 entry." in text
+
+
+def picker_items(widget, name):
+    box = widget.findChild(QComboBox, name)
+    return [box.itemText(i) for i in range(box.count())]
+
+
+# A theme queued in Settings is offered by both theme pickers before Process, and stays after it.
+def test_a_queued_theme_is_offered_on_the_student_form_and_single_entry(qtbot):
+    window, *_ = feedback_window(qtbot)
+    window._MainWindow__queue_theme("Parking Fees")
+    window.show_student_form()
+    assert "Parking Fees" in picker_items(window, "studentTheme")
+    assert "Parking Fees" in picker_items(window, "entryTheme")
+
+
+def test_a_queued_theme_is_offered_in_the_review_panel_and_can_be_used(qtbot):
+    window, page, panel, data = feedback_window(qtbot)
+    window._MainWindow__queue_theme("Parking Fees")
+    theme_box = panel.findChildren(QComboBox)[0]
+    assert "Parking Fees" in [theme_box.itemText(i) for i in range(theme_box.count())]
+    first = panel.record.feedback_id
+    theme_box.setCurrentText("Parking Fees")
+    button(panel, "Use these labels").click()
+    decision = window._MainWindow__build_session().decisions[0]
+    assert decision.feedback_id == first and decision.theme == "Parking Fees"

@@ -14,7 +14,7 @@ from ..widgets.combo_box import ComboBox
 # Builds an Action through I/O's RecordBuilder, which makes its ID and logged time.
 class LogActionDialog(QDialog):
     def __init__(self, known_themes: list[str], parent=None, theme: str | None = None,
-                 builder: RecordBuilder | None = None):
+                 builder: RecordBuilder | None = None, description: str | None = None):
         super().__init__(parent)
         self.__builder = builder or RecordBuilder()
         self.setWindowTitle("Log an action")
@@ -25,10 +25,16 @@ class LogActionDialog(QDialog):
         self.__theme.setObjectName("themeBox")
         self.__theme.addItems(known_themes)
         if theme:
+            # a pending or queued theme may not be in the list yet: add it rather than
+            # leave the first theme chosen (G3)
+            if self.__theme.findText(theme) == -1:
+                self.__theme.addItem(theme)
             self.__theme.setCurrentText(theme)
         self.__description = QLineEdit()
         self.__description.setObjectName("descriptionEdit")
         self.__description.setPlaceholderText("e.g. Upgraded the library Wi-Fi access points")
+        if description:
+            self.__description.setText(description)
         self.__date = QDateEdit(QDate.currentDate())
         self.__date.setObjectName("dateEdit")
         self.__date.setCalendarPopup(True)
@@ -46,7 +52,7 @@ class LogActionDialog(QDialog):
 
         title = QLabel("Log an action")
         title.setObjectName("dialogTitle")
-        hint = QLabel("The result shows \"Too early\" until 14 days have passed.")
+        hint = QLabel("The result shows \"Too early\" until 7 days have passed and at least 3 matching entries exist.")
         hint.setObjectName("statusLine")
         hint.setWordWrap(True)
         cancel = QPushButton("Cancel")

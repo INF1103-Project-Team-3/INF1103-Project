@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget,
 )
 
-from ..style import restyle
+from ..style import Style
 from ..widgets.choice_card import ChoiceCard
 
 WIDTH = 640
@@ -46,9 +46,14 @@ class StartPage(QWidget):
         self.__error = QLabel("Incorrect password. Please try again.")
         self.__error.setObjectName("errorText")
         self.__error.hide()
+        self.__off_note = QLabel("")
+        self.__off_note.setObjectName("errorText")
+        self.__off_note.setWordWrap(True)
+        self.__off_note.hide()
         cancel = QPushButton("Cancel")
         cancel.setObjectName("largeButton")
         log_in = QPushButton("Log in")
+        self.__log_in = log_in
         log_in.setObjectName("bigPrimaryButton")
         cancel.clicked.connect(self.reset)
         log_in.clicked.connect(self.__on_login)
@@ -63,6 +68,7 @@ class StartPage(QWidget):
         form.addWidget(label)
         form.addWidget(self.__password)
         form.addWidget(self.__error)
+        form.addWidget(self.__off_note)
         form.addLayout(buttons)
 
         column = QWidget()
@@ -94,6 +100,13 @@ class StartPage(QWidget):
         self.__login.show()
         self.__password.setFocus()
 
+    # No admin password is configured: the form says so and cannot be used, as in the terminal (G9).
+    def disable_login(self, message: str) -> None:
+        self.__off_note.setText(message)
+        self.__off_note.show()
+        self.__password.setEnabled(False)
+        self.__log_in.setEnabled(False)
+
     def show_error(self) -> None:
         self.__error.show()
         self.__set_error(True)
@@ -112,4 +125,4 @@ class StartPage(QWidget):
 
     def __set_error(self, error: bool) -> None:
         self.__password.setProperty("error", error)
-        restyle(self.__password)
+        Style.restyle(self.__password)

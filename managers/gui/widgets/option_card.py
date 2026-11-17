@@ -3,7 +3,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QLabel, QRadioButton, QSizePolicy, QVBoxLayout
 
-from ..style import restyle
+from ..style import Style
 
 
 # A bordered card holding a radio button and an optional description.
@@ -50,5 +50,5 @@ class OptionCard(QFrame):
         self.setProperty("selected", checked)
         margin = (13, 11) if checked else (14, 12)
         self.layout().setContentsMargins(margin[0], margin[1], margin[0], margin[1])
-        restyle(self)
-        restyle(self.__radio)
+        Style.restyle(self)
+        Style.restyle(self.__radio)

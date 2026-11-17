@@ -151,3 +151,16 @@ def test_settings_without_new_themes_has_no_added_section(screen):
 def test_typographic_characters_are_replaced_for_old_terminals(screen, make_record):
     screen.view.show_search_results([make_record(text="It’s slow — again")])
     assert "  It's slow - again" in screen.lines
+
+
+# I3 (D21): rule-based actions replace the AI's, are labelled and dated; the old summary stays
+def test_rule_based_actions_replace_the_ai_ones_and_are_labelled(screen, result):
+    summary = {"overall_summary": "Workload is up.", "created_at": "2026-10-08T08:05:00",
+               "theme_actions": [{"theme": "Workload", "suggested_action": "Spread deadlines."}]}
+    fallback = {"theme_actions": [{"theme": "Workload", "suggested_action": "Ask timetabling."}],
+                "created_at": "2026-11-15T09:00:00"}
+    screen.view.show_dashboard(result, None, summary, [], fallback)
+    assert "SUGGESTED BY RULES (AI UNAVAILABLE), 2026-11-15 09:00:00" in screen.lines
+    assert "Ask timetabling." in screen.text
+    assert "Spread deadlines." not in screen.text
+    assert "OVERALL (summary from 2026-10-08 08:05:00)" in screen.lines

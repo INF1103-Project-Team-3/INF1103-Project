@@ -52,6 +52,7 @@ class RequestRunner:
         for attempt in range(1, MAX_ATTEMPTS + 1):
             backoff = BACKOFF_BASE_S**attempt
             wait_reason = WAIT_RATE_LIMIT
+            delay = None
             self.__reporter.on_attempt_start(task.request_id, attempt, MAX_ATTEMPTS)
             try:
                 raw, tokens, delay = self.__client.send(
@@ -81,11 +82,13 @@ class RequestRunner:
                     delay = backoff
                     wait_reason = WAIT_BACKOFF
             except (json.JSONDecodeError, TypeError) as exc:
-                # The model's content was not JSON text.
+                # The model's content was not JSON text. Keep the client's wait
+                # if it is longer, as it is there to avoid a 429.
                 logger.debug("non-JSON output %s attempt %d: %s", task.request_id, attempt, exc)
                 reason = INVALID_OUTPUT
-                delay = backoff
-                wait_reason = WAIT_BACKOFF
+                if delay is None or delay <= backoff:
+                    delay = backoff
+                    wait_reason = WAIT_BACKOFF
             if delay > MAX_WAIT_S:
                 tracker.stop(f"rate-limit wait of {delay:.0f}s", task.request_id)
                 gave_up_early = result is None

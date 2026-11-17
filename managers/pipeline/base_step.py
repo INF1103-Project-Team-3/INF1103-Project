@@ -16,6 +16,8 @@ class BaseStep(PipelineStep):
     # True: an error stops the run (nothing half-finished is saved).
     # Steps whose failure must not block saving the run (Summary, Impact) set this to False (D20).
     stop_on_error = True
+    # What the step does, in words a user understands (shown if a run stops during it)
+    description = "the analysis"
 
     def execute(self, context: PipelineContext) -> bool:
         step_name = self.__class__.__name__
